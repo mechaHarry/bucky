@@ -21,7 +21,7 @@ This project is a local-only macOS launcher implemented as a Swift Package/AppKi
 - Explicit inclusions are merged after root scanning. This is how Finder is included without scanning all CoreServices.
 - Default inclusion path: `/System/Library/CoreServices/Finder.app`.
 - Dedupe is by full app path.
-- Search text includes app title, bundle identifier, bundle executable name, and path.
+- Search text includes only the app title. Paths, directories, bundle identifiers, and executable names are not searchable.
 
 ## Config Files
 
@@ -36,6 +36,7 @@ Files:
 - `settings.json`: hotkey and launch-on-startup preference.
 - `inclusions.json`: explicit `.app` paths to merge into the index. Missing or malformed file defaults to Finder.
 - `exclusions.json`: paths hidden from search results.
+- `calculations.json`: most recent tools-mode calculations, newest first, capped at 100 entries.
 
 Exclusions are applied after indexing and inclusions. An explicitly included app can still be hidden if its path is in exclusions.
 
@@ -43,13 +44,27 @@ Exclusions are applied after indexing and inclusions. An explicitly included app
 
 - Default hotkey is Option+Space through Carbon `RegisterEventHotKey`.
 - Hotkey can be changed in Settings and is persisted in `settings.json`.
+- Shift+/ is handled by a local key monitor scoped to the visible launcher window, not a global Carbon hotkey. It switches between app mode and tools mode only when the input is blank.
+- Escape clears the input first; if the input is already blank, it closes the panel.
 - The launcher panel is an always-on-top borderless `NSPanel`.
+- A custom bottom-right resize grip resizes the borderless panel directly, with a 360x300 minimum size.
 - Panel opens on the hardware primary display using `CGMainDisplayID()`, not mouse/focus display.
 - `show()` displays immediately, focuses the search field, then schedules background reindexing on the next main-loop pass.
 - Reindexing runs on a background queue and publishes results back to the main thread.
 - A small spinner at the right of the search bar indicates indexing.
 - If a reindex is requested while one is active, one follow-up reindex is queued.
 - During typing, if the next query would produce zero results, Bucky preserves the previous interactable filtered list. This only applies to search typing, not explicit config/index refreshes.
+
+## Tools UX
+
+- Tools mode does not search or launch apps.
+- Tools mode exposes a clear-history button for calculation history.
+- Tools mode exposes a pin button. While pinned, the panel stays above other apps, can be dragged by its background, ignores the global launcher hotkey, stays open after result activation, and cannot switch back to app mode until unpinned.
+- Arithmetic input is detected before dictionary lookup. Purely arithmetic text, including a standalone number like `1`, stays in math mode and never triggers dictionary mode.
+- Arithmetic expressions are evaluated with a local parser supporting `+`, `-`, `*`, `/`, `×`, `÷`, decimals, grouping commas, unary signs, and parentheses.
+- Valid calculations with a binary arithmetic operator are added to `calculations.json` after a short typing debounce, and pressing Return on a live calculation commits it immediately.
+- Non-arithmetic text is looked up through macOS Dictionary Services via `DCSCopyTextDefinition`, with fuzzy candidates from `NSSpellChecker` completions and guesses. Dictionary.app is not launched during lookup.
+- Pressing Return on a calculation result copies its value to the pasteboard. Pressing Return on a dictionary result opens Dictionary.app at the matching word instead of copying the definition.
 
 ## Settings UX
 

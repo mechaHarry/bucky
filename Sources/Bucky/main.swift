@@ -1,5 +1,6 @@
 import AppKit
 import Carbon
+import CoreServices
 import CoreGraphics
 import ServiceManagement
 import UniformTypeIdentifiers
@@ -9,6 +10,40 @@ private struct LaunchItem: Hashable {
     let subtitle: String
     let url: URL
     let searchText: String
+}
+
+private struct ToolItem: Hashable {
+    enum Kind: Hashable {
+        case calculation
+        case calculationHistory
+        case dictionary
+        case message
+    }
+
+    let title: String
+    let subtitle: String
+    let copyText: String?
+    let kind: Kind
+}
+
+private struct CalculationHistoryEntry: Codable, Hashable {
+    let expression: String
+    let result: String
+    let date: Date
+}
+
+private struct CalculationHistoryFile: Codable {
+    var calculations: [CalculationHistoryEntry]
+}
+
+private struct DictionaryResult: Hashable {
+    let term: String
+    let definition: String
+}
+
+private enum LauncherMode {
+    case applications
+    case tools
 }
 
 private enum BuckyPaths {
@@ -91,23 +126,15 @@ private final class ApplicationIndexer {
         let bundle = Bundle(url: url)
         let displayName = bundle?.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
         let bundleName = bundle?.object(forInfoDictionaryKey: "CFBundleName") as? String
-        let executableName = bundle?.object(forInfoDictionaryKey: "CFBundleExecutable") as? String
-        let bundleIdentifier = bundle?.bundleIdentifier
         let title = nonEmpty(displayName)
             ?? nonEmpty(bundleName)
             ?? url.deletingPathExtension().lastPathComponent
-
-        let details = [
-            bundleIdentifier,
-            executableName,
-            url.path
-        ].compactMap { nonEmpty($0) }
 
         return LaunchItem(
             title: title,
             subtitle: url.path,
             url: url,
-            searchText: normalized(([title] + details).joined(separator: " "))
+            searchText: normalized(title)
         )
     }
 
@@ -331,6 +358,394 @@ private final class InclusionStore {
     }
 }
 
+private final class CalculationHistoryStore {
+    private let fileManager = FileManager.default
+    private(set) var calculations: [CalculationHistoryEntry] = []
+    let fileURL: URL
+
+    init() {
+        fileURL = BuckyPaths.appSupportDirectory
+            .appendingPathComponent("calculations.json")
+        load()
+    }
+
+    func load() {
+        guard let data = try? Data(contentsOf: fileURL) else {
+            calculations = []
+            return
+        }
+
+        do {
+            let file = try JSONDecoder().decode(CalculationHistoryFile.self, from: data)
+            calculations = file.calculations
+        } catch {
+            NSLog("Bucky could not read calculation history at %@: %@", fileURL.path, error.localizedDescription)
+            calculations = []
+        }
+    }
+
+    func add(expression: String, result: String) {
+        let trimmedExpression = expression.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedExpression.isEmpty else { return }
+
+        calculations.removeAll { entry in
+            entry.expression == trimmedExpression && entry.result == result
+        }
+        calculations.insert(
+            CalculationHistoryEntry(expression: trimmedExpression, result: result, date: Date()),
+            at: 0
+        )
+
+        if calculations.count > 100 {
+            calculations = Array(calculations.prefix(100))
+        }
+
+        save()
+    }
+
+    func clear() {
+        calculations = []
+        save()
+    }
+
+    private func save() {
+        do {
+            try fileManager.createDirectory(
+                at: BuckyPaths.appSupportDirectory,
+                withIntermediateDirectories: true
+            )
+            let file = CalculationHistoryFile(calculations: calculations)
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(file)
+            try data.write(to: fileURL, options: .atomic)
+        } catch {
+            NSLog("Bucky could not save calculation history at %@: %@", fileURL.path, error.localizedDescription)
+        }
+    }
+}
+
+private enum ArithmeticEvaluator {
+    static func evaluate(_ input: String) -> String? {
+        let expression = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard isArithmeticInput(expression) else { return nil }
+
+        do {
+            var parser = ArithmeticParser(expression)
+            let value = try parser.parse()
+            guard value.isFinite else { return nil }
+            return format(value)
+        } catch {
+            return nil
+        }
+    }
+
+    static func isArithmeticInput(_ input: String) -> Bool {
+        let expression = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !expression.isEmpty else {
+            return false
+        }
+
+        let allowedCharacters = CharacterSet(charactersIn: "0123456789+-*/×÷()., \t\n")
+        return expression.unicodeScalars.allSatisfy { allowedCharacters.contains($0) }
+    }
+
+    static func shouldStoreInHistory(_ input: String) -> Bool {
+        containsBinaryArithmeticOperator(input.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    private static func containsBinaryArithmeticOperator(_ value: String) -> Bool {
+        var previousNonWhitespace: UnicodeScalar?
+
+        for scalar in value.unicodeScalars {
+            if CharacterSet.whitespacesAndNewlines.contains(scalar) {
+                continue
+            }
+
+            if "+-*/×÷".unicodeScalars.contains(scalar) {
+                if let previousNonWhitespace,
+                   !"+-*/×÷(".unicodeScalars.contains(previousNonWhitespace) {
+                    return true
+                }
+            }
+
+            previousNonWhitespace = scalar
+        }
+
+        return false
+    }
+
+    private static func format(_ value: Double) -> String {
+        let rounded = value.rounded()
+        if abs(value - rounded) < 0.0000000001,
+           rounded >= Double(Int64.min),
+           rounded <= Double(Int64.max) {
+            return String(Int64(rounded))
+        }
+
+        return resultFormatter.string(from: NSNumber(value: value)) ?? String(format: "%.10g", value)
+    }
+
+    private static let resultFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits = 10
+        formatter.usesGroupingSeparator = false
+        return formatter
+    }()
+}
+
+private enum ArithmeticEvaluationError: Error {
+    case expectedNumber
+    case unexpectedInput
+    case unmatchedParenthesis
+    case divisionByZero
+}
+
+private struct ArithmeticParser {
+    private let scalars: [UnicodeScalar]
+    private var index = 0
+
+    init(_ expression: String) {
+        scalars = Array(expression.unicodeScalars)
+    }
+
+    mutating func parse() throws -> Double {
+        let value = try parseExpression()
+        skipWhitespace()
+        guard index == scalars.count else {
+            throw ArithmeticEvaluationError.unexpectedInput
+        }
+        return value
+    }
+
+    private mutating func parseExpression() throws -> Double {
+        var value = try parseTerm()
+
+        while true {
+            skipWhitespace()
+            if match("+") {
+                value += try parseTerm()
+            } else if match("-") {
+                value -= try parseTerm()
+            } else {
+                return value
+            }
+        }
+    }
+
+    private mutating func parseTerm() throws -> Double {
+        var value = try parseFactor()
+
+        while true {
+            skipWhitespace()
+            if match("*") || match("×") {
+                value *= try parseFactor()
+            } else if match("/") || match("÷") {
+                let divisor = try parseFactor()
+                guard divisor != 0 else {
+                    throw ArithmeticEvaluationError.divisionByZero
+                }
+                value /= divisor
+            } else {
+                return value
+            }
+        }
+    }
+
+    private mutating func parseFactor() throws -> Double {
+        skipWhitespace()
+
+        if match("+") {
+            return try parseFactor()
+        }
+
+        if match("-") {
+            let value = try parseFactor()
+            return -value
+        }
+
+        if match("(") {
+            let value = try parseExpression()
+            guard match(")") else {
+                throw ArithmeticEvaluationError.unmatchedParenthesis
+            }
+            return value
+        }
+
+        return try parseNumber()
+    }
+
+    private mutating func parseNumber() throws -> Double {
+        skipWhitespace()
+        let start = index
+        var sawDigit = false
+        var sawDecimal = false
+
+        while index < scalars.count {
+            let scalar = scalars[index]
+
+            if CharacterSet.decimalDigits.contains(scalar) {
+                sawDigit = true
+                index += 1
+            } else if scalar == ".", !sawDecimal {
+                sawDecimal = true
+                index += 1
+            } else if scalar == "," {
+                index += 1
+            } else {
+                break
+            }
+        }
+
+        guard sawDigit else {
+            throw ArithmeticEvaluationError.expectedNumber
+        }
+
+        let numberText = String(String.UnicodeScalarView(Array(scalars[start..<index])))
+            .replacingOccurrences(of: ",", with: "")
+        guard let value = Double(numberText) else {
+            throw ArithmeticEvaluationError.expectedNumber
+        }
+        return value
+    }
+
+    private mutating func skipWhitespace() {
+        while index < scalars.count,
+              CharacterSet.whitespacesAndNewlines.contains(scalars[index]) {
+            index += 1
+        }
+    }
+
+    private mutating func match(_ value: String) -> Bool {
+        guard let scalar = value.unicodeScalars.first,
+              index < scalars.count,
+              scalars[index] == scalar else {
+            return false
+        }
+
+        index += 1
+        return true
+    }
+}
+
+private enum DictionaryLookup {
+    static func results(for input: String, limit: Int = 8) -> [DictionaryResult] {
+        let term = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !term.isEmpty else { return [] }
+
+        var results: [DictionaryResult] = []
+        var seenTerms = Set<String>()
+
+        appendResult(for: term, to: &results, seenTerms: &seenTerms)
+
+        for candidate in fuzzyCandidates(for: term) {
+            guard results.count < limit else { break }
+            appendResult(for: candidate, to: &results, seenTerms: &seenTerms)
+        }
+
+        return results
+    }
+
+    private static func appendResult(
+        for term: String,
+        to results: inout [DictionaryResult],
+        seenTerms: inout Set<String>
+    ) {
+        let normalizedTerm = normalized(term)
+        guard seenTerms.insert(normalizedTerm).inserted,
+              let definition = definition(for: term) else {
+            return
+        }
+
+        results.append(DictionaryResult(term: term, definition: definition))
+    }
+
+    private static func definition(for term: String) -> String? {
+        let rangeLength = (term as NSString).length
+        guard rangeLength > 0,
+              let definition = DCSCopyTextDefinition(
+                nil,
+                term as CFString,
+                CFRange(location: 0, length: rangeLength)
+              )?.takeRetainedValue() as String? else {
+            return nil
+        }
+
+        let trimmedDefinition = definition.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedDefinition.isEmpty ? nil : trimmedDefinition
+    }
+
+    private static func fuzzyCandidates(for term: String) -> [String] {
+        let checker = NSSpellChecker.shared
+        let range = NSRange(location: 0, length: (term as NSString).length)
+        let completions = checker.completions(
+            forPartialWordRange: range,
+            in: term,
+            language: nil,
+            inSpellDocumentWithTag: 0
+        ) ?? []
+        let guesses = checker.guesses(
+            forWordRange: range,
+            in: term,
+            language: nil,
+            inSpellDocumentWithTag: 0
+        ) ?? []
+
+        var seen = Set<String>()
+        return (completions + guesses)
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .sorted { candidateScore($0, query: term) > candidateScore($1, query: term) }
+            .filter { seen.insert(normalized($0)).inserted }
+    }
+
+    private static func candidateScore(_ candidate: String, query: String) -> Int {
+        let normalizedCandidate = normalized(candidate)
+        let normalizedQuery = normalized(query)
+
+        if normalizedCandidate == normalizedQuery {
+            return 10_000
+        }
+        if normalizedCandidate.hasPrefix(normalizedQuery) {
+            return 9_000 - min(normalizedCandidate.count, 500)
+        }
+        if normalizedCandidate.contains(normalizedQuery) {
+            return 7_000 - min(normalizedCandidate.count, 500)
+        }
+
+        return 5_000 - min(levenshteinDistance(normalizedCandidate, normalizedQuery), 50) * 80
+    }
+
+    private static func levenshteinDistance(_ left: String, _ right: String) -> Int {
+        let leftCharacters = Array(left)
+        let rightCharacters = Array(right)
+
+        guard !leftCharacters.isEmpty else { return rightCharacters.count }
+        guard !rightCharacters.isEmpty else { return leftCharacters.count }
+
+        var previous = Array(0...rightCharacters.count)
+        var current = Array(repeating: 0, count: rightCharacters.count + 1)
+
+        for (leftIndex, leftCharacter) in leftCharacters.enumerated() {
+            current[0] = leftIndex + 1
+
+            for (rightIndex, rightCharacter) in rightCharacters.enumerated() {
+                let substitutionCost = leftCharacter == rightCharacter ? 0 : 1
+                current[rightIndex + 1] = min(
+                    previous[rightIndex + 1] + 1,
+                    current[rightIndex] + 1,
+                    previous[rightIndex] + substitutionCost
+                )
+            }
+
+            swap(&previous, &current)
+        }
+
+        return previous[rightCharacters.count]
+    }
+}
+
 private enum LauncherCommand {
     case up
     case down
@@ -338,6 +753,9 @@ private enum LauncherCommand {
     case close
     case reindex
     case settings
+    case toggleToolsMode
+    case clearHistory
+    case togglePin
 }
 
 private final class LauncherSearchField: NSSearchField {
@@ -350,10 +768,17 @@ private final class LauncherSearchField: NSSearchField {
         if event.isCommandComma, commandHandler?(.settings) == true {
             return true
         }
+        if event.isToolsShortcut, commandHandler?(.toggleToolsMode) == true {
+            return true
+        }
         return super.performKeyEquivalent(with: event)
     }
 
     override func keyDown(with event: NSEvent) {
+        if event.isToolsShortcut, commandHandler?(.toggleToolsMode) == true {
+            return
+        }
+
         switch event.keyCode {
         case 126:
             if commandHandler?(.up) == true { return }
@@ -384,12 +809,78 @@ private final class FloatingPanel: NSPanel {
         if event.isCommandComma, commandHandler?(.settings) == true {
             return true
         }
+        if event.isToolsShortcut, commandHandler?(.toggleToolsMode) == true {
+            return true
+        }
         return super.performKeyEquivalent(with: event)
     }
 
     override func cancelOperation(_ sender: Any?) {
         if commandHandler?(.close) != true {
             orderOut(sender)
+        }
+    }
+}
+
+private final class ResizeGripView: NSView {
+    var resizeHandler: (() -> Void)?
+
+    private let minimumSize = NSSize(width: 360, height: 300)
+    private var initialWindowFrame = NSRect.zero
+    private var initialMouseLocation = NSPoint.zero
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        toolTip = "Resize"
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        toolTip = "Resize"
+    }
+
+    override var acceptsFirstResponder: Bool { true }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .crosshair)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        guard let window else { return }
+        initialWindowFrame = window.frame
+        initialMouseLocation = NSEvent.mouseLocation
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let window else { return }
+
+        let currentLocation = NSEvent.mouseLocation
+        let deltaX = currentLocation.x - initialMouseLocation.x
+        let deltaY = currentLocation.y - initialMouseLocation.y
+        let width = max(minimumSize.width, initialWindowFrame.width + deltaX)
+        let height = max(minimumSize.height, initialWindowFrame.height - deltaY)
+        let frame = NSRect(
+            x: initialWindowFrame.minX,
+            y: initialWindowFrame.maxY - height,
+            width: width,
+            height: height
+        )
+
+        window.setFrame(frame, display: true)
+        resizeHandler?()
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+
+        NSColor.tertiaryLabelColor.setStroke()
+
+        for offset in [5.0, 9.0, 13.0] {
+            let path = NSBezierPath()
+            path.lineWidth = 1
+            path.move(to: NSPoint(x: bounds.maxX - offset, y: bounds.minY + 3))
+            path.line(to: NSPoint(x: bounds.maxX - 3, y: bounds.minY + offset))
+            path.stroke()
         }
     }
 }
@@ -422,6 +913,18 @@ private final class ResultCellView: NSTableCellView {
         iconView.image = NSWorkspace.shared.icon(forFile: item.url.path)
         titleLabel.stringValue = item.title
         subtitleLabel.stringValue = item.subtitle
+        excludeButton.isHidden = false
+        excludeButton.isEnabled = true
+        updateColors()
+    }
+
+    func configure(with item: ToolItem) {
+        onExclude = nil
+        iconView.image = Self.icon(for: item.kind)
+        titleLabel.stringValue = item.title
+        subtitleLabel.stringValue = item.subtitle
+        excludeButton.isHidden = true
+        excludeButton.isEnabled = false
         updateColors()
     }
 
@@ -485,6 +988,25 @@ private final class ResultCellView: NSTableCellView {
         updateColors()
     }
 
+    private static func icon(for kind: ToolItem.Kind) -> NSImage? {
+        let symbolName: String
+
+        switch kind {
+        case .calculation:
+            symbolName = "equal.circle"
+        case .calculationHistory:
+            symbolName = "clock.arrow.circlepath"
+        case .dictionary:
+            symbolName = "book"
+        case .message:
+            symbolName = "info.circle"
+        }
+
+        let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)
+        image?.isTemplate = true
+        return image
+    }
+
     @objc private func excludeClicked() {
         onExclude?()
     }
@@ -501,26 +1023,40 @@ private final class LauncherWindowController: NSObject, NSTableViewDataSource, N
     private let panel: FloatingPanel
     private let searchField = LauncherSearchField()
     private let indexingIndicator = NSProgressIndicator()
+    private let controlsStack = NSStackView()
+    private let clearHistoryButton = NSButton(title: "", target: nil, action: nil)
+    private let pinButton = NSButton(title: "", target: nil, action: nil)
     private let scrollView = NSScrollView()
     private let tableView = NSTableView()
     private let emptyLabel = NSTextField(labelWithString: "")
+    private let resizeGripView = ResizeGripView()
     private let indexer = ApplicationIndexer()
     private let inclusionStore: InclusionStore
     private let exclusionStore: ExclusionStore
+    private let calculationHistoryStore: CalculationHistoryStore
     private let openSettingsAction: () -> Void
 
+    private var mode: LauncherMode = .applications
     private var allItems: [LaunchItem] = []
     private var filteredItems: [LaunchItem] = []
+    private var toolItems: [ToolItem] = []
     private var isIndexing = false
     private var needsReindexAfterCurrent = false
+    private var pendingCalculationHistoryTimer: Timer?
+    private var pendingCalculationHistoryExpression: String?
+    private var pendingCalculationHistoryResult: String?
+    private var localKeyMonitor: Any?
+    private var isPinned = false
 
     init(
         inclusionStore: InclusionStore,
         exclusionStore: ExclusionStore,
+        calculationHistoryStore: CalculationHistoryStore,
         openSettingsAction: @escaping () -> Void
     ) {
         self.inclusionStore = inclusionStore
         self.exclusionStore = exclusionStore
+        self.calculationHistoryStore = calculationHistoryStore
         self.openSettingsAction = openSettingsAction
         let contentRect = NSRect(x: 0, y: 0, width: 720, height: 430)
         panel = FloatingPanel(
@@ -531,26 +1067,49 @@ private final class LauncherWindowController: NSObject, NSTableViewDataSource, N
         )
         super.init()
         buildWindow()
+        installLocalKeyMonitor()
         reindex()
     }
 
+    deinit {
+        if let localKeyMonitor {
+            NSEvent.removeMonitor(localKeyMonitor)
+        }
+    }
+
     func toggle() {
-        panel.isVisible ? hide() : show()
+        guard !isPinned else { return }
+
+        if panel.isVisible && mode == .applications {
+            hide()
+        } else {
+            show()
+        }
     }
 
     func show() {
+        show(mode: .applications)
+    }
+
+    private func show(mode: LauncherMode) {
+        self.mode = mode
+        updateModeChrome()
         positionPanel()
         panel.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         searchField.stringValue = ""
-        applyFilter()
+        applyCurrentMode()
         searchField.becomeFirstResponder()
-        DispatchQueue.main.async { [weak self] in
-            self?.reindex()
+
+        if mode == .applications {
+            DispatchQueue.main.async { [weak self] in
+                self?.reindex()
+            }
         }
     }
 
     func hide() {
+        cancelPendingCalculationHistory()
         panel.makeFirstResponder(nil)
         panel.orderOut(nil)
         panel.resignKey()
@@ -569,8 +1128,10 @@ private final class LauncherWindowController: NSObject, NSTableViewDataSource, N
         needsReindexAfterCurrent = false
         inclusionStore.load()
         exclusionStore.load()
-        setIndexing(true)
-        updateEmptyState(query: searchField.stringValue)
+        if mode == .applications {
+            setIndexing(true)
+            updateEmptyState(query: searchField.stringValue)
+        }
 
         let includedPaths = inclusionStore.includedPaths
         DispatchQueue.global(qos: .userInitiated).async { [indexer] in
@@ -583,10 +1144,14 @@ private final class LauncherWindowController: NSObject, NSTableViewDataSource, N
 
                 if self.needsReindexAfterCurrent {
                     self.reindex()
-                    self.applyFilter()
+                    if self.mode == .applications {
+                        self.applyFilter()
+                    }
                 } else {
-                    self.setIndexing(false)
-                    self.applyFilter()
+                    if self.mode == .applications {
+                        self.setIndexing(false)
+                        self.applyFilter()
+                    }
                 }
             }
         }
@@ -599,6 +1164,8 @@ private final class LauncherWindowController: NSObject, NSTableViewDataSource, N
         panel.backgroundColor = .clear
         panel.hasShadow = true
         panel.hidesOnDeactivate = false
+        panel.isMovableByWindowBackground = false
+        panel.minSize = NSSize(width: 360, height: 300)
         panel.commandHandler = { [weak self] command in
             self?.handle(command: command) ?? false
         }
@@ -615,7 +1182,7 @@ private final class LauncherWindowController: NSObject, NSTableViewDataSource, N
 
         searchField.translatesAutoresizingMaskIntoConstraints = false
         searchField.delegate = self
-        searchField.placeholderString = "Search /Applications"
+        searchField.placeholderString = "Search for Apps"
         searchField.font = .systemFont(ofSize: 18, weight: .medium)
         searchField.focusRingType = .none
         searchField.commandHandler = { [weak self] command in
@@ -628,6 +1195,43 @@ private final class LauncherWindowController: NSObject, NSTableViewDataSource, N
         indexingIndicator.isIndeterminate = true
         indexingIndicator.isDisplayedWhenStopped = false
         indexingIndicator.isHidden = true
+
+        clearHistoryButton.translatesAutoresizingMaskIntoConstraints = false
+        clearHistoryButton.target = self
+        clearHistoryButton.action = #selector(clearHistoryClicked)
+        clearHistoryButton.bezelStyle = .texturedRounded
+        clearHistoryButton.setButtonType(.momentaryPushIn)
+        clearHistoryButton.toolTip = "Clear calculation history"
+        clearHistoryButton.isHidden = true
+        if let image = NSImage(systemSymbolName: "trash", accessibilityDescription: "Clear history") {
+            clearHistoryButton.image = image
+            clearHistoryButton.imagePosition = .imageOnly
+        } else {
+            clearHistoryButton.title = "Clear"
+        }
+
+        pinButton.translatesAutoresizingMaskIntoConstraints = false
+        pinButton.target = self
+        pinButton.action = #selector(pinClicked)
+        pinButton.bezelStyle = .texturedRounded
+        pinButton.setButtonType(.toggle)
+        pinButton.toolTip = "Pin tools window"
+        pinButton.isHidden = true
+        if let image = NSImage(systemSymbolName: "pin", accessibilityDescription: "Pin") {
+            pinButton.image = image
+            pinButton.imagePosition = .imageOnly
+        } else {
+            pinButton.title = "Pin"
+        }
+
+        controlsStack.translatesAutoresizingMaskIntoConstraints = false
+        controlsStack.orientation = .horizontal
+        controlsStack.alignment = .centerY
+        controlsStack.spacing = 6
+        controlsStack.detachesHiddenViews = true
+        controlsStack.addArrangedSubview(indexingIndicator)
+        controlsStack.addArrangedSubview(clearHistoryButton)
+        controlsStack.addArrangedSubview(pinButton)
 
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.hasVerticalScroller = false
@@ -664,30 +1268,301 @@ private final class LauncherWindowController: NSObject, NSTableViewDataSource, N
         emptyLabel.font = .systemFont(ofSize: 13, weight: .medium)
         emptyLabel.isHidden = true
 
+        resizeGripView.translatesAutoresizingMaskIntoConstraints = false
+        resizeGripView.resizeHandler = { [weak self] in
+            self?.panel.contentView?.layoutSubtreeIfNeeded()
+            self?.resizeResultColumn()
+        }
+
         rootView.addSubview(searchField)
-        rootView.addSubview(indexingIndicator)
+        rootView.addSubview(controlsStack)
         rootView.addSubview(scrollView)
         rootView.addSubview(emptyLabel)
+        rootView.addSubview(resizeGripView)
 
         NSLayoutConstraint.activate([
             searchField.topAnchor.constraint(equalTo: rootView.topAnchor, constant: 14),
             searchField.leadingAnchor.constraint(equalTo: rootView.leadingAnchor, constant: 16),
-            searchField.trailingAnchor.constraint(equalTo: indexingIndicator.leadingAnchor, constant: -10),
+            searchField.trailingAnchor.constraint(equalTo: controlsStack.leadingAnchor, constant: -10),
             searchField.heightAnchor.constraint(equalToConstant: 42),
 
-            indexingIndicator.trailingAnchor.constraint(equalTo: rootView.trailingAnchor, constant: -18),
-            indexingIndicator.centerYAnchor.constraint(equalTo: searchField.centerYAnchor),
+            controlsStack.trailingAnchor.constraint(equalTo: rootView.trailingAnchor, constant: -18),
+            controlsStack.centerYAnchor.constraint(equalTo: searchField.centerYAnchor),
             indexingIndicator.widthAnchor.constraint(equalToConstant: 18),
             indexingIndicator.heightAnchor.constraint(equalToConstant: 18),
+            clearHistoryButton.widthAnchor.constraint(equalToConstant: 30),
+            clearHistoryButton.heightAnchor.constraint(equalToConstant: 26),
+            pinButton.widthAnchor.constraint(equalToConstant: 30),
+            pinButton.heightAnchor.constraint(equalToConstant: 26),
 
             scrollView.topAnchor.constraint(equalTo: searchField.bottomAnchor, constant: 10),
             scrollView.leadingAnchor.constraint(equalTo: rootView.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: rootView.trailingAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: rootView.bottomAnchor, constant: -8),
+            scrollView.bottomAnchor.constraint(equalTo: rootView.bottomAnchor, constant: -18),
 
             emptyLabel.centerXAnchor.constraint(equalTo: scrollView.centerXAnchor),
-            emptyLabel.centerYAnchor.constraint(equalTo: scrollView.centerYAnchor)
+            emptyLabel.centerYAnchor.constraint(equalTo: scrollView.centerYAnchor),
+
+            resizeGripView.trailingAnchor.constraint(equalTo: rootView.trailingAnchor, constant: -4),
+            resizeGripView.bottomAnchor.constraint(equalTo: rootView.bottomAnchor, constant: -2),
+            resizeGripView.widthAnchor.constraint(equalToConstant: 22),
+            resizeGripView.heightAnchor.constraint(equalToConstant: 22)
         ])
+    }
+
+    private func installLocalKeyMonitor() {
+        guard localKeyMonitor == nil else { return }
+
+        localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self,
+                  self.panel.isVisible,
+                  (self.panel.isKeyWindow || self.panel.isMainWindow),
+                  event.isToolsShortcut else {
+                return event
+            }
+
+            return self.handle(command: .toggleToolsMode) ? nil : event
+        }
+    }
+
+    private func updateModeChrome() {
+        switch mode {
+        case .applications:
+            searchField.placeholderString = "Search for Apps"
+            clearHistoryButton.isHidden = true
+            pinButton.isHidden = true
+            if isPinned {
+                setPinned(false)
+            }
+            if isIndexing {
+                setIndexing(true)
+            } else {
+                setIndexing(false)
+            }
+        case .tools:
+            searchField.placeholderString = "Calculate Numbers and Define Words"
+            setIndexing(false)
+            clearHistoryButton.isHidden = false
+            pinButton.isHidden = false
+        }
+        updatePinButton()
+        updateClearHistoryButton()
+    }
+
+    private var inputIsBlank: Bool {
+        searchField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    @objc private func clearHistoryClicked() {
+        calculationHistoryStore.clear()
+        applyToolsResults(scheduleHistory: false)
+        searchField.becomeFirstResponder()
+    }
+
+    @objc private func pinClicked() {
+        setPinned(!isPinned)
+        searchField.becomeFirstResponder()
+    }
+
+    private func setPinned(_ pinned: Bool) {
+        guard isPinned != pinned else {
+            updatePinButton()
+            return
+        }
+
+        isPinned = pinned
+        panel.isMovableByWindowBackground = pinned
+        panel.level = pinned ? .statusBar : .floating
+        updatePinButton()
+    }
+
+    private func updatePinButton() {
+        pinButton.state = isPinned ? .on : .off
+        pinButton.toolTip = isPinned ? "Unpin tools window" : "Pin tools window"
+
+        let symbolName = isPinned ? "pin.fill" : "pin"
+        if let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil) {
+            pinButton.image = image
+            pinButton.imagePosition = .imageOnly
+        }
+    }
+
+    private func updateClearHistoryButton() {
+        clearHistoryButton.isEnabled = mode == .tools && !calculationHistoryStore.calculations.isEmpty
+    }
+
+    private func toggleToolsModeFromShortcut() -> Bool {
+        guard inputIsBlank, !isPinned else { return false }
+
+        switch mode {
+        case .applications:
+            switchMode(to: .tools)
+        case .tools:
+            switchMode(to: .applications)
+        }
+
+        return true
+    }
+
+    private func switchMode(to nextMode: LauncherMode) {
+        guard mode != nextMode else { return }
+
+        mode = nextMode
+        searchField.stringValue = ""
+        updateModeChrome()
+        applyCurrentMode()
+        searchField.becomeFirstResponder()
+
+        if nextMode == .applications {
+            DispatchQueue.main.async { [weak self] in
+                self?.reindex()
+            }
+        }
+    }
+
+    private func applyCurrentMode() {
+        switch mode {
+        case .applications:
+            cancelPendingCalculationHistory()
+            applyFilter()
+        case .tools:
+            calculationHistoryStore.load()
+            applyToolsResults()
+        }
+    }
+
+    private func applyToolsResults(scheduleHistory: Bool = true) {
+        let query = searchField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        cancelPendingCalculationHistory()
+
+        if query.isEmpty {
+            toolItems = calculationHistoryItems()
+        } else if ArithmeticEvaluator.isArithmeticInput(query) {
+            if let result = ArithmeticEvaluator.evaluate(query) {
+                toolItems = [
+                    ToolItem(
+                        title: result,
+                        subtitle: "\(query) =",
+                        copyText: result,
+                        kind: .calculation
+                    )
+                ] + calculationHistoryItems(excludingExpression: query, result: result)
+
+                if scheduleHistory, ArithmeticEvaluator.shouldStoreInHistory(query) {
+                    scheduleCalculationHistory(expression: query, result: result)
+                }
+            } else {
+                toolItems = [
+                    ToolItem(
+                        title: "Complete the calculation",
+                        subtitle: query,
+                        copyText: nil,
+                        kind: .message
+                    )
+                ] + calculationHistoryItems()
+            }
+        } else {
+            let dictionaryResults = DictionaryLookup.results(for: query)
+
+            if !dictionaryResults.isEmpty {
+                toolItems = dictionaryResults.map { result in
+                    ToolItem(
+                        title: result.term,
+                        subtitle: Self.singleLine(result.definition),
+                        copyText: nil,
+                        kind: .dictionary
+                    )
+                }
+            } else {
+                toolItems = [
+                    ToolItem(
+                        title: "No dictionary matches",
+                        subtitle: query,
+                        copyText: nil,
+                        kind: .message
+                    )
+                ]
+            }
+        }
+
+        resizeResultColumn()
+        tableView.reloadData()
+        selectFirstResult()
+        updateToolsEmptyState(query: query)
+        updateClearHistoryButton()
+    }
+
+    private func calculationHistoryItems(
+        excludingExpression expression: String? = nil,
+        result excludedResult: String? = nil
+    ) -> [ToolItem] {
+        calculationHistoryStore.calculations.compactMap { entry in
+            if entry.expression == expression && entry.result == excludedResult {
+                return nil
+            }
+
+            return ToolItem(
+                title: "\(entry.expression) = \(entry.result)",
+                subtitle: "Calculated \(Self.calculationHistoryDateFormatter.string(from: entry.date))",
+                copyText: entry.result,
+                kind: .calculationHistory
+            )
+        }
+    }
+
+    private func scheduleCalculationHistory(expression: String, result: String) {
+        pendingCalculationHistoryExpression = expression
+        pendingCalculationHistoryResult = result
+        pendingCalculationHistoryTimer = Timer.scheduledTimer(
+            withTimeInterval: 0.7,
+            repeats: false
+        ) { [weak self] _ in
+            self?.commitPendingCalculationHistory(refreshResults: true)
+        }
+    }
+
+    private func commitPendingCalculationHistory(refreshResults: Bool) {
+        guard let expression = pendingCalculationHistoryExpression,
+              let result = pendingCalculationHistoryResult else {
+            return
+        }
+
+        cancelPendingCalculationHistory()
+        calculationHistoryStore.add(expression: expression, result: result)
+
+        if refreshResults, mode == .tools {
+            applyToolsResults(scheduleHistory: false)
+        }
+    }
+
+    private func cancelPendingCalculationHistory() {
+        pendingCalculationHistoryTimer?.invalidate()
+        pendingCalculationHistoryTimer = nil
+        pendingCalculationHistoryExpression = nil
+        pendingCalculationHistoryResult = nil
+    }
+
+    private func updateToolsEmptyState(query: String) {
+        if toolItems.isEmpty {
+            emptyLabel.stringValue = query.isEmpty ? "No calculation history" : "No tool results"
+            emptyLabel.isHidden = false
+        } else {
+            emptyLabel.isHidden = true
+        }
+    }
+
+    private static let calculationHistoryDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .short
+        return formatter
+    }()
+
+    private static func singleLine(_ value: String) -> String {
+        value
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
     }
 
     private func setIndexing(_ indexing: Bool) {
@@ -794,8 +1669,17 @@ private final class LauncherWindowController: NSObject, NSTableViewDataSource, N
         .map(\.0)
     }
 
+    private var displayedResultCount: Int {
+        switch mode {
+        case .applications:
+            return filteredItems.count
+        case .tools:
+            return toolItems.count
+        }
+    }
+
     private func selectFirstResult() {
-        guard !filteredItems.isEmpty else {
+        guard displayedResultCount > 0 else {
             tableView.deselectAll(nil)
             return
         }
@@ -827,29 +1711,56 @@ private final class LauncherWindowController: NSObject, NSTableViewDataSource, N
         case .open:
             openSelected()
         case .close:
-            hide()
+            clearInputOrHide()
         case .reindex:
             reindex()
         case .settings:
             openSettingsAction()
+        case .toggleToolsMode:
+            return toggleToolsModeFromShortcut()
+        case .clearHistory:
+            clearHistoryClicked()
+        case .togglePin:
+            pinClicked()
         }
         return true
     }
 
+    private func clearInputOrHide() {
+        if inputIsBlank {
+            if isPinned {
+                setPinned(false)
+            }
+            hide()
+            return
+        }
+
+        searchField.stringValue = ""
+        applyCurrentMode()
+        searchField.becomeFirstResponder()
+    }
+
     private func moveSelection(by delta: Int) {
-        guard !filteredItems.isEmpty else { return }
+        let count = displayedResultCount
+        guard count > 0 else { return }
         let current = tableView.selectedRow >= 0 ? tableView.selectedRow : 0
-        let next = max(0, min(filteredItems.count - 1, current + delta))
+        let next = max(0, min(count - 1, current + delta))
         tableView.selectRowIndexes(IndexSet(integer: next), byExtendingSelection: false)
         tableView.scrollRowToVisible(next)
     }
 
     @objc private func openSelected() {
         let row = tableView.selectedRow
-        guard row >= 0, row < filteredItems.count else { return }
-        let item = filteredItems[row]
-        hide()
-        launch(item)
+        switch mode {
+        case .applications:
+            guard row >= 0, row < filteredItems.count else { return }
+            let item = filteredItems[row]
+            hide()
+            launch(item)
+        case .tools:
+            guard row >= 0, row < toolItems.count else { return }
+            activate(toolItems[row])
+        }
     }
 
     private func launch(_ item: LaunchItem) {
@@ -867,8 +1778,44 @@ private final class LauncherWindowController: NSObject, NSTableViewDataSource, N
         applyFilter()
     }
 
+    private func activate(_ item: ToolItem) {
+        switch item.kind {
+        case .calculation:
+            commitPendingCalculationHistory(refreshResults: false)
+            copyToPasteboard(item.copyText)
+        case .calculationHistory:
+            copyToPasteboard(item.copyText)
+        case .dictionary:
+            openDictionary(term: item.title)
+        case .message:
+            return
+        }
+
+        if !isPinned {
+            hide()
+        }
+    }
+
+    private func copyToPasteboard(_ value: String?) {
+        guard let value else { return }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(value, forType: .string)
+    }
+
+    private func openDictionary(term: String) {
+        guard let escapedTerm = term.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+              let url = URL(string: "dict://\(escapedTerm)") else {
+            return
+        }
+
+        NSWorkspace.shared.open(url)
+    }
+
     func refreshAfterExclusionsChanged() {
-        applyFilter()
+        if mode == .applications {
+            applyFilter()
+        }
     }
 
     func refreshAfterInclusionsChanged() {
@@ -876,7 +1823,7 @@ private final class LauncherWindowController: NSObject, NSTableViewDataSource, N
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int {
-        filteredItems.count
+        displayedResultCount
     }
 
     func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
@@ -886,15 +1833,26 @@ private final class LauncherWindowController: NSObject, NSTableViewDataSource, N
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let cell = tableView.makeView(withIdentifier: ResultCellView.reuseIdentifier, owner: self) as? ResultCellView
             ?? ResultCellView(frame: .zero)
-        let item = filteredItems[row]
-        cell.configure(with: item) { [weak self] in
-            self?.exclude(item)
+
+        switch mode {
+        case .applications:
+            let item = filteredItems[row]
+            cell.configure(with: item) { [weak self] in
+                self?.exclude(item)
+            }
+        case .tools:
+            cell.configure(with: toolItems[row])
         }
         return cell
     }
 
     func controlTextDidChange(_ obj: Notification) {
-        applyFilter(preservePreviousOnEmpty: true)
+        switch mode {
+        case .applications:
+            applyFilter(preservePreviousOnEmpty: true)
+        case .tools:
+            applyToolsResults()
+        }
     }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
@@ -1370,10 +2328,16 @@ private final class HotKeyController {
     private var hotKeyRef: EventHotKeyRef?
     private var eventHandlerRef: EventHandlerRef?
     let configuration: HotKeyConfiguration
+    private let hotKeyIdentifier: UInt32
     private let onHotKey: () -> Void
 
-    init(configuration: HotKeyConfiguration, onHotKey: @escaping () -> Void) throws {
+    init(
+        configuration: HotKeyConfiguration,
+        identifier: UInt32 = 1,
+        onHotKey: @escaping () -> Void
+    ) throws {
         self.configuration = configuration
+        hotKeyIdentifier = identifier
         self.onHotKey = onHotKey
         try install()
     }
@@ -1395,11 +2359,29 @@ private final class HotKeyController {
 
         let handlerStatus = InstallEventHandler(
             GetApplicationEventTarget(),
-            { _, _, userData in
-                guard let userData else { return noErr }
+            { _, event, userData in
+                guard let event, let userData else { return OSStatus(eventNotHandledErr) }
                 let controller = Unmanaged<HotKeyController>
                     .fromOpaque(userData)
                     .takeUnretainedValue()
+
+                var hotKeyID = EventHotKeyID()
+                let parameterStatus = GetEventParameter(
+                    event,
+                    EventParamName(kEventParamDirectObject),
+                    EventParamType(typeEventHotKeyID),
+                    nil,
+                    MemoryLayout<EventHotKeyID>.size,
+                    nil,
+                    &hotKeyID
+                )
+
+                guard parameterStatus == noErr,
+                      hotKeyID.signature == "Bcky".fourCharCode,
+                      hotKeyID.id == controller.hotKeyIdentifier else {
+                    return OSStatus(eventNotHandledErr)
+                }
+
                 DispatchQueue.main.async {
                     controller.onHotKey()
                 }
@@ -1415,7 +2397,7 @@ private final class HotKeyController {
             throw HotKeyError.installHandler(handlerStatus)
         }
 
-        let hotKeyID = EventHotKeyID(signature: "Bcky".fourCharCode, id: 1)
+        let hotKeyID = EventHotKeyID(signature: "Bcky".fourCharCode, id: hotKeyIdentifier)
         let registrationStatus = RegisterEventHotKey(
             configuration.keyCode,
             configuration.modifiers,
@@ -1440,7 +2422,7 @@ private enum HotKeyError: LocalizedError {
         case .installHandler(let status):
             return "Could not install hotkey handler. OSStatus \(status)."
         case .register(let status):
-            return "Could not register Option+Space. OSStatus \(status)."
+            return "Could not register hotkey. OSStatus \(status)."
         }
     }
 }
@@ -1449,6 +2431,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
     private let settingsStore = SettingsStore()
     private let inclusionStore = InclusionStore()
     private let exclusionStore = ExclusionStore()
+    private let calculationHistoryStore = CalculationHistoryStore()
     private var launcherController: LauncherWindowController?
     private var settingsWindowController: SettingsWindowController?
     private var statusMenuController: StatusMenuController?
@@ -1460,6 +2443,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
         let launcherController = LauncherWindowController(
             inclusionStore: inclusionStore,
             exclusionStore: exclusionStore,
+            calculationHistoryStore: calculationHistoryStore,
             openSettingsAction: { [weak self] in self?.showSettings() }
         )
         self.launcherController = launcherController
@@ -1650,6 +2634,15 @@ private extension NSEvent {
     var isCommandComma: Bool {
         let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
         return flags == .command && charactersIgnoringModifiers == ","
+    }
+
+    var isToolsShortcut: Bool {
+        let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let disallowedFlags: NSEvent.ModifierFlags = [.command, .option, .control]
+        let isSlashKey = keyCode == UInt16(kVK_ANSI_Slash) || charactersIgnoringModifiers == "/"
+        return flags.contains(.shift)
+            && flags.intersection(disallowedFlags).isEmpty
+            && isSlashKey
     }
 }
 
