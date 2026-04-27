@@ -16,7 +16,11 @@ The app bundle is created at `build/Bucky.app`.
 open build/Bucky.app
 ```
 
-Use Option+Space to open or hide the floating launcher by default. Type to filter parsed apps, use the up and down arrows to move through the list, and press Return to launch the selected app.
+Use Option+Space to open or hide the floating launcher by default. Type to filter parsed app names, use the up and down arrows to move through the list, and press Return to launch the selected app.
+
+Use Shift+/ while the launcher is open and the input is blank to switch between app search and tools mode. In tools mode, arithmetic text such as `1` or `2 + 3` is evaluated inline without opening Calculator, and dictionary lookups use fuzzy spelling and completion matches. Press Return on a calculation result to copy it, or on a dictionary result to open Dictionary at the matching word. Tools mode also includes clear-history and pin buttons; pin keeps the window above other apps until unpinned.
+
+Drag the bottom-right resize grip to adjust the launcher size.
 
 The launcher reindexes app locations in the background every time it opens. While the launcher is open, Command+R also reindexes and refreshes the currently displayed results using the current search text. Command+Comma opens Settings.
 
@@ -37,6 +41,12 @@ Settings are stored as JSON at:
 ```
 
 Settings currently include the global hotkey and launch-on-startup preference.
+
+Calculation history is stored as JSON at:
+
+```text
+~/Library/Application Support/Bucky/calculations.json
+```
 
 ## Inclusions
 
