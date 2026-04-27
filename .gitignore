@@ -1,0 +1,27 @@
+# Ignore everything by default. This repository should only track the
+# minimum source inputs needed to rebuild the local macOS app.
+*
+
+# Repository metadata.
+!.gitignore
+!LICENSE
+
+# Swift package and build entrypoint.
+!Package.swift
+!Package.resolved
+!Makefile
+
+# App source.
+!Sources/
+!Sources/**/
+!Sources/**/*.swift
+
+# App bundle metadata needed by the Makefile.
+!packaging/
+!packaging/Info.plist
+
+# Agentic reosurces for future iterations.
+!.agents/
+!.agents/**
+!README.md
+!AGENTS.md
