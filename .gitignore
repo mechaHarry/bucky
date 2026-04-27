@@ -5,6 +5,7 @@
 # Repository metadata.
 !.gitignore
 !LICENSE
+!CODEOWNERS
 
 # Swift package and build entrypoint.
 !Package.swift
