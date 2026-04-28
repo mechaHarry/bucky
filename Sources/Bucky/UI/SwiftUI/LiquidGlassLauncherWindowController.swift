@@ -113,17 +113,14 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         beginVisibilityTransition(.hiding)
         hideWorkItem?.cancel()
         model.cancelPendingCalculationHistory()
-        withAnimation(.interactiveSpring(duration: 0.18, extraBounce: 0.02)) {
-            model.isPresented = false
-        }
 
-        let transitionID = visibilityTransitionID
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.18
-            context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            context.duration = 0.22
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             window.animator().alphaValue = 0
         }
 
+        let transitionID = visibilityTransitionID
         let workItem = DispatchWorkItem { [weak self] in
             guard let self,
                   self.visibilityTransitionID == transitionID,
@@ -134,10 +131,11 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             self.window.orderOut(nil)
             self.window.resignKey()
             self.window.alphaValue = 1
+            self.model.isPresented = false
             self.visibilityState = .hidden
         }
         hideWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: workItem)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.24, execute: workItem)
     }
 
     func reindex() {

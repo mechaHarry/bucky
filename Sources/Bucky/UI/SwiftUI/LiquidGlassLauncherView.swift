@@ -64,19 +64,12 @@ struct LiquidGlassLauncherView: View {
     }
 
     private var launcherSurface: some View {
-        ZStack(alignment: .bottomTrailing) {
-            VStack(spacing: 8) {
-                header
-                results
-            }
-            .padding(10)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            ResizeGripRepresentable()
-                .frame(width: 24, height: 24)
-                .padding(6)
-                .accessibilityLabel("Resize")
+        VStack(spacing: 8) {
+            header
+            results
         }
+        .padding(10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(windowBackdrop)
     }
 
@@ -533,15 +526,6 @@ private struct ApplicationIconView: View {
             icon = loadedIcon
         }
     }
-}
-
-@available(macOS 26.0, *)
-private struct ResizeGripRepresentable: NSViewRepresentable {
-    func makeNSView(context: Context) -> ResizeGripView {
-        ResizeGripView(frame: .zero)
-    }
-
-    func updateNSView(_ nsView: ResizeGripView, context: Context) {}
 }
 
 @available(macOS 26.0, *)
