@@ -4,7 +4,18 @@ This project is a local-only macOS launcher implemented as a Swift Package/AppKi
 
 ## Build And Runtime
 
-- Main source: `Sources/Bucky/main.swift`.
+- Entry point: `Sources/Bucky/main.swift`.
+- Source layout:
+  - `Sources/Bucky/App`: app delegate, global hotkey registration, launch-at-startup controller.
+  - `Sources/Bucky/Config`: persisted file paths and JSON configuration models.
+  - `Sources/Bucky/Indexer`: app bundle indexing.
+  - `Sources/Bucky/Models`: shared launcher/tool data models.
+  - `Sources/Bucky/Settings`: settings, inclusion/exclusion, and calculation history stores.
+  - `Sources/Bucky/Tools/Calculator`: local arithmetic parsing/evaluation.
+  - `Sources/Bucky/Tools/Dictionary`: macOS Dictionary Services lookup and fuzzy matching.
+  - `Sources/Bucky/UI/AppKit`: legacy-compatible AppKit launcher, settings, menu, and table views.
+  - `Sources/Bucky/UI/SwiftUI`: macOS 26 SwiftUI Liquid Glass launcher.
+  - `Sources/Bucky/UI/Shared`: UI contracts, commands, utilities, and resize grip.
 - Build command: `make bundle`.
 - Bundle metadata: `packaging/Info.plist`.
 - The app runs as an accessory/menu-bar app (`LSUIElement` true).
@@ -44,11 +55,16 @@ Exclusions are applied after indexing and inclusions. An explicitly included app
 
 - Default hotkey is Option+Space through Carbon `RegisterEventHotKey`.
 - Hotkey can be changed in Settings and is persisted in `settings.json`.
+- Up and Down move selection by one row; Command+Up and Command+Down jump to the first and last visible result.
 - Shift+/ is handled by a local key monitor scoped to the visible launcher window, not a global Carbon hotkey. It switches between app mode and tools mode only when the input is blank.
-- Escape clears the input first; if the input is already blank, it closes the panel.
-- The launcher panel is an always-on-top borderless `NSPanel`.
-- A custom bottom-right resize grip resizes the borderless panel directly, with a 360x300 minimum size.
-- Panel opens on the hardware primary display using `CGMainDisplayID()`, not mouse/focus display.
+- Escape clears the input first; if the input is already blank, it closes the launcher window.
+- The legacy AppKit launcher is an always-on-top borderless `NSPanel`; the macOS 26 Liquid Glass launcher uses a borderless resizable `NSWindow` hosting a full SwiftUI glass surface.
+- A custom bottom-right resize grip resizes the borderless launcher directly, with a 520x340 minimum size on the SwiftUI Liquid Glass path.
+- `AppDelegate` chooses the launcher implementation through `LauncherControlling`.
+- On macOS 26+, the default launcher is `LiquidGlassLauncherWindowController`, an `NSHostingView` surface backed by `LiquidGlassLauncherView` and `LiquidGlassLauncherModel`. It uses SwiftUI `GlassEffectContainer`, `glassEffect`, glass button styles, and glass transitions for the main window, header controls, and individual result rows.
+- Set `BUCKY_FORCE_APPKIT_UI=1` to force the AppKit launcher on macOS 26.
+- The AppKit launcher still has a macOS 26 Liquid Glass path using `NSGlassEffectView` and glass button chrome. Earlier macOS versions use `NSVisualEffectView.material = .hudWindow` and textured rounded buttons.
+- Launcher opens on the hardware primary display using `CGMainDisplayID()`, not mouse/focus display.
 - `show()` displays immediately, focuses the search field, then schedules background reindexing on the next main-loop pass.
 - Reindexing runs on a background queue and publishes results back to the main thread.
 - A small spinner at the right of the search bar indicates indexing.
@@ -59,7 +75,7 @@ Exclusions are applied after indexing and inclusions. An explicitly included app
 
 - Tools mode does not search or launch apps.
 - Tools mode exposes a clear-history button for calculation history.
-- Tools mode exposes a pin button. While pinned, the panel stays above other apps, can be dragged by its background, ignores the global launcher hotkey, stays open after result activation, and cannot switch back to app mode until unpinned.
+- Tools mode exposes a pin button. While pinned, the launcher stays above other apps, can be dragged by its background, ignores the global launcher hotkey, stays open after result activation, and cannot switch back to app mode until unpinned.
 - Arithmetic input is detected before dictionary lookup. Purely arithmetic text, including a standalone number like `1`, stays in math mode and never triggers dictionary mode.
 - Arithmetic expressions are evaluated with a local parser supporting `+`, `-`, `*`, `/`, `×`, `÷`, decimals, grouping commas, unary signs, and parentheses.
 - Valid calculations with a binary arithmetic operator are added to `calculations.json` after a short typing debounce, and pressing Return on a live calculation commits it immediately.

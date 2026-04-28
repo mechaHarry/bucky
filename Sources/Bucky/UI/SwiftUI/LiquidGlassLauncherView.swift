@@ -1,0 +1,590 @@
+import AppKit
+import SwiftUI
+
+@available(macOS 26.0, *)
+struct LiquidGlassLauncherView: View {
+    @ObservedObject var model: LiquidGlassLauncherModel
+    @FocusState private var isSearchFocused: Bool
+    @State private var lastSelectedIndex = 0
+    @State private var trailingSelectionIndexes = Set<Int>()
+    @State private var handledSelectionScrollRequestID = 0
+    @State private var iconPreloadTask: Task<Void, Never>?
+
+    private let resultUpdateAnimation = Animation.interactiveSpring(duration: 0.24, extraBounce: 0.03)
+
+    var body: some View {
+        ZStack {
+            if model.isPresented {
+                launcherSurface
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.965)),
+                        removal: .opacity.combined(with: .scale(scale: 0.94))
+                    ))
+                    .glassEffectTransition(.materialize)
+            }
+        }
+        .onAppear {
+            isSearchFocused = true
+            lastSelectedIndex = model.selectedIndex
+            preloadApplicationIcons()
+        }
+        .onChange(of: model.mode) { _ in
+            isSearchFocused = true
+            preloadApplicationIcons()
+        }
+        .onChange(of: resultListIdentity) { _ in
+            trailingSelectionIndexes.removeAll()
+            lastSelectedIndex = model.selectedIndex
+        }
+        .onChange(of: model.selectedIndex) { selectedIndex in
+            let previousIndex = lastSelectedIndex
+            lastSelectedIndex = selectedIndex
+
+            guard previousIndex != selectedIndex else { return }
+            trailingSelectionIndexes.insert(previousIndex)
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) {
+                trailingSelectionIndexes.remove(previousIndex)
+            }
+        }
+        .onChange(of: model.isPresented) { isPresented in
+            if isPresented {
+                isSearchFocused = true
+                preloadApplicationIcons()
+            } else {
+                iconPreloadTask?.cancel()
+                iconPreloadTask = nil
+            }
+        }
+        .onChange(of: model.filteredItems) { _ in
+            preloadApplicationIcons()
+        }
+        .animation(.interactiveSpring(duration: 0.22, extraBounce: 0.04), value: model.mode)
+        .animation(.interactiveSpring(duration: 0.28, extraBounce: 0.03), value: model.isPresented)
+    }
+
+    private var launcherSurface: some View {
+        ZStack(alignment: .bottomTrailing) {
+            VStack(spacing: 8) {
+                header
+                results
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            ResizeGripRepresentable()
+                .frame(width: 24, height: 24)
+                .padding(6)
+                .accessibilityLabel("Resize")
+        }
+        .background(windowBackdrop)
+    }
+
+    private var header: some View {
+        HStack(spacing: 12) {
+            Image(systemName: model.mode == .applications ? "square.grid.2x2" : "function")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 34, height: 34)
+
+            TextField(model.placeholder, text: $model.query)
+                .textFieldStyle(.plain)
+                .font(.system(size: 28, weight: .semibold, design: .rounded))
+                .focused($isSearchFocused)
+                .onChange(of: model.query) { _ in
+                    withAnimation(resultUpdateAnimation) {
+                        model.queryDidChange()
+                    }
+                }
+                .onSubmit {
+                    _ = model.handle(command: .open)
+                }
+
+            if model.isIndexing && model.mode == .applications {
+                ProgressView()
+                    .controlSize(.small)
+                    .transition(.opacity)
+            }
+
+            if model.mode == .tools {
+                toolsControls
+                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background {
+            GlassEffectContainer(spacing: 0) {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(Color.clear)
+                    .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            }
+        }
+    }
+
+    private var toolsControls: some View {
+        HStack(spacing: 8) {
+            Button {
+                _ = model.handle(command: .clearHistory)
+            } label: {
+                Image(systemName: "trash")
+                    .frame(width: 18, height: 18)
+            }
+            .buttonStyle(.glass)
+            .disabled(!model.canClearHistory)
+            .help("Clear calculation history")
+
+            pinControl
+        }
+    }
+
+    @ViewBuilder
+    private var pinControl: some View {
+        if model.isPinned {
+            Button {
+                _ = model.handle(command: .togglePin)
+            } label: {
+                Image(systemName: "pin.fill")
+                    .frame(width: 18, height: 18)
+            }
+            .buttonStyle(.glassProminent)
+            .help("Unpin tools window")
+        } else {
+            Button {
+                _ = model.handle(command: .togglePin)
+            } label: {
+                Image(systemName: "pin")
+                    .frame(width: 18, height: 18)
+            }
+            .buttonStyle(.glass)
+            .help("Pin tools window")
+        }
+    }
+
+    private var results: some View {
+        ZStack {
+            if let emptyMessage = model.emptyMessage {
+                Text(emptyMessage)
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .transition(.opacity)
+            } else {
+                Group {
+                    switch model.mode {
+                    case .applications:
+                        resultScrollView {
+                            ForEach(Array(model.filteredItems.enumerated()), id: \.element.url) { index, item in
+                                applicationRow(item: item, index: index)
+                            }
+                        }
+                    case .tools:
+                        resultScrollView {
+                            ForEach(Array(model.toolItems.enumerated()), id: \.element) { index, item in
+                                toolRow(item: item, index: index)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func resultScrollView<Content: View>(@ViewBuilder content: @escaping () -> Content) -> some View {
+        ScrollViewReader { proxy in
+            ScrollView(.vertical, showsIndicators: false) {
+                LazyVStack(spacing: 5) {
+                    content()
+                }
+                .padding(.vertical, 10)
+                .frame(maxWidth: .infinity)
+                .background(ScrollViewConfigurator())
+                .animation(resultUpdateAnimation, value: resultAnimationIDs)
+            }
+            .scrollIndicators(.hidden)
+            .scrollIndicatorsFlash(trigger: false)
+            .onAppear {
+                if let request = model.selectionScrollRequest,
+                   request.id != handledSelectionScrollRequestID {
+                    DispatchQueue.main.async {
+                        handleSelectionScrollRequest(request, using: proxy)
+                    }
+                }
+            }
+            .onChange(of: model.selectionScrollRequest) { request in
+                guard let request else { return }
+                handleSelectionScrollRequest(request, using: proxy)
+            }
+        }
+    }
+
+    private func applicationRow(item: LaunchItem, index: Int) -> some View {
+        let rowID = ResultRowID.application(item.url)
+
+        return ZStack(alignment: .leading) {
+            rowPanel(state: rowSelectionState(for: index))
+                .allowsHitTesting(false)
+                .zIndex(0)
+
+            HStack(spacing: 14) {
+                Image(nsImage: AppIconCache.shared.icon(for: item.url))
+                    .resizable()
+                    .frame(width: 38, height: 38)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.title)
+                        .font(.system(size: 18, weight: .semibold))
+                        .lineLimit(1)
+                    Text(item.subtitle)
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 12)
+
+                Button {
+                    model.exclude(item)
+                } label: {
+                    Image(systemName: "eye.slash")
+                        .frame(width: 16, height: 16)
+                        .padding(6)
+                        .background(Circle().fill(Color.primary.opacity(0.06)))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help("Hide from results")
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .compositingGroup()
+            .zIndex(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .id(rowID)
+        .transition(resultRowTransition)
+        .onTapGesture {
+            model.selectedIndex = index
+            _ = model.handle(command: .open)
+        }
+    }
+
+    private func toolRow(item: ToolItem, index: Int) -> some View {
+        let rowID = ResultRowID.tool(item)
+
+        return Button {
+            model.selectedIndex = index
+            _ = model.handle(command: .open)
+        } label: {
+            ZStack(alignment: .leading) {
+                rowPanel(state: rowSelectionState(for: index))
+                    .allowsHitTesting(false)
+                    .zIndex(0)
+
+                HStack(spacing: 14) {
+                    Image(systemName: toolSymbol(for: item.kind))
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(toolColor(for: item.kind))
+                        .frame(width: 38, height: 38)
+
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(item.title)
+                            .font(.system(size: item.kind == .calculation ? 26 : 18, weight: .semibold, design: item.kind == .calculation ? .rounded : .default))
+                            .lineLimit(1)
+                        Text(item.subtitle)
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+
+                    Spacer(minLength: 12)
+
+                    if item.kind == .calculation || item.kind == .calculationHistory {
+                        Image(systemName: "doc.on.doc")
+                            .foregroundStyle(.tertiary)
+                    } else if item.kind == .dictionary {
+                        Image(systemName: "book")
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 11)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .compositingGroup()
+                .zIndex(1)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .id(rowID)
+        .transition(resultRowTransition)
+    }
+
+    @ViewBuilder
+    private func rowPanel(state: RowSelectionState) -> some View {
+        GlassEffectContainer(spacing: 0) {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color.clear)
+                .glassEffect(
+                    rowGlass(for: state),
+                    in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                )
+                .glassEffectTransition(.matchedGeometry)
+                .animation(.easeInOut(duration: 0.36), value: state)
+        }
+    }
+
+    private func rowSelectionState(for index: Int) -> RowSelectionState {
+        if index == model.selectedIndex {
+            return .selected
+        }
+        if trailingSelectionIndexes.contains(index) {
+            return .trailing
+        }
+        return .normal
+    }
+
+    private func rowGlass(for state: RowSelectionState) -> Glass {
+        switch state {
+        case .selected:
+            return .regular.tint(.accentColor.opacity(0.18)).interactive()
+        case .trailing:
+            return .regular.tint(.accentColor.opacity(0.08))
+        case .normal:
+            return .regular.tint(Color(nsColor: .windowBackgroundColor).opacity(0.035)).interactive(false)
+        }
+    }
+
+    private var resultListIdentity: String {
+        switch model.mode {
+        case .applications:
+            let firstPath = model.filteredItems.first?.url.path ?? "empty"
+            return "apps|\(model.query)|\(model.filteredItems.count)|\(firstPath)"
+        case .tools:
+            let firstItem = model.toolItems.first
+            return "tools|\(model.query)|\(model.toolItems.count)|\(firstItem?.title ?? "empty")|\(firstItem?.subtitle ?? "")"
+        }
+    }
+
+    private func handleSelectionScrollRequest(_ request: SelectionScrollRequest, using proxy: ScrollViewProxy) {
+        guard request.id != handledSelectionScrollRequestID else { return }
+        scrollSelectedRow(request, using: proxy)
+        handledSelectionScrollRequestID = request.id
+    }
+
+    private func scrollSelectedRow(_ request: SelectionScrollRequest, using proxy: ScrollViewProxy) {
+        guard let rowID = resultRowID(for: request.index) else {
+            return
+        }
+
+        switch request.anchor {
+        case .top:
+            scrollToRow(rowID, anchor: .top, using: proxy)
+            return
+        case .bottom:
+            scrollToRow(rowID, anchor: .bottom, using: proxy)
+            return
+        case .nearest:
+            scrollToRow(rowID, anchor: nil, using: proxy)
+        }
+    }
+
+    private func scrollToRow(_ rowID: ResultRowID, anchor: UnitPoint?, using proxy: ScrollViewProxy) {
+        withAnimation(.interactiveSpring(duration: 0.18, extraBounce: 0.02)) {
+            proxy.scrollTo(rowID, anchor: anchor)
+        }
+    }
+
+    private func resultRowID(for index: Int) -> ResultRowID? {
+        switch model.mode {
+        case .applications:
+            guard index >= 0, index < model.filteredItems.count else { return nil }
+            return .application(model.filteredItems[index].url)
+        case .tools:
+            guard index >= 0, index < model.toolItems.count else { return nil }
+            return .tool(model.toolItems[index])
+        }
+    }
+
+    private var resultAnimationIDs: [ResultRowID] {
+        switch model.mode {
+        case .applications:
+            return model.filteredItems.map { .application($0.url) }
+        case .tools:
+            return model.toolItems.map { .tool($0) }
+        }
+    }
+
+    private var resultRowTransition: AnyTransition {
+        .asymmetric(
+            insertion: .opacity.combined(with: .scale(scale: 0.985)),
+            removal: .opacity.combined(with: .scale(scale: 0.985))
+        )
+    }
+
+    private var windowBackdrop: some View {
+        GlassEffectContainer(spacing: 0) {
+            RoundedRectangle(cornerRadius: 30, style: .continuous)
+                .fill(Color.clear)
+                .glassEffect(
+                    .regular.tint(Color(nsColor: .windowBackgroundColor).opacity(model.resultCount == 0 ? 0.025 : 0.04)),
+                    in: RoundedRectangle(cornerRadius: 30, style: .continuous)
+                )
+        }
+        .shadow(color: .black.opacity(0.22), radius: 30, x: 0, y: 20)
+        .padding(2)
+    }
+
+    private func toolSymbol(for kind: ToolItem.Kind) -> String {
+        switch kind {
+        case .calculation:
+            return "function"
+        case .calculationHistory:
+            return "clock.arrow.circlepath"
+        case .dictionary:
+            return "text.book.closed"
+        case .message:
+            return "info.circle"
+        }
+    }
+
+    private func toolColor(for kind: ToolItem.Kind) -> Color {
+        switch kind {
+        case .calculation, .calculationHistory:
+            return .cyan
+        case .dictionary:
+            return .mint
+        case .message:
+            return .secondary
+        }
+    }
+
+    private func preloadApplicationIcons() {
+        guard model.mode == .applications, model.isPresented else { return }
+        let urls = model.filteredItems.map(\.url)
+        guard !urls.isEmpty else { return }
+
+        iconPreloadTask?.cancel()
+        iconPreloadTask = Task { @MainActor in
+            for (index, url) in urls.enumerated() {
+                if Task.isCancelled { return }
+                _ = AppIconCache.shared.icon(for: url)
+                if index % 8 == 7 {
+                    await Task.yield()
+                }
+            }
+        }
+    }
+}
+
+@available(macOS 26.0, *)
+private enum ResultRowID: Hashable {
+    case application(URL)
+    case tool(ToolItem)
+}
+
+@available(macOS 26.0, *)
+private enum RowSelectionState: Equatable {
+    case normal
+    case trailing
+    case selected
+}
+
+@available(macOS 26.0, *)
+private struct ResizeGripRepresentable: NSViewRepresentable {
+    func makeNSView(context: Context) -> ResizeGripView {
+        ResizeGripView(frame: .zero)
+    }
+
+    func updateNSView(_ nsView: ResizeGripView, context: Context) {}
+}
+
+@available(macOS 26.0, *)
+private struct ScrollViewConfigurator: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(frame: .zero)
+        scheduleConfiguration(from: view)
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        scheduleConfiguration(from: nsView)
+    }
+
+    private func scheduleConfiguration(from view: NSView) {
+        DispatchQueue.main.async {
+            configure(from: view)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            configure(from: view)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            configure(from: view)
+        }
+    }
+
+    private func configure(from view: NSView) {
+        if let enclosingScrollView = view.enclosingScrollView {
+            configure(scrollView: enclosingScrollView)
+            return
+        }
+
+        var currentView = view.superview
+        while let candidate = currentView {
+            if let scrollView = candidate as? NSScrollView {
+                configure(scrollView: scrollView)
+                return
+            }
+            currentView = candidate.superview
+        }
+
+        if let contentView = view.window?.contentView {
+            configureScrollViews(in: contentView)
+        }
+    }
+
+    private func configureScrollViews(in view: NSView) {
+        if let scrollView = view as? NSScrollView {
+            configure(scrollView: scrollView)
+        }
+
+        for subview in view.subviews {
+            configureScrollViews(in: subview)
+        }
+    }
+
+    private func configure(scrollView: NSScrollView) {
+        scrollView.hasVerticalScroller = false
+        scrollView.hasHorizontalScroller = false
+        scrollView.verticalScroller?.isHidden = true
+        scrollView.horizontalScroller?.isHidden = true
+        scrollView.verticalScroller = nil
+        scrollView.horizontalScroller = nil
+        scrollView.autohidesScrollers = true
+        scrollView.scrollerStyle = .overlay
+        scrollView.verticalScrollElasticity = .none
+        scrollView.horizontalScrollElasticity = .none
+    }
+}
+
+@available(macOS 26.0, *)
+@MainActor
+private final class AppIconCache {
+    static let shared = AppIconCache()
+
+    private let cache = NSCache<NSString, NSImage>()
+
+    func icon(for url: URL) -> NSImage {
+        let key = url.path as NSString
+        if let cachedIcon = cache.object(forKey: key) {
+            return cachedIcon
+        }
+
+        let icon = NSWorkspace.shared.icon(forFile: url.path)
+        cache.setObject(icon, forKey: key)
+        return icon
+    }
+}
