@@ -18,10 +18,6 @@ struct LiquidGlassLauncherView: View {
         ZStack {
             if model.isPresented {
                 launcherSurface
-                    .transition(.asymmetric(
-                        insertion: .opacity.combined(with: .scale(scale: 0.965)),
-                        removal: .opacity.combined(with: .scale(scale: 0.94))
-                    ))
                     .glassEffectTransition(.materialize)
             }
         }
@@ -66,7 +62,6 @@ struct LiquidGlassLauncherView: View {
             preloadApplicationIcons()
         }
         .animation(.interactiveSpring(duration: 0.22, extraBounce: 0.04), value: model.mode)
-        .animation(.interactiveSpring(duration: 0.28, extraBounce: 0.03), value: model.isPresented)
     }
 
     private var launcherSurface: some View {

@@ -11,9 +11,9 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     private let window: LiquidGlassWindow
     private let model: LiquidGlassLauncherModel
     private var localKeyMonitor: Any?
-    private var hideWorkItem: DispatchWorkItem?
     private var visibilityState: WindowVisibilityState = .hidden
     private var visibilityTransitionID = 0
+    private let presentationAnimation = Animation.smooth(duration: 0.24, extraBounce: 0)
 
     init(
         inclusionStore: InclusionStore,
@@ -47,7 +47,6 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     }
 
     deinit {
-        hideWorkItem?.cancel()
         if let localKeyMonitor {
             NSEvent.removeMonitor(localKeyMonitor)
         }
@@ -70,31 +69,25 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
 
     private func show(mode: LauncherMode) {
         beginVisibilityTransition(.showing)
-        hideWorkItem?.cancel()
-        hideWorkItem = nil
+        let shouldMaterialize = !window.isVisible || !model.isPresented
         model.show(mode: mode)
-        model.isPresented = false
-        positionWindow()
-        if !window.isVisible {
-            window.alphaValue = 0
+        if shouldMaterialize {
+            model.isPresented = false
         }
+        positionWindow()
+        window.alphaValue = 1
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-        withAnimation(.interactiveSpring(duration: 0.2, extraBounce: 0.04)) {
-            model.isPresented = true
-        }
         let transitionID = visibilityTransitionID
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.2
-            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            window.animator().alphaValue = 1
-        } completionHandler: { [weak self] in
-            guard let self,
-                  self.visibilityTransitionID == transitionID,
-                  self.visibilityState == .showing else {
-                return
+
+        if shouldMaterialize {
+            withAnimation(presentationAnimation, completionCriteria: .logicallyComplete) {
+                model.isPresented = true
+            } completion: { [weak self] in
+                self?.finishShow(transitionID: transitionID)
             }
-            self.visibilityState = .shown
+        } else {
+            finishShow(transitionID: transitionID)
         }
 
         if mode == .applications {
@@ -111,31 +104,14 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         }
 
         beginVisibilityTransition(.hiding)
-        hideWorkItem?.cancel()
         model.cancelPendingCalculationHistory()
 
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.22
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            window.animator().alphaValue = 0
-        }
-
         let transitionID = visibilityTransitionID
-        let workItem = DispatchWorkItem { [weak self] in
-            guard let self,
-                  self.visibilityTransitionID == transitionID,
-                  self.visibilityState == .hiding else {
-                return
-            }
-            self.window.makeFirstResponder(nil)
-            self.window.orderOut(nil)
-            self.window.resignKey()
-            self.window.alphaValue = 1
-            self.model.isPresented = false
-            self.visibilityState = .hidden
+        withAnimation(presentationAnimation, completionCriteria: .removed) {
+            model.isPresented = false
+        } completion: { [weak self] in
+            self?.finishHide(transitionID: transitionID)
         }
-        hideWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.24, execute: workItem)
     }
 
     func reindex() {
@@ -240,6 +216,27 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     private func beginVisibilityTransition(_ state: WindowVisibilityState) {
         visibilityTransitionID += 1
         visibilityState = state
+    }
+
+    private func finishShow(transitionID: Int) {
+        guard visibilityTransitionID == transitionID,
+              visibilityState == .showing else {
+            return
+        }
+
+        visibilityState = .shown
+    }
+
+    private func finishHide(transitionID: Int) {
+        guard visibilityTransitionID == transitionID,
+              visibilityState == .hiding else {
+            return
+        }
+
+        window.makeFirstResponder(nil)
+        window.orderOut(nil)
+        window.resignKey()
+        visibilityState = .hidden
     }
 }
 
