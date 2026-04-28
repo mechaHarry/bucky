@@ -215,45 +215,39 @@ struct LiquidGlassLauncherView: View {
     private func applicationRow(item: LaunchItem, index: Int) -> some View {
         let rowID = ResultRowID.application(item.url)
 
-        return ZStack(alignment: .leading) {
-            rowPanel(rowID: rowID, state: rowSelectionState(for: index))
-                .allowsHitTesting(false)
-                .zIndex(0)
+        return HStack(spacing: 14) {
+            ApplicationIconView(url: item.url)
 
-            HStack(spacing: 14) {
-                ApplicationIconView(url: item.url)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(item.title)
-                        .font(.system(size: 18, weight: .semibold))
-                        .lineLimit(1)
-                    Text(item.subtitle)
-                        .font(.system(size: 12, weight: .regular))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-
-                Spacer(minLength: 12)
-
-                Button {
-                    model.exclude(item)
-                } label: {
-                    Image(systemName: "eye.slash")
-                        .frame(width: 16, height: 16)
-                        .padding(6)
-                        .background(Circle().fill(Color.primary.opacity(0.06)))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .help("Hide from results")
+            VStack(alignment: .leading, spacing: 4) {
+                Text(item.title)
+                    .font(.system(size: 18, weight: .semibold))
+                    .lineLimit(1)
+                Text(item.subtitle)
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .compositingGroup()
-            .zIndex(1)
+
+            Spacer(minLength: 12)
+
+            Button {
+                model.exclude(item)
+            } label: {
+                Image(systemName: "eye.slash")
+                    .frame(width: 16, height: 16)
+                    .padding(6)
+                    .background(Circle().fill(Color.primary.opacity(0.06)))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help("Hide from results")
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            rowPanel(rowID: rowID, state: rowSelectionState(for: index))
+        }
         .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .id(rowID)
         .onTapGesture {
@@ -269,42 +263,37 @@ struct LiquidGlassLauncherView: View {
             model.selectedIndex = index
             _ = model.handle(command: .open)
         } label: {
-            ZStack(alignment: .leading) {
-                rowPanel(rowID: rowID, state: rowSelectionState(for: index))
-                    .allowsHitTesting(false)
-                    .zIndex(0)
+            HStack(spacing: 14) {
+                Image(systemName: toolSymbol(for: item.kind))
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(toolColor(for: item.kind))
+                    .frame(width: 38, height: 38)
 
-                HStack(spacing: 14) {
-                    Image(systemName: toolSymbol(for: item.kind))
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(toolColor(for: item.kind))
-                        .frame(width: 38, height: 38)
-
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(item.title)
-                            .font(.system(size: item.kind == .calculation ? 26 : 18, weight: .semibold, design: item.kind == .calculation ? .rounded : .default))
-                            .lineLimit(1)
-                        Text(item.subtitle)
-                            .font(.system(size: 13))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
-
-                    Spacer(minLength: 12)
-
-                    if item.kind == .calculation || item.kind == .calculationHistory {
-                        Image(systemName: "doc.on.doc")
-                            .foregroundStyle(.tertiary)
-                    } else if item.kind == .dictionary {
-                        Image(systemName: "book")
-                            .foregroundStyle(.tertiary)
-                    }
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(item.title)
+                        .font(.system(size: item.kind == .calculation ? 26 : 18, weight: .semibold, design: item.kind == .calculation ? .rounded : .default))
+                        .lineLimit(1)
+                    Text(item.subtitle)
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 11)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .compositingGroup()
-                .zIndex(1)
+
+                Spacer(minLength: 12)
+
+                if item.kind == .calculation || item.kind == .calculationHistory {
+                    Image(systemName: "doc.on.doc")
+                        .foregroundStyle(.tertiary)
+                } else if item.kind == .dictionary {
+                    Image(systemName: "book")
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                rowPanel(rowID: rowID, state: rowSelectionState(for: index))
             }
             .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         }
