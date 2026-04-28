@@ -138,6 +138,11 @@ extension NSEvent {
         return flags == .command && charactersIgnoringModifiers == ","
     }
 
+    var isCommandP: Bool {
+        let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
+        return flags == .command && charactersIgnoringModifiers?.lowercased() == "p"
+    }
+
     var isCommandUpArrow: Bool {
         let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
         return flags.contains(.command)
@@ -154,10 +159,7 @@ extension NSEvent {
 
     var isToolsShortcut: Bool {
         let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
-        let disallowedFlags: NSEvent.ModifierFlags = [.command, .option, .control]
         let isSlashKey = keyCode == UInt16(kVK_ANSI_Slash) || charactersIgnoringModifiers == "/"
-        return flags.contains(.shift)
-            && flags.intersection(disallowedFlags).isEmpty
-            && isSlashKey
+        return flags == .command && isSlashKey
     }
 }

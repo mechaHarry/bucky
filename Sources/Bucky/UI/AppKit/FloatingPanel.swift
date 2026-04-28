@@ -21,6 +21,9 @@ final class FloatingPanel: NSPanel {
         if event.isToolsShortcut, commandHandler?(.toggleToolsMode) == true {
             return true
         }
+        if event.isCommandP, commandHandler?(.togglePin) == true {
+            return true
+        }
         if event.isCommandUpArrow, commandHandler?(.top) == true {
             return true
         }

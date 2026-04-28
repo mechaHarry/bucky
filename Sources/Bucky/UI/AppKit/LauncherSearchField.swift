@@ -18,6 +18,9 @@ final class LauncherSearchField: NSSearchField {
         if event.isToolsShortcut, commandHandler?(.toggleToolsMode) == true {
             return true
         }
+        if event.isCommandP, commandHandler?(.togglePin) == true {
+            return true
+        }
         if event.isCommandUpArrow, commandHandler?(.top) == true {
             return true
         }
@@ -28,9 +31,6 @@ final class LauncherSearchField: NSSearchField {
     }
 
     override func keyDown(with event: NSEvent) {
-        if event.isToolsShortcut, commandHandler?(.toggleToolsMode) == true {
-            return
-        }
         if event.isCommandUpArrow, commandHandler?(.top) == true {
             return
         }

@@ -31,6 +31,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private var allItems: [LaunchItem] = []
     private var visibleItems: [LaunchItem] = []
     private var filterCache = ApplicationFilterCache()
+    private var applicationQuery = ""
+    private var toolsQuery = ""
     private var needsReindexAfterCurrent = false
     private var pendingCalculationHistoryTimer: Timer?
     private var pendingCalculationHistoryExpression: String?
@@ -92,8 +94,10 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     func show(mode: LauncherMode) {
+        applicationQuery = ""
+        toolsQuery = ""
         self.mode = mode
-        query = ""
+        query = storedQuery(for: mode)
         selectedIndex = 0
         isPinned = false
         applyCurrentMode()
@@ -101,6 +105,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     func queryDidChange() {
+        storeCurrentQuery()
         applyCurrentMode(preservePreviousOnEmpty: true)
     }
 
@@ -123,7 +128,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         case .settings:
             openSettingsAction?()
         case .toggleToolsMode:
-            return toggleToolsModeFromShortcut()
+            return toggleToolsMode()
         case .clearHistory:
             clearHistory()
         case .togglePin:
@@ -387,14 +392,12 @@ final class LiquidGlassLauncherModel: ObservableObject {
         }
 
         query = ""
+        storeCurrentQuery()
         applyCurrentMode()
     }
 
-    private func toggleToolsModeFromShortcut() -> Bool {
-        if isPinned {
-            return true
-        }
-        guard inputIsBlank else { return false }
+    private func toggleToolsMode() -> Bool {
+        storeCurrentQuery()
 
         switch mode {
         case .applications:
@@ -402,14 +405,34 @@ final class LiquidGlassLauncherModel: ObservableObject {
         case .tools:
             mode = .applications
         }
-        query = ""
+        query = storedQuery(for: mode)
+        selectedIndex = 0
         applyCurrentMode()
+        requestSelectionScroll(anchor: .top, direction: -1)
 
         if mode == .applications {
             reindexAction?()
         }
 
         return true
+    }
+
+    private func storeCurrentQuery() {
+        switch mode {
+        case .applications:
+            applicationQuery = query
+        case .tools:
+            toolsQuery = query
+        }
+    }
+
+    private func storedQuery(for mode: LauncherMode) -> String {
+        switch mode {
+        case .applications:
+            return applicationQuery
+        case .tools:
+            return toolsQuery
+        }
     }
 
     private func moveSelection(by delta: Int) {
@@ -449,7 +472,9 @@ final class LiquidGlassLauncherModel: ObservableObject {
         case .applications:
             guard selectedIndex >= 0, selectedIndex < filteredItems.count else { return }
             let item = filteredItems[selectedIndex]
-            hideAction?()
+            if !isPinned {
+                hideAction?()
+            }
             launch(item)
         case .tools:
             guard selectedIndex >= 0, selectedIndex < toolItems.count else { return }

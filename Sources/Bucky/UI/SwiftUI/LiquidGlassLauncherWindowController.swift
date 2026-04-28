@@ -53,7 +53,10 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     }
 
     func toggle() {
-        guard !model.isPinned else { return }
+        if model.isPinned {
+            focusPinnedWindow()
+            return
+        }
 
         switch visibilityState {
         case .hidden, .hiding:
@@ -168,6 +171,9 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             if event.isToolsShortcut {
                 return self.model.handle(command: .toggleToolsMode) ? nil : event
             }
+            if event.isCommandP {
+                return self.model.handle(command: .togglePin) ? nil : event
+            }
             if event.isCommandUpArrow {
                 return self.model.handle(command: .top) ? nil : event
             }
@@ -211,6 +217,16 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
 
     private func setPinned(_ isPinned: Bool) {
         window.level = isPinned ? .statusBar : .floating
+    }
+
+    private func focusPinnedWindow() {
+        guard window.isVisible else {
+            show()
+            return
+        }
+
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     private func beginVisibilityTransition(_ state: WindowVisibilityState) {
@@ -271,6 +287,9 @@ private final class LiquidGlassWindow: NSWindow {
             return true
         }
         if event.isToolsShortcut, commandHandler?(.toggleToolsMode) == true {
+            return true
+        }
+        if event.isCommandP, commandHandler?(.togglePin) == true {
             return true
         }
         if event.isCommandUpArrow, commandHandler?(.top) == true {

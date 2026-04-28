@@ -32,6 +32,8 @@ final class LauncherWindowController: NSObject, NSTableViewDataSource, NSTableVi
     private var pendingCalculationHistoryResult: String?
     private var localKeyMonitor: Any?
     private var isPinned = false
+    private var applicationQuery = ""
+    private var toolsQuery = ""
 
     init(
         inclusionStore: InclusionStore,
@@ -63,7 +65,10 @@ final class LauncherWindowController: NSObject, NSTableViewDataSource, NSTableVi
     }
 
     func toggle() {
-        guard !isPinned else { return }
+        if isPinned {
+            focusPinnedWindow()
+            return
+        }
 
         if panel.isVisible && mode == .applications {
             hide()
@@ -77,12 +82,14 @@ final class LauncherWindowController: NSObject, NSTableViewDataSource, NSTableVi
     }
 
     private func show(mode: LauncherMode) {
+        applicationQuery = ""
+        toolsQuery = ""
         self.mode = mode
         updateModeChrome()
         positionPanel()
         panel.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-        searchField.stringValue = ""
+        searchField.stringValue = storedQuery(for: mode)
         applyCurrentMode()
         searchField.becomeFirstResponder()
 
@@ -192,8 +199,7 @@ final class LauncherWindowController: NSObject, NSTableViewDataSource, NSTableVi
         pinButton.action = #selector(pinClicked)
         applyPreferredButtonBezelStyle(pinButton)
         pinButton.setButtonType(.toggle)
-        pinButton.toolTip = "Pin tools window"
-        pinButton.isHidden = true
+        pinButton.toolTip = "Pin window (Command+P)"
         if let image = NSImage(systemSymbolName: "pin", accessibilityDescription: "Pin") {
             pinButton.image = image
             pinButton.imagePosition = .imageOnly
@@ -335,12 +341,18 @@ final class LauncherWindowController: NSObject, NSTableViewDataSource, NSTableVi
         localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self,
                   self.panel.isVisible,
-                  (self.panel.isKeyWindow || self.panel.isMainWindow),
-                  event.isToolsShortcut else {
+                  self.panel.isKeyWindow || self.panel.isMainWindow else {
                 return event
             }
 
-            return self.handle(command: .toggleToolsMode) ? nil : event
+            if event.isToolsShortcut {
+                return self.handle(command: .toggleToolsMode) ? nil : event
+            }
+            if event.isCommandP {
+                return self.handle(command: .togglePin) ? nil : event
+            }
+
+            return event
         }
     }
 
@@ -349,10 +361,6 @@ final class LauncherWindowController: NSObject, NSTableViewDataSource, NSTableVi
         case .applications:
             searchField.placeholderString = "Search for Apps"
             clearHistoryButton.isHidden = true
-            pinButton.isHidden = true
-            if isPinned {
-                setPinned(false)
-            }
             if isIndexing {
                 setIndexing(true)
             } else {
@@ -362,7 +370,6 @@ final class LauncherWindowController: NSObject, NSTableViewDataSource, NSTableVi
             searchField.placeholderString = "Calculate Numbers and Define Words"
             setIndexing(false)
             clearHistoryButton.isHidden = false
-            pinButton.isHidden = false
         }
         updatePinButton()
         updateClearHistoryButton()
@@ -395,9 +402,20 @@ final class LauncherWindowController: NSObject, NSTableViewDataSource, NSTableVi
         updatePinButton()
     }
 
+    private func focusPinnedWindow() {
+        guard panel.isVisible else {
+            show()
+            return
+        }
+
+        panel.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        searchField.becomeFirstResponder()
+    }
+
     private func updatePinButton() {
         pinButton.state = isPinned ? .on : .off
-        pinButton.toolTip = isPinned ? "Unpin tools window" : "Pin tools window"
+        pinButton.toolTip = isPinned ? "Unpin window (Command+P)" : "Pin window (Command+P)"
 
         let symbolName = isPinned ? "pin.fill" : "pin"
         if let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil) {
@@ -410,12 +428,7 @@ final class LauncherWindowController: NSObject, NSTableViewDataSource, NSTableVi
         clearHistoryButton.isEnabled = mode == .tools && !calculationHistoryStore.calculations.isEmpty
     }
 
-    private func toggleToolsModeFromShortcut() -> Bool {
-        if isPinned {
-            return true
-        }
-        guard inputIsBlank else { return false }
-
+    private func toggleToolsMode() -> Bool {
         switch mode {
         case .applications:
             switchMode(to: .tools)
@@ -429,8 +442,9 @@ final class LauncherWindowController: NSObject, NSTableViewDataSource, NSTableVi
     private func switchMode(to nextMode: LauncherMode) {
         guard mode != nextMode else { return }
 
+        storeCurrentQuery()
         mode = nextMode
-        searchField.stringValue = ""
+        searchField.stringValue = storedQuery(for: nextMode)
         updateModeChrome()
         applyCurrentMode()
         searchField.becomeFirstResponder()
@@ -743,7 +757,7 @@ final class LauncherWindowController: NSObject, NSTableViewDataSource, NSTableVi
         case .settings:
             openSettingsAction()
         case .toggleToolsMode:
-            return toggleToolsModeFromShortcut()
+            return toggleToolsMode()
         case .clearHistory:
             clearHistoryClicked()
         case .togglePin:
@@ -762,8 +776,27 @@ final class LauncherWindowController: NSObject, NSTableViewDataSource, NSTableVi
         }
 
         searchField.stringValue = ""
+        storeCurrentQuery()
         applyCurrentMode()
         searchField.becomeFirstResponder()
+    }
+
+    private func storeCurrentQuery() {
+        switch mode {
+        case .applications:
+            applicationQuery = searchField.stringValue
+        case .tools:
+            toolsQuery = searchField.stringValue
+        }
+    }
+
+    private func storedQuery(for mode: LauncherMode) -> String {
+        switch mode {
+        case .applications:
+            return applicationQuery
+        case .tools:
+            return toolsQuery
+        }
     }
 
     private func moveSelection(by delta: Int) {
@@ -788,7 +821,9 @@ final class LauncherWindowController: NSObject, NSTableViewDataSource, NSTableVi
         case .applications:
             guard row >= 0, row < filteredItems.count else { return }
             let item = filteredItems[row]
-            hide()
+            if !isPinned {
+                hide()
+            }
             launch(item)
         case .tools:
             guard row >= 0, row < toolItems.count else { return }
@@ -880,6 +915,8 @@ final class LauncherWindowController: NSObject, NSTableViewDataSource, NSTableVi
     }
 
     func controlTextDidChange(_ obj: Notification) {
+        storeCurrentQuery()
+
         switch mode {
         case .applications:
             applyFilter(preservePreviousOnEmpty: true)

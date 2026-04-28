@@ -79,10 +79,7 @@ struct LiquidGlassLauncherView: View {
                     .transition(.opacity)
             }
 
-            if model.mode == .tools {
-                toolsControls
-                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
-            }
+            headerControls
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
@@ -95,19 +92,46 @@ struct LiquidGlassLauncherView: View {
         }
     }
 
-    private var toolsControls: some View {
+    private var headerControls: some View {
         HStack(spacing: 8) {
+            if model.mode == .tools {
+                Button {
+                    _ = model.handle(command: .clearHistory)
+                } label: {
+                    Image(systemName: "trash")
+                        .frame(width: 18, height: 18)
+                }
+                .buttonStyle(.glass)
+                .disabled(!model.canClearHistory)
+                .help("Clear calculation history")
+                .glassEffectTransition(.materialize)
+            }
+
+            toolsModeControl
+            pinControl
+        }
+    }
+
+    @ViewBuilder
+    private var toolsModeControl: some View {
+        if model.mode == .tools {
             Button {
-                _ = model.handle(command: .clearHistory)
+                _ = model.handle(command: .toggleToolsMode)
             } label: {
-                Image(systemName: "trash")
+                Image(systemName: "wrench.and.screwdriver.fill")
+                    .frame(width: 18, height: 18)
+            }
+            .buttonStyle(.glassProminent)
+            .help("Tools (Command+/)")
+        } else {
+            Button {
+                _ = model.handle(command: .toggleToolsMode)
+            } label: {
+                Image(systemName: "wrench.and.screwdriver")
                     .frame(width: 18, height: 18)
             }
             .buttonStyle(.glass)
-            .disabled(!model.canClearHistory)
-            .help("Clear calculation history")
-
-            pinControl
+            .help("Tools (Command+/)")
         }
     }
 
@@ -121,7 +145,7 @@ struct LiquidGlassLauncherView: View {
                     .frame(width: 18, height: 18)
             }
             .buttonStyle(.glassProminent)
-            .help("Unpin tools window")
+            .help("Unpin window (Command+P)")
         } else {
             Button {
                 _ = model.handle(command: .togglePin)
@@ -130,7 +154,7 @@ struct LiquidGlassLauncherView: View {
                     .frame(width: 18, height: 18)
             }
             .buttonStyle(.glass)
-            .help("Pin tools window")
+            .help("Pin window (Command+P)")
         }
     }
 
