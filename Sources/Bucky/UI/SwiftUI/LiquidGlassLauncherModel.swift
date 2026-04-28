@@ -29,6 +29,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private let exclusionStore: ExclusionStore
     private let calculationHistoryStore: CalculationHistoryStore
     private var allItems: [LaunchItem] = []
+    private var visibleItems: [LaunchItem] = []
+    private var filterCache = ApplicationFilterCache()
     private var needsReindexAfterCurrent = false
     private var pendingCalculationHistoryTimer: Timer?
     private var pendingCalculationHistoryExpression: String?
@@ -149,6 +151,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 self.allItems = items
+                self.rebuildVisibleItems()
                 self.isIndexing = false
 
                 if self.needsReindexAfterCurrent {
@@ -161,12 +164,14 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     func refreshAfterExclusionsChanged() {
+        rebuildVisibleItems()
         guard mode == .applications else { return }
         applyFilter()
     }
 
     func exclude(_ item: LaunchItem) {
         exclusionStore.exclude(item)
+        rebuildVisibleItems()
         applyFilter()
     }
 
@@ -186,6 +191,9 @@ final class LiquidGlassLauncherModel: ObservableObject {
         switch mode {
         case .applications:
             cancelPendingCalculationHistory()
+            if visibleItems.isEmpty, !allItems.isEmpty {
+                rebuildVisibleItems()
+            }
             applyFilter(preservePreviousOnEmpty: preservePreviousOnEmpty)
         case .tools:
             calculationHistoryStore.load()
@@ -194,8 +202,10 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     private func applyFilter(preservePreviousOnEmpty: Bool = false) {
-        let visibleItems = allItems.filter { !exclusionStore.isExcluded($0) }
-        let nextItems = Self.filter(visibleItems, query: query)
+        let cacheKey = normalized(query)
+        let nextItems = filterCache.results(for: cacheKey) {
+            Self.filter(visibleItems, normalizedQuery: cacheKey)
+        }
 
         if preservePreviousOnEmpty,
            nextItems.isEmpty,
@@ -205,11 +215,24 @@ final class LiquidGlassLauncherModel: ObservableObject {
         }
 
         filteredItems = nextItems
+        prewarmFilterCache(for: cacheKey)
         clampSelection()
     }
 
-    private static func filter(_ items: [LaunchItem], query: String) -> [LaunchItem] {
-        let normalizedQuery = normalized(query)
+    private func rebuildVisibleItems() {
+        visibleItems = allItems.filter { !exclusionStore.isExcluded($0) }
+        filterCache.removeAll()
+    }
+
+    private func prewarmFilterCache(for normalizedQuery: String) {
+        guard !normalizedQuery.isEmpty else { return }
+
+        filterCache.prewarmDeletionPath(for: normalizedQuery) { prefix in
+            Self.filter(visibleItems, normalizedQuery: prefix)
+        }
+    }
+
+    private static func filter(_ items: [LaunchItem], normalizedQuery: String) -> [LaunchItem] {
         guard !normalizedQuery.isEmpty else {
             return Array(items.prefix(80))
         }
@@ -506,4 +529,67 @@ struct SelectionScrollRequest: Equatable {
     let index: Int
     let direction: Int
     let anchor: SelectionScrollAnchor
+}
+
+@available(macOS 26.0, *)
+private struct ApplicationFilterCache {
+    private var resultsByQuery: [String: [LaunchItem]] = [:]
+    private var queryOrder: [String] = []
+    private let limit = 96
+
+    mutating func results(for query: String, build: () -> [LaunchItem]) -> [LaunchItem] {
+        if let cachedResults = resultsByQuery[query] {
+            markUsed(query)
+            return cachedResults
+        }
+
+        let results = build()
+        store(results, for: query)
+        return results
+    }
+
+    mutating func prewarmDeletionPath(
+        for query: String,
+        build: (String) -> [LaunchItem]
+    ) {
+        var prefix = query
+
+        while !prefix.isEmpty {
+            if resultsByQuery[prefix] == nil {
+                store(build(prefix), for: prefix)
+            } else {
+                markUsed(prefix)
+            }
+            prefix.removeLast()
+        }
+
+        if resultsByQuery[""] == nil {
+            store(build(""), for: "")
+        } else {
+            markUsed("")
+        }
+    }
+
+    mutating func removeAll() {
+        resultsByQuery.removeAll(keepingCapacity: true)
+        queryOrder.removeAll(keepingCapacity: true)
+    }
+
+    private mutating func store(_ results: [LaunchItem], for query: String) {
+        resultsByQuery[query] = results
+        markUsed(query)
+        trimIfNeeded()
+    }
+
+    private mutating func markUsed(_ query: String) {
+        queryOrder.removeAll { $0 == query }
+        queryOrder.append(query)
+    }
+
+    private mutating func trimIfNeeded() {
+        while queryOrder.count > limit, let oldestQuery = queryOrder.first {
+            queryOrder.removeFirst()
+            resultsByQuery.removeValue(forKey: oldestQuery)
+        }
+    }
 }

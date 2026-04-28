@@ -164,7 +164,9 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         }
 
         let hostingView = NSHostingView(rootView: LiquidGlassLauncherView(model: model))
-        hostingView.translatesAutoresizingMaskIntoConstraints = false
+        hostingView.sizingOptions = []
+        hostingView.translatesAutoresizingMaskIntoConstraints = true
+        hostingView.autoresizingMask = [.width, .height]
         hostingView.wantsLayer = true
         hostingView.layer?.backgroundColor = NSColor.clear.cgColor
         hostingView.layer?.masksToBounds = false
