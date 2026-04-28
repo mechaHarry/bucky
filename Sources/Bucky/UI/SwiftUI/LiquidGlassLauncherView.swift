@@ -545,7 +545,7 @@ private struct ApplicationIconView: View {
 
     @MainActor
     private func loadIcon() async {
-        if let cachedIcon = AppIconCache.shared.cachedIcon(for: url) {
+        if let cachedIcon = await AppIconCache.shared.cachedIcon(for: url) {
             icon = cachedIcon
             return
         }
@@ -561,19 +561,19 @@ private struct ApplicationIconView: View {
 }
 
 @available(macOS 26.0, *)
-private final class AppIconCache {
+private actor AppIconCache {
     static let shared = AppIconCache()
 
     private let cache = NSCache<NSString, NSImage>()
-    private let operationQueue: OperationQueue = {
-        let queue = OperationQueue()
-        queue.name = "Bucky.AppIconCache"
-        queue.qualityOfService = .utility
-        queue.maxConcurrentOperationCount = 2
-        return queue
-    }()
-    private let lock = NSLock()
-    private var pendingContinuations: [String: [CheckedContinuation<NSImage, Never>]] = [:]
+    private var inFlightTasks: [String: Task<NSImage, Never>] = [:]
+    private var activeLoadCount = 0
+    private var loadWaiters: [CheckedContinuation<Void, Never>] = []
+    private let maxConcurrentLoads = 2
+
+    private init() {
+        cache.countLimit = 192
+        cache.totalCostLimit = 64 * 1024 * 1024
+    }
 
     func cachedIcon(for url: URL) -> NSImage? {
         cache.object(forKey: url.path as NSString)
@@ -585,37 +585,48 @@ private final class AppIconCache {
             return cachedIcon
         }
 
-        return await withCheckedContinuation { continuation in
-            enqueueIconLoad(for: url.path, continuation: continuation)
+        if let inFlightTask = inFlightTasks[url.path] {
+            return await inFlightTask.value
+        }
+
+        let path = url.path
+        let task = Task.detached(priority: .utility) { [self] in
+            await acquireLoadSlot()
+            return NSWorkspace.shared.icon(forFile: path)
+        }
+        inFlightTasks[path] = task
+
+        let icon = await task.value
+        releaseLoadSlot()
+        cache.setObject(icon, forKey: key, cost: estimatedCost(for: icon))
+        inFlightTasks[path] = nil
+        return icon
+    }
+
+    private func estimatedCost(for icon: NSImage) -> Int {
+        let largestPixelArea = icon.representations
+            .map { max(1, $0.pixelsWide) * max(1, $0.pixelsHigh) }
+            .max() ?? Int(max(1, icon.size.width) * max(1, icon.size.height))
+
+        return largestPixelArea * 4
+    }
+
+    private func acquireLoadSlot() async {
+        if activeLoadCount < maxConcurrentLoads {
+            activeLoadCount += 1
+            return
+        }
+
+        await withCheckedContinuation { continuation in
+            loadWaiters.append(continuation)
         }
     }
 
-    private func enqueueIconLoad(for path: String, continuation: CheckedContinuation<NSImage, Never>) {
-        var shouldStartLoad = false
-
-        lock.lock()
-        if pendingContinuations[path] == nil {
-            pendingContinuations[path] = []
-            shouldStartLoad = true
-        }
-        pendingContinuations[path]?.append(continuation)
-        lock.unlock()
-
-        guard shouldStartLoad else { return }
-
-        operationQueue.addOperation { [self] in
-            let icon = NSWorkspace.shared.icon(forFile: path)
-            cache.setObject(icon, forKey: path as NSString)
-
-            lock.lock()
-            let continuations = pendingContinuations.removeValue(forKey: path) ?? []
-            lock.unlock()
-
-            DispatchQueue.main.async {
-                for continuation in continuations {
-                    continuation.resume(returning: icon)
-                }
-            }
+    private func releaseLoadSlot() {
+        if loadWaiters.isEmpty {
+            activeLoadCount = max(0, activeLoadCount - 1)
+        } else {
+            loadWaiters.removeFirst().resume()
         }
     }
 }
