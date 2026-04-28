@@ -197,7 +197,6 @@ struct LiquidGlassLauncherView: View {
                 }
                 .padding(.vertical, 10)
                 .frame(maxWidth: .infinity)
-                .background(ScrollViewConfigurator())
                 .animation(resultUpdateAnimation, value: resultAnimationIDs)
             }
             .scrollIndicators(.hidden)
@@ -531,74 +530,6 @@ private struct ApplicationIconView: View {
         withAnimation(.easeOut(duration: 0.12)) {
             icon = loadedIcon
         }
-    }
-}
-
-@available(macOS 26.0, *)
-private struct ScrollViewConfigurator: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView(frame: .zero)
-        scheduleConfiguration(from: view)
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        scheduleConfiguration(from: nsView)
-    }
-
-    private func scheduleConfiguration(from view: NSView) {
-        DispatchQueue.main.async {
-            configure(from: view)
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            configure(from: view)
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            configure(from: view)
-        }
-    }
-
-    private func configure(from view: NSView) {
-        if let enclosingScrollView = view.enclosingScrollView {
-            configure(scrollView: enclosingScrollView)
-            return
-        }
-
-        var currentView = view.superview
-        while let candidate = currentView {
-            if let scrollView = candidate as? NSScrollView {
-                configure(scrollView: scrollView)
-                return
-            }
-            currentView = candidate.superview
-        }
-
-        if let contentView = view.window?.contentView {
-            configureScrollViews(in: contentView)
-        }
-    }
-
-    private func configureScrollViews(in view: NSView) {
-        if let scrollView = view as? NSScrollView {
-            configure(scrollView: scrollView)
-        }
-
-        for subview in view.subviews {
-            configureScrollViews(in: subview)
-        }
-    }
-
-    private func configure(scrollView: NSScrollView) {
-        scrollView.hasVerticalScroller = false
-        scrollView.hasHorizontalScroller = false
-        scrollView.verticalScroller?.isHidden = true
-        scrollView.horizontalScroller?.isHidden = true
-        scrollView.verticalScroller = nil
-        scrollView.horizontalScroller = nil
-        scrollView.autohidesScrollers = true
-        scrollView.scrollerStyle = .overlay
-        scrollView.verticalScrollElasticity = .none
-        scrollView.horizontalScrollElasticity = .none
     }
 }
 
