@@ -10,6 +10,8 @@ struct LiquidGlassLauncherView: View {
     @Namespace private var headerGlassNamespace
     @State private var handledSelectionScrollRequestID = 0
     @State private var iconPreloadTask: Task<Void, Never>?
+    @State private var scrollTargetID: ResultRowID?
+    @State private var scrollTargetAnchor: UnitPoint?
 
     private let resultUpdateAnimation = Animation.snappy(duration: 0.22, extraBounce: 0)
     private let selectionScrollAnimation = Animation.snappy(duration: 0.16, extraBounce: 0)
@@ -202,29 +204,27 @@ struct LiquidGlassLauncherView: View {
     }
 
     private func resultScrollView<Content: View>(@ViewBuilder content: @escaping () -> Content) -> some View {
-        ScrollViewReader { proxy in
-            ScrollView(.vertical, showsIndicators: false) {
-                LazyVStack(spacing: 5) {
-                    content()
-                }
-                .padding(.vertical, 10)
-                .frame(maxWidth: .infinity)
-                .animation(resultUpdateAnimation, value: resultListIdentity)
+        ScrollView(.vertical, showsIndicators: false) {
+            LazyVStack(spacing: 5) {
+                content()
             }
-            .scrollIndicators(.hidden)
-            .scrollIndicatorsFlash(trigger: false)
-            .onAppear {
-                if let request = model.selectionScrollRequest,
-                   request.id != handledSelectionScrollRequestID {
-                    DispatchQueue.main.async {
-                        handleSelectionScrollRequest(request, using: proxy)
-                    }
-                }
+            .scrollTargetLayout()
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity)
+            .animation(resultUpdateAnimation, value: resultListIdentity)
+        }
+        .scrollPosition(id: $scrollTargetID, anchor: scrollTargetAnchor)
+        .scrollIndicators(.hidden)
+        .scrollIndicatorsFlash(trigger: false)
+        .onAppear {
+            if let request = model.selectionScrollRequest,
+               request.id != handledSelectionScrollRequestID {
+                handleSelectionScrollRequest(request)
             }
-            .onChange(of: model.selectionScrollRequest) { request in
-                guard let request else { return }
-                handleSelectionScrollRequest(request, using: proxy)
-            }
+        }
+        .onChange(of: model.selectionScrollRequest) { request in
+            guard let request else { return }
+            handleSelectionScrollRequest(request)
         }
     }
 
@@ -357,32 +357,20 @@ struct LiquidGlassLauncherView: View {
         }
     }
 
-    private func handleSelectionScrollRequest(_ request: SelectionScrollRequest, using proxy: ScrollViewProxy) {
+    private func handleSelectionScrollRequest(_ request: SelectionScrollRequest) {
         guard request.id != handledSelectionScrollRequestID else { return }
-        scrollSelectedRow(request, using: proxy)
+        scrollSelectedRow(request)
         handledSelectionScrollRequestID = request.id
     }
 
-    private func scrollSelectedRow(_ request: SelectionScrollRequest, using proxy: ScrollViewProxy) {
+    private func scrollSelectedRow(_ request: SelectionScrollRequest) {
         guard let rowID = resultRowID(for: request.index) else {
             return
         }
 
-        switch request.anchor {
-        case .top:
-            scrollToRow(rowID, anchor: .top, using: proxy)
-            return
-        case .bottom:
-            scrollToRow(rowID, anchor: .bottom, using: proxy)
-            return
-        case .nearest:
-            scrollToRow(rowID, anchor: nil, using: proxy)
-        }
-    }
-
-    private func scrollToRow(_ rowID: ResultRowID, anchor: UnitPoint?, using proxy: ScrollViewProxy) {
         withAnimation(selectionScrollAnimation) {
-            proxy.scrollTo(rowID, anchor: anchor)
+            scrollTargetAnchor = request.anchor.unitPoint
+            scrollTargetID = rowID
         }
     }
 
@@ -487,6 +475,20 @@ private enum HeaderGlassEffectID: Hashable, Sendable {
     case clearHistory
     case toolsMode
     case pin
+}
+
+@available(macOS 26.0, *)
+private extension SelectionScrollAnchor {
+    var unitPoint: UnitPoint? {
+        switch self {
+        case .nearest:
+            return nil
+        case .top:
+            return .top
+        case .bottom:
+            return .bottom
+        }
+    }
 }
 
 @available(macOS 26.0, *)

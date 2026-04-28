@@ -101,7 +101,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         selectedIndex = 0
         isPinned = false
         applyCurrentMode()
-        requestSelectionScroll(anchor: .top, direction: -1)
+        requestSelectionScroll(anchor: .top)
     }
 
     func queryDidChange() {
@@ -116,9 +116,9 @@ final class LiquidGlassLauncherModel: ObservableObject {
         case .down:
             moveSelection(by: 1)
         case .top:
-            moveSelection(to: 0, anchor: .top, direction: -1)
+            moveSelection(to: 0, anchor: .top)
         case .bottom:
-            moveSelection(to: resultCount - 1, anchor: .bottom, direction: 1)
+            moveSelection(to: resultCount - 1, anchor: .bottom)
         case .open:
             activateSelected()
         case .close:
@@ -408,7 +408,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         query = storedQuery(for: mode)
         selectedIndex = 0
         applyCurrentMode()
-        requestSelectionScroll(anchor: .top, direction: -1)
+        requestSelectionScroll(anchor: .top)
 
         if mode == .applications {
             reindexAction?()
@@ -439,13 +439,13 @@ final class LiquidGlassLauncherModel: ObservableObject {
         guard resultCount > 0 else { return }
         let nextIndex = max(0, min(resultCount - 1, selectedIndex + delta))
         selectedIndex = nextIndex
-        requestSelectionScroll(anchor: .nearest, direction: delta)
+        requestSelectionScroll(anchor: .nearest)
     }
 
-    private func moveSelection(to index: Int, anchor: SelectionScrollAnchor, direction: Int) {
+    private func moveSelection(to index: Int, anchor: SelectionScrollAnchor) {
         guard resultCount > 0 else { return }
         selectedIndex = max(0, min(resultCount - 1, index))
-        requestSelectionScroll(anchor: anchor, direction: direction)
+        requestSelectionScroll(anchor: anchor)
     }
 
     private func clampSelection() {
@@ -456,13 +456,12 @@ final class LiquidGlassLauncherModel: ObservableObject {
         selectedIndex = max(0, min(resultCount - 1, selectedIndex))
     }
 
-    private func requestSelectionScroll(anchor: SelectionScrollAnchor, direction: Int) {
+    private func requestSelectionScroll(anchor: SelectionScrollAnchor) {
         guard resultCount > 0 else { return }
         selectionScrollRequestID += 1
         selectionScrollRequest = SelectionScrollRequest(
             id: selectionScrollRequestID,
             index: selectedIndex,
-            direction: direction,
             anchor: anchor
         )
     }
@@ -552,7 +551,6 @@ enum SelectionScrollAnchor: Equatable {
 struct SelectionScrollRequest: Equatable {
     let id: Int
     let index: Int
-    let direction: Int
     let anchor: SelectionScrollAnchor
 }
 
