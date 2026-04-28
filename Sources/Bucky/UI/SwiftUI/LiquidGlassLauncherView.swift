@@ -227,9 +227,7 @@ struct LiquidGlassLauncherView: View {
                 .zIndex(0)
 
             HStack(spacing: 14) {
-                Image(nsImage: AppIconCache.shared.icon(for: item.url))
-                    .resizable()
-                    .frame(width: 38, height: 38)
+                ApplicationIconView(url: item.url)
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(item.title)
@@ -464,15 +462,18 @@ struct LiquidGlassLauncherView: View {
 
     private func preloadApplicationIcons() {
         guard model.mode == .applications, model.isPresented else { return }
-        let urls = model.filteredItems.map(\.url)
+        let urls = Array(model.filteredItems.prefix(18).map(\.url))
         guard !urls.isEmpty else { return }
 
         iconPreloadTask?.cancel()
-        iconPreloadTask = Task { @MainActor in
+        iconPreloadTask = Task(priority: .utility) {
+            try? await Task.sleep(nanoseconds: 120_000_000)
+            guard !Task.isCancelled else { return }
+
             for (index, url) in urls.enumerated() {
                 if Task.isCancelled { return }
-                _ = AppIconCache.shared.icon(for: url)
-                if index % 8 == 7 {
+                _ = await AppIconCache.shared.icon(for: url)
+                if index % 4 == 3 {
                     await Task.yield()
                 }
             }
@@ -491,6 +492,47 @@ private enum RowSelectionState: Equatable {
     case normal
     case trailing
     case selected
+}
+
+@available(macOS 26.0, *)
+private struct ApplicationIconView: View {
+    let url: URL
+
+    @State private var icon: NSImage?
+
+    var body: some View {
+        ZStack {
+            if let icon {
+                Image(nsImage: icon)
+                    .resizable()
+                    .transition(.opacity)
+            } else {
+                Image(systemName: "app.dashed")
+                    .font(.system(size: 24, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: 38, height: 38)
+        .task(id: url) {
+            await loadIcon()
+        }
+    }
+
+    @MainActor
+    private func loadIcon() async {
+        if let cachedIcon = AppIconCache.shared.cachedIcon(for: url) {
+            icon = cachedIcon
+            return
+        }
+
+        icon = nil
+        let loadedIcon = await AppIconCache.shared.icon(for: url)
+
+        guard !Task.isCancelled else { return }
+        withAnimation(.easeOut(duration: 0.12)) {
+            icon = loadedIcon
+        }
+    }
 }
 
 @available(macOS 26.0, *)
@@ -571,20 +613,61 @@ private struct ScrollViewConfigurator: NSViewRepresentable {
 }
 
 @available(macOS 26.0, *)
-@MainActor
 private final class AppIconCache {
     static let shared = AppIconCache()
 
     private let cache = NSCache<NSString, NSImage>()
+    private let operationQueue: OperationQueue = {
+        let queue = OperationQueue()
+        queue.name = "Bucky.AppIconCache"
+        queue.qualityOfService = .utility
+        queue.maxConcurrentOperationCount = 2
+        return queue
+    }()
+    private let lock = NSLock()
+    private var pendingContinuations: [String: [CheckedContinuation<NSImage, Never>]] = [:]
 
-    func icon(for url: URL) -> NSImage {
+    func cachedIcon(for url: URL) -> NSImage? {
+        cache.object(forKey: url.path as NSString)
+    }
+
+    func icon(for url: URL) async -> NSImage {
         let key = url.path as NSString
         if let cachedIcon = cache.object(forKey: key) {
             return cachedIcon
         }
 
-        let icon = NSWorkspace.shared.icon(forFile: url.path)
-        cache.setObject(icon, forKey: key)
-        return icon
+        return await withCheckedContinuation { continuation in
+            enqueueIconLoad(for: url.path, continuation: continuation)
+        }
+    }
+
+    private func enqueueIconLoad(for path: String, continuation: CheckedContinuation<NSImage, Never>) {
+        var shouldStartLoad = false
+
+        lock.lock()
+        if pendingContinuations[path] == nil {
+            pendingContinuations[path] = []
+            shouldStartLoad = true
+        }
+        pendingContinuations[path]?.append(continuation)
+        lock.unlock()
+
+        guard shouldStartLoad else { return }
+
+        operationQueue.addOperation { [self] in
+            let icon = NSWorkspace.shared.icon(forFile: path)
+            cache.setObject(icon, forKey: path as NSString)
+
+            lock.lock()
+            let continuations = pendingContinuations.removeValue(forKey: path) ?? []
+            lock.unlock()
+
+            DispatchQueue.main.async {
+                for continuation in continuations {
+                    continuation.resume(returning: icon)
+                }
+            }
+        }
     }
 }

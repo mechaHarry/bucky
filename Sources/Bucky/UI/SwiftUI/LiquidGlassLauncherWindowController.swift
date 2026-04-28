@@ -12,6 +12,8 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     private let model: LiquidGlassLauncherModel
     private var localKeyMonitor: Any?
     private var hideWorkItem: DispatchWorkItem?
+    private var visibilityState: WindowVisibilityState = .hidden
+    private var visibilityTransitionID = 0
 
     init(
         inclusionStore: InclusionStore,
@@ -54,10 +56,11 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     func toggle() {
         guard !model.isPinned else { return }
 
-        if window.isVisible && model.mode == .applications {
-            hide()
-        } else {
+        switch visibilityState {
+        case .hidden, .hiding:
             show()
+        case .showing, .shown:
+            hide()
         }
     }
 
@@ -66,21 +69,32 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     }
 
     private func show(mode: LauncherMode) {
+        beginVisibilityTransition(.showing)
         hideWorkItem?.cancel()
         hideWorkItem = nil
         model.show(mode: mode)
         model.isPresented = false
         positionWindow()
-        window.alphaValue = 0
+        if !window.isVisible {
+            window.alphaValue = 0
+        }
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         withAnimation(.interactiveSpring(duration: 0.2, extraBounce: 0.04)) {
             model.isPresented = true
         }
+        let transitionID = visibilityTransitionID
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.2
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             window.animator().alphaValue = 1
+        } completionHandler: { [weak self] in
+            guard let self,
+                  self.visibilityTransitionID == transitionID,
+                  self.visibilityState == .showing else {
+                return
+            }
+            self.visibilityState = .shown
         }
 
         if mode == .applications {
@@ -91,26 +105,39 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     }
 
     private func hide() {
+        guard visibilityState != .hidden,
+              visibilityState != .hiding else {
+            return
+        }
+
+        beginVisibilityTransition(.hiding)
         hideWorkItem?.cancel()
         model.cancelPendingCalculationHistory()
-        model.isPresented = true
+        withAnimation(.interactiveSpring(duration: 0.18, extraBounce: 0.02)) {
+            model.isPresented = false
+        }
 
+        let transitionID = visibilityTransitionID
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.28
+            context.duration = 0.18
             context.timingFunction = CAMediaTimingFunction(name: .easeIn)
             window.animator().alphaValue = 0
         }
 
         let workItem = DispatchWorkItem { [weak self] in
-            guard let self else { return }
+            guard let self,
+                  self.visibilityTransitionID == transitionID,
+                  self.visibilityState == .hiding else {
+                return
+            }
             self.window.makeFirstResponder(nil)
             self.window.orderOut(nil)
             self.window.resignKey()
             self.window.alphaValue = 1
-            self.model.isPresented = false
+            self.visibilityState = .hidden
         }
         hideWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: workItem)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: workItem)
     }
 
     func reindex() {
@@ -209,6 +236,19 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     private func setPinned(_ isPinned: Bool) {
         window.level = isPinned ? .statusBar : .floating
     }
+
+    private func beginVisibilityTransition(_ state: WindowVisibilityState) {
+        visibilityTransitionID += 1
+        visibilityState = state
+    }
+}
+
+@available(macOS 26.0, *)
+private enum WindowVisibilityState {
+    case hidden
+    case showing
+    case shown
+    case hiding
 }
 
 @available(macOS 26.0, *)
