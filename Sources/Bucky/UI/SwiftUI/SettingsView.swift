@@ -5,6 +5,7 @@ import SwiftUI
 final class SettingsViewModel: ObservableObject {
     @Published var hotKeyTitle = ""
     @Published var launchAtStartup = false
+    @Published var animationTiming: LauncherAnimationTiming = .defaultValue
     @Published var inclusionPaths: [String] = []
     @Published var exclusionPaths: [String] = []
     @Published var selectedInclusionPath: String?
@@ -21,6 +22,7 @@ final class SettingsViewModel: ObservableObject {
     private let hotKeyChangeHandler: (HotKeyConfiguration) -> Bool
     private let inclusionsChangedHandler: () -> Void
     private let exclusionsChangedHandler: () -> Void
+    private let settingsChangedHandler: () -> Void
 
     init(
         settingsStore: SettingsStore,
@@ -28,7 +30,8 @@ final class SettingsViewModel: ObservableObject {
         exclusionStore: ExclusionStore,
         hotKeyChangeHandler: @escaping (HotKeyConfiguration) -> Bool,
         inclusionsChangedHandler: @escaping () -> Void,
-        exclusionsChangedHandler: @escaping () -> Void
+        exclusionsChangedHandler: @escaping () -> Void,
+        settingsChangedHandler: @escaping () -> Void
     ) {
         self.settingsStore = settingsStore
         self.inclusionStore = inclusionStore
@@ -36,6 +39,7 @@ final class SettingsViewModel: ObservableObject {
         self.hotKeyChangeHandler = hotKeyChangeHandler
         self.inclusionsChangedHandler = inclusionsChangedHandler
         self.exclusionsChangedHandler = exclusionsChangedHandler
+        self.settingsChangedHandler = settingsChangedHandler
     }
 
     var hotKeyButtonTitle: String {
@@ -48,6 +52,7 @@ final class SettingsViewModel: ObservableObject {
         exclusionStore.load()
         hotKeyTitle = settingsStore.settings.hotKey.displayName
         launchAtStartup = settingsStore.settings.launchAtStartup
+        animationTiming = settingsStore.settings.animationTiming
         inclusionPaths = inclusionStore.sortedPaths()
         exclusionPaths = exclusionStore.sortedPaths()
         selectedInclusionPath = inclusionPaths.contains(selectedInclusionPath ?? "") ? selectedInclusionPath : nil
@@ -85,6 +90,12 @@ final class SettingsViewModel: ObservableObject {
         }
     }
 
+    func setAnimationTiming(_ timing: LauncherAnimationTiming) {
+        settingsStore.updateAnimationTiming(timing)
+        animationTiming = timing
+        settingsChangedHandler()
+    }
+
     func requestIncludedAppPicker() {
         presentIncludedAppPickerAction?()
     }
@@ -113,7 +124,6 @@ final class SettingsViewModel: ObservableObject {
         exclusionPaths = exclusionStore.sortedPaths()
         exclusionsChangedHandler()
     }
-
 }
 
 struct SettingsView: View {
@@ -130,6 +140,8 @@ struct SettingsView: View {
                     set: { model.setLaunchAtStartup($0) }
                 )
             )
+
+            animationTimingRow
 
             pathSection(
                 title: "Included apps",
@@ -156,7 +168,7 @@ struct SettingsView: View {
             )
         }
         .padding(20)
-        .frame(width: 560, height: 610, alignment: .topLeading)
+        .frame(width: 560, height: 650, alignment: .topLeading)
         .alert(
             "Bucky Settings",
             isPresented: Binding(
@@ -173,6 +185,30 @@ struct SettingsView: View {
             }
         } message: {
             Text(model.errorMessage ?? "")
+        }
+    }
+
+    private var animationTimingRow: some View {
+        HStack(spacing: 12) {
+            Text("Animation timing")
+                .font(.system(size: 13, weight: .semibold))
+
+            Spacer()
+
+            Picker(
+                "",
+                selection: Binding(
+                    get: { model.animationTiming },
+                    set: { model.setAnimationTiming($0) }
+                )
+            ) {
+                ForEach(LauncherAnimationTiming.allCases) { timing in
+                    Text(timing.displayName).tag(timing)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .frame(width: 180)
         }
     }
 

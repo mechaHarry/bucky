@@ -13,15 +13,19 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     private var localKeyMonitor: Any?
     private var visibilityState: WindowVisibilityState = .hidden
     private var visibilityTransitionID = 0
-    private let presentationAnimation = Animation.smooth(duration: 0.24, extraBounce: 0)
+    private var presentationAnimation: Animation {
+        model.animationTiming.animation(duration: 0.24)
+    }
 
     init(
+        settingsStore: SettingsStore,
         inclusionStore: InclusionStore,
         exclusionStore: ExclusionStore,
         calculationHistoryStore: CalculationHistoryStore,
         openSettingsAction: @escaping () -> Void
     ) {
         model = LiquidGlassLauncherModel(
+            settingsStore: settingsStore,
             inclusionStore: inclusionStore,
             exclusionStore: exclusionStore,
             calculationHistoryStore: calculationHistoryStore
@@ -127,6 +131,10 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
 
     func refreshAfterInclusionsChanged() {
         model.reindex()
+    }
+
+    func refreshAfterSettingsChanged() {
+        model.refreshAfterSettingsChanged()
     }
 
     private func buildWindow() {

@@ -13,10 +13,21 @@ struct LiquidGlassLauncherView: View {
     @State private var scrollTargetID: ResultRowID?
     @State private var scrollTargetAnchor: UnitPoint?
 
-    private let resultUpdateAnimation = Animation.snappy(duration: 0.22, extraBounce: 0)
-    private let selectionScrollAnimation = Animation.snappy(duration: 0.16, extraBounce: 0)
-    private let rowSelectionAnimation = Animation.smooth(duration: 0.18, extraBounce: 0)
-    private let headerControlAnimation = Animation.smooth(duration: 0.18, extraBounce: 0)
+    private var resultUpdateAnimation: Animation {
+        model.animationTiming.animation(duration: 0.22)
+    }
+
+    private var selectionScrollAnimation: Animation {
+        model.animationTiming.animation(duration: 0.16)
+    }
+
+    private var rowSelectionAnimation: Animation {
+        model.animationTiming.animation(duration: 0.18)
+    }
+
+    private var headerControlAnimation: Animation {
+        model.animationTiming.animation(duration: 0.18)
+    }
 
     var body: some View {
         ZStack {
@@ -232,7 +243,7 @@ struct LiquidGlassLauncherView: View {
         let rowID = ResultRowID.application(item.url)
 
         return HStack(spacing: 14) {
-            ApplicationIconView(url: item.url)
+            ApplicationIconView(url: item.url, animationTiming: model.animationTiming)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.title)
@@ -510,6 +521,7 @@ private extension ToolItem.Kind {
 @available(macOS 26.0, *)
 private struct ApplicationIconView: View {
     let url: URL
+    let animationTiming: LauncherAnimationTiming
 
     @State private var icon: NSImage?
 
@@ -542,7 +554,7 @@ private struct ApplicationIconView: View {
         let loadedIcon = await AppIconCache.shared.icon(for: url)
 
         guard !Task.isCancelled else { return }
-        withAnimation(.easeOut(duration: 0.12)) {
+        withAnimation(animationTiming.animation(duration: 0.12)) {
             icon = loadedIcon
         }
     }

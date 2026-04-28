@@ -13,7 +13,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         exclusionStore: ExclusionStore,
         hotKeyChangeHandler: @escaping (HotKeyConfiguration) -> Bool,
         inclusionsChangedHandler: @escaping () -> Void,
-        exclusionsChangedHandler: @escaping () -> Void
+        exclusionsChangedHandler: @escaping () -> Void,
+        settingsChangedHandler: @escaping () -> Void
     ) {
         model = SettingsViewModel(
             settingsStore: settingsStore,
@@ -21,11 +22,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             exclusionStore: exclusionStore,
             hotKeyChangeHandler: hotKeyChangeHandler,
             inclusionsChangedHandler: inclusionsChangedHandler,
-            exclusionsChangedHandler: exclusionsChangedHandler
+            exclusionsChangedHandler: exclusionsChangedHandler,
+            settingsChangedHandler: settingsChangedHandler
         )
 
         let window = SettingsWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 560, height: 610),
+            contentRect: NSRect(x: 0, y: 0, width: 560, height: 650),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false

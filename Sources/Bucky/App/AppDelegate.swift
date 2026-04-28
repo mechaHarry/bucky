@@ -34,6 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if #available(macOS 26.0, *),
            ProcessInfo.processInfo.environment["BUCKY_FORCE_APPKIT_UI"] != "1" {
             return LiquidGlassLauncherWindowController(
+                settingsStore: settingsStore,
                 inclusionStore: inclusionStore,
                 exclusionStore: exclusionStore,
                 calculationHistoryStore: calculationHistoryStore,
@@ -63,6 +64,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 },
                 exclusionsChangedHandler: { [weak self] in
                     self?.launcherController?.refreshAfterExclusionsChanged()
+                },
+                settingsChangedHandler: { [weak self] in
+                    self?.launcherController?.refreshAfterSettingsChanged()
                 }
             )
         }

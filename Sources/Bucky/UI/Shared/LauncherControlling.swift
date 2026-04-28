@@ -11,6 +11,7 @@ protocol LauncherControlling: AnyObject {
     func reindex()
     func refreshAfterExclusionsChanged()
     func refreshAfterInclusionsChanged()
+    func refreshAfterSettingsChanged()
 }
 
 extension LauncherWindowController: LauncherControlling {}

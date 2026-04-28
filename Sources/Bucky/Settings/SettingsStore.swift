@@ -40,6 +40,11 @@ final class SettingsStore {
         save()
     }
 
+    func updateAnimationTiming(_ timing: LauncherAnimationTiming) {
+        settings.animationTiming = timing
+        save()
+    }
+
     private func save() {
         do {
             try fileManager.createDirectory(

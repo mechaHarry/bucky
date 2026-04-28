@@ -15,6 +15,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     @Published var selectedIndex = 0
     @Published var selectionScrollRequest: SelectionScrollRequest?
     @Published var isIndexing = false
+    @Published var animationTiming: LauncherAnimationTiming
     @Published var isPresented = false
     @Published var isPinned = false {
         didSet { pinnedChangedAction?(isPinned) }
@@ -25,6 +26,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     var reindexAction: (() -> Void)?
     var pinnedChangedAction: ((Bool) -> Void)?
 
+    private let settingsStore: SettingsStore
     private let inclusionStore: InclusionStore
     private let exclusionStore: ExclusionStore
     private let calculationHistoryStore: CalculationHistoryStore
@@ -40,13 +42,16 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private var selectionScrollRequestID = 0
 
     init(
+        settingsStore: SettingsStore,
         inclusionStore: InclusionStore,
         exclusionStore: ExclusionStore,
         calculationHistoryStore: CalculationHistoryStore
     ) {
+        self.settingsStore = settingsStore
         self.inclusionStore = inclusionStore
         self.exclusionStore = exclusionStore
         self.calculationHistoryStore = calculationHistoryStore
+        animationTiming = settingsStore.settings.animationTiming
     }
 
     var placeholder: String {
@@ -172,6 +177,11 @@ final class LiquidGlassLauncherModel: ObservableObject {
         rebuildVisibleItems()
         guard mode == .applications else { return }
         applyFilter()
+    }
+
+    func refreshAfterSettingsChanged() {
+        settingsStore.load()
+        animationTiming = settingsStore.settings.animationTiming
     }
 
     func exclude(_ item: LaunchItem) {

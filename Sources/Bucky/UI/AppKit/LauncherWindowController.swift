@@ -890,6 +890,9 @@ final class LauncherWindowController: NSObject, NSTableViewDataSource, NSTableVi
         reindex()
     }
 
+    func refreshAfterSettingsChanged() {
+    }
+
     func numberOfRows(in tableView: NSTableView) -> Int {
         displayedResultCount
     }
