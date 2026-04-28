@@ -1,6 +1,6 @@
 # Bucky
 
-Bucky is a small local macOS launcher.
+The no-frills/robust approach to macOS Launchers.
 
 ## Build
 
@@ -15,6 +15,8 @@ The app bundle is created at `build/Bucky.app`.
 ```sh
 open build/Bucky.app
 ```
+
+## Behavior
 
 Use Option+Space to open or hide the floating launcher by default. Type to filter parsed app names, use the up and down arrows to move through the list, use Command+Up and Command+Down to jump to the top or bottom, and press Return to launch the selected app.
 

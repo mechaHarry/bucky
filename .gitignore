@@ -11,6 +11,7 @@
 !Package.swift
 !Package.resolved
 !Makefile
+!package.sh
 
 # App source.
 !Sources/
