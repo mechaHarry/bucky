@@ -1,9 +1,5 @@
 import AppKit
-import Carbon
 import CoreServices
-import CoreGraphics
-import ServiceManagement
-import UniformTypeIdentifiers
 
 enum DictionaryLookup {
     static func results(for input: String, limit: Int = 8) -> [DictionaryResult] {

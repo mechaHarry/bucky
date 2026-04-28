@@ -1,9 +1,4 @@
-import AppKit
-import Carbon
-import CoreServices
-import CoreGraphics
-import ServiceManagement
-import UniformTypeIdentifiers
+import Foundation
 
 struct LaunchItem: Hashable {
     let title: String

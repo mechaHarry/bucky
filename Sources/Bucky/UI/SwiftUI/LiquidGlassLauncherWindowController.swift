@@ -1,10 +1,5 @@
 import AppKit
-import Carbon
-import CoreGraphics
-import CoreServices
-import ServiceManagement
 import SwiftUI
-import UniformTypeIdentifiers
 
 @available(macOS 26.0, *)
 final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
@@ -205,7 +200,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     }
 
     private func positionWindow() {
-        guard let screen = LauncherWindowController.primaryScreen() ?? NSScreen.main ?? NSScreen.screens.first else {
+        guard let screen = primaryDisplayScreen() ?? NSScreen.main ?? NSScreen.screens.first else {
             window.center()
             return
         }

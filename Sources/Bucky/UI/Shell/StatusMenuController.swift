@@ -1,9 +1,4 @@
 import AppKit
-import Carbon
-import CoreServices
-import CoreGraphics
-import ServiceManagement
-import UniformTypeIdentifiers
 
 final class StatusMenuController: NSObject {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)

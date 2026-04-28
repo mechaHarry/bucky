@@ -1,10 +1,5 @@
 import AppKit
-import Carbon
-import CoreGraphics
-import CoreServices
-import ServiceManagement
 import SwiftUI
-import UniformTypeIdentifiers
 
 @available(macOS 26.0, *)
 final class LiquidGlassLauncherModel: ObservableObject {

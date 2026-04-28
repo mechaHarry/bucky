@@ -1,9 +1,4 @@
-import AppKit
-import Carbon
-import CoreServices
-import CoreGraphics
-import ServiceManagement
-import UniformTypeIdentifiers
+import Foundation
 
 enum ArithmeticEvaluator {
     static func evaluate(_ input: String) -> String? {

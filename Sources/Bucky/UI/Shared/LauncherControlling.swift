@@ -1,10 +1,3 @@
-import AppKit
-import Carbon
-import CoreServices
-import CoreGraphics
-import ServiceManagement
-import UniformTypeIdentifiers
-
 protocol LauncherControlling: AnyObject {
     func toggle()
     func show()
@@ -13,5 +6,3 @@ protocol LauncherControlling: AnyObject {
     func refreshAfterInclusionsChanged()
     func refreshAfterSettingsChanged()
 }
-
-extension LauncherWindowController: LauncherControlling {}

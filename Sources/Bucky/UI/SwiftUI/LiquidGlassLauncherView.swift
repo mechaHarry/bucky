@@ -40,11 +40,11 @@ struct LiquidGlassLauncherView: View {
             isSearchFocused = true
             preloadApplicationIcons()
         }
-        .onChange(of: model.mode) { _ in
+        .onChange(of: model.mode) {
             isSearchFocused = true
             preloadApplicationIcons()
         }
-        .onChange(of: model.isPresented) { isPresented in
+        .onChange(of: model.isPresented) { _, isPresented in
             if isPresented {
                 isSearchFocused = true
                 preloadApplicationIcons()
@@ -53,7 +53,7 @@ struct LiquidGlassLauncherView: View {
                 iconPreloadTask = nil
             }
         }
-        .onChange(of: model.filteredItems) { _ in
+        .onChange(of: model.filteredItems) {
             preloadApplicationIcons()
         }
         .animation(resultUpdateAnimation, value: model.mode)
@@ -80,7 +80,7 @@ struct LiquidGlassLauncherView: View {
                 .textFieldStyle(.plain)
                 .font(.system(size: 28, weight: .semibold, design: .rounded))
                 .focused($isSearchFocused)
-                .onChange(of: model.query) { _ in
+                .onChange(of: model.query) {
                     withAnimation(resultUpdateAnimation) {
                         model.queryDidChange()
                     }
@@ -233,7 +233,7 @@ struct LiquidGlassLauncherView: View {
                 handleSelectionScrollRequest(request)
             }
         }
-        .onChange(of: model.selectionScrollRequest) { request in
+        .onChange(of: model.selectionScrollRequest) { _, request in
             guard let request else { return }
             handleSelectionScrollRequest(request)
         }

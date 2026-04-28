@@ -139,7 +139,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     private func positionWindow() {
         guard let window,
-              let screen = LauncherWindowController.primaryScreen() ?? NSScreen.main ?? NSScreen.screens.first else {
+              let screen = primaryDisplayScreen() ?? NSScreen.main ?? NSScreen.screens.first else {
             window?.center()
             return
         }

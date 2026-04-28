@@ -1,9 +1,4 @@
 import AppKit
-import Carbon
-import CoreServices
-import CoreGraphics
-import ServiceManagement
-import UniformTypeIdentifiers
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let settingsStore = SettingsStore()
@@ -18,7 +13,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
 
-        let launcherController = makeLauncherController()
+        guard let launcherController = makeLauncherController() else {
+            showUnsupportedOSAlert()
+            NSApp.terminate(nil)
+            return
+        }
+
         self.launcherController = launcherController
 
         statusMenuController = StatusMenuController(
@@ -30,9 +30,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         _ = registerHotKey(settingsStore.settings.hotKey)
     }
 
-    private func makeLauncherController() -> LauncherControlling {
-        if #available(macOS 26.0, *),
-           ProcessInfo.processInfo.environment["BUCKY_FORCE_APPKIT_UI"] != "1" {
+    private func makeLauncherController() -> LauncherControlling? {
+        if #available(macOS 26.0, *) {
             return LiquidGlassLauncherWindowController(
                 settingsStore: settingsStore,
                 inclusionStore: inclusionStore,
@@ -42,12 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
         }
 
-        return LauncherWindowController(
-            inclusionStore: inclusionStore,
-            exclusionStore: exclusionStore,
-            calculationHistoryStore: calculationHistoryStore,
-            openSettingsAction: { [weak self] in self?.showSettings() }
-        )
+        return nil
     }
 
     private func showSettings() {
@@ -95,6 +89,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let alert = NSAlert()
         alert.messageText = "Bucky could not register \(hotKey.displayName)"
         alert.informativeText = error.localizedDescription
+        alert.alertStyle = .warning
+        alert.runModal()
+    }
+
+    private func showUnsupportedOSAlert() {
+        let alert = NSAlert()
+        alert.messageText = "Bucky requires macOS 26"
+        alert.informativeText = "The legacy AppKit launcher has been removed. Bucky now uses the SwiftUI Liquid Glass launcher only."
         alert.alertStyle = .warning
         alert.runModal()
     }

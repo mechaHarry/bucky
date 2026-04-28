@@ -1,9 +1,5 @@
-import AppKit
 import Carbon
-import CoreServices
-import CoreGraphics
-import ServiceManagement
-import UniformTypeIdentifiers
+import Foundation
 
 final class HotKeyController {
     private var hotKeyRef: EventHotKeyRef?

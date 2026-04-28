@@ -1,9 +1,4 @@
-import AppKit
 import Carbon
-import CoreServices
-import CoreGraphics
-import ServiceManagement
-import UniformTypeIdentifiers
 
 struct ExclusionsFile: Codable {
     var excludedPaths: [String]

@@ -1,9 +1,6 @@
 import AppKit
 import Carbon
-import CoreServices
 import CoreGraphics
-import ServiceManagement
-import UniformTypeIdentifiers
 
 func normalized(_ value: String) -> String {
     value
@@ -17,6 +14,17 @@ func applyPreferredButtonBezelStyle(_ button: NSButton) {
         button.bezelStyle = .texturedRounded
     }
 }
+
+func primaryDisplayScreen() -> NSScreen? {
+    let mainDisplayID = CGMainDisplayID()
+    return NSScreen.screens.first { screen in
+        guard let screenNumber = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else {
+            return false
+        }
+        return screenNumber.uint32Value == mainDisplayID
+    }
+}
+
 func carbonModifiers(from flags: NSEvent.ModifierFlags) -> UInt32 {
     let deviceFlags = flags.intersection(.deviceIndependentFlagsMask)
     var modifiers: UInt32 = 0

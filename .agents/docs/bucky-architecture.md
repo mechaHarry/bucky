@@ -1,6 +1,6 @@
 # Bucky Architecture Notes
 
-This project is a local-only macOS launcher implemented as a Swift Package/AppKit executable and bundled into `build/Bucky.app` by `make bundle`.
+This project is a local-only macOS launcher implemented as a Swift Package macOS executable and bundled into `build/Bucky.app` by `make bundle`.
 
 ## Build And Runtime
 
@@ -13,11 +13,12 @@ This project is a local-only macOS launcher implemented as a Swift Package/AppKi
   - `Sources/Bucky/Settings`: settings, inclusion/exclusion, and calculation history stores.
   - `Sources/Bucky/Tools/Calculator`: local arithmetic parsing/evaluation.
   - `Sources/Bucky/Tools/Dictionary`: macOS Dictionary Services lookup and fuzzy matching.
-  - `Sources/Bucky/UI/AppKit`: legacy-compatible AppKit launcher, settings, menu, and table views.
-  - `Sources/Bucky/UI/SwiftUI`: macOS 26 SwiftUI Liquid Glass launcher.
-  - `Sources/Bucky/UI/Shared`: UI contracts, commands, utilities, and resize grip.
+  - `Sources/Bucky/UI/Shell`: macOS shell controllers for the menu bar item and SwiftUI settings window hosting.
+  - `Sources/Bucky/UI/SwiftUI`: macOS 26 SwiftUI Liquid Glass launcher and settings view.
+  - `Sources/Bucky/UI/Shared`: UI contracts, commands, and shared utilities.
 - Build command: `make bundle`.
 - Bundle metadata: `packaging/Info.plist`.
+- Minimum runtime target: macOS 26 (`Package.swift` and `LSMinimumSystemVersion`).
 - The app runs as an accessory/menu-bar app (`LSUIElement` true).
 - The status item uses the `🦾` text glyph with variable width.
 
@@ -44,7 +45,7 @@ All app config uses JSON under:
 
 Files:
 
-- `settings.json`: hotkey and launch-on-startup preference.
+- `settings.json`: hotkey, launch-on-startup preference, and animation timing preference.
 - `inclusions.json`: explicit `.app` paths to merge into the index. Missing or malformed file defaults to Finder.
 - `exclusions.json`: paths hidden from search results.
 - `calculations.json`: most recent tools-mode calculations, newest first, capped at 100 entries.
@@ -56,14 +57,12 @@ Exclusions are applied after indexing and inclusions. An explicitly included app
 - Default hotkey is Option+Space through Carbon `RegisterEventHotKey`.
 - Hotkey can be changed in Settings and is persisted in `settings.json`.
 - Up and Down move selection by one row; Command+Up and Command+Down jump to the first and last visible result.
-- Shift+/ is handled by a local key monitor scoped to the visible launcher window, not a global Carbon hotkey. It switches between app mode and tools mode only when the input is blank.
+- Command+/ is handled by the visible launcher window, not a global Carbon hotkey. It switches between app mode and tools mode.
 - Escape clears the input first; if the input is already blank, it closes the launcher window.
-- The legacy AppKit launcher is an always-on-top borderless `NSPanel`; the macOS 26 Liquid Glass launcher uses a borderless resizable `NSWindow` hosting a full SwiftUI glass surface.
-- A custom bottom-right resize grip resizes the borderless launcher directly, with a 520x340 minimum size on the SwiftUI Liquid Glass path.
-- `AppDelegate` chooses the launcher implementation through `LauncherControlling`.
-- On macOS 26+, the default launcher is `LiquidGlassLauncherWindowController`, an `NSHostingView` surface backed by `LiquidGlassLauncherView` and `LiquidGlassLauncherModel`. It uses SwiftUI `GlassEffectContainer`, `glassEffect`, glass button styles, and glass transitions for the main window, header controls, and individual result rows.
-- Set `BUCKY_FORCE_APPKIT_UI=1` to force the AppKit launcher on macOS 26.
-- The AppKit launcher still has a macOS 26 Liquid Glass path using `NSGlassEffectView` and glass button chrome. Earlier macOS versions use `NSVisualEffectView.material = .hudWindow` and textured rounded buttons.
+- The launcher uses `LiquidGlassLauncherWindowController`, a borderless resizable `NSWindow` with an `NSHostingView` surface backed by `LiquidGlassLauncherView` and `LiquidGlassLauncherModel`.
+- SwiftUI owns the Liquid Glass visual system: `GlassEffectContainer`, `glassEffect`, glass button styles, and glass transitions for the main window, header controls, and individual result rows.
+- The previous AppKit launcher mode has been removed. AppKit remains for macOS application plumbing, global hotkeys, menu bar control, and hosting SwiftUI windows.
+- The bundle declares macOS 26 as its minimum OS. The runtime path also shows an unsupported OS alert if the app is somehow launched below that target instead of falling back to a legacy launcher.
 - Launcher opens on the hardware primary display using `CGMainDisplayID()`, not mouse/focus display.
 - `show()` displays immediately, focuses the search field, then schedules background reindexing on the next main-loop pass.
 - Reindexing runs on a background queue and publishes results back to the main thread.
@@ -74,8 +73,7 @@ Exclusions are applied after indexing and inclusions. An explicitly included app
 ## Tools UX
 
 - Tools mode does not search or launch apps.
-- Tools mode exposes a clear-history button for calculation history.
-- Tools mode exposes a pin button. While pinned, the launcher stays above other apps, can be dragged by its background, ignores the global launcher hotkey, stays open after result activation, and cannot switch back to app mode until unpinned.
+- Tools mode exposes a clear-history button. Pin is global to app and tools modes. While pinned, the launcher stays above other apps, can be dragged by its background, refocuses on the global launcher hotkey, and stays open after result activation.
 - Arithmetic input is detected before dictionary lookup. Purely arithmetic text, including a standalone number like `1`, stays in math mode and never triggers dictionary mode.
 - Arithmetic expressions are evaluated with a local parser supporting `+`, `-`, `*`, `/`, `×`, `÷`, decimals, grouping commas, unary signs, and parentheses.
 - Valid calculations with a binary arithmetic operator are added to `calculations.json` after a short typing debounce, and pressing Return on a live calculation commits it immediately.
@@ -85,10 +83,11 @@ Exclusions are applied after indexing and inclusions. An explicitly included app
 ## Settings UX
 
 - Settings opens with Command+Comma and from the menu bar item.
-- Settings window level is `.modalPanel`, so it stays above the launcher.
+- Settings window level is `.floating`, so it stays above the launcher.
 - Settings supports:
   - Recording the global hotkey.
   - Toggling launch on startup via `SMAppService.mainApp`.
+  - Choosing Liquid Glass animation timing.
   - Managing included apps with Add/Remove. Add uses `NSOpenPanel` restricted to `.app` bundles.
   - Managing hidden apps with Remove.
 
