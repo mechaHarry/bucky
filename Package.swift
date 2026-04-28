@@ -4,7 +4,7 @@ import PackageDescription
 let package = Package(
     name: "Bucky",
     platforms: [
-        .macOS(.v13)
+        .macOS("26.0")
     ],
     products: [
         .executable(name: "Bucky", targets: ["Bucky"])
@@ -16,7 +16,8 @@ let package = Package(
                 .linkedFramework("AppKit"),
                 .linkedFramework("Carbon"),
                 .linkedFramework("CoreServices"),
-                .linkedFramework("ServiceManagement")
+                .linkedFramework("ServiceManagement"),
+                .linkedFramework("SwiftUI")
             ]
         )
     ],

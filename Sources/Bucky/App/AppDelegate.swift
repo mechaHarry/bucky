@@ -1,0 +1,103 @@
+import AppKit
+
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    private let settingsStore = SettingsStore()
+    private let inclusionStore = InclusionStore()
+    private let exclusionStore = ExclusionStore()
+    private let calculationHistoryStore = CalculationHistoryStore()
+    private var launcherController: LauncherControlling?
+    private var settingsWindowController: SettingsWindowController?
+    private var statusMenuController: StatusMenuController?
+    private var hotKeyController: HotKeyController?
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.setActivationPolicy(.accessory)
+
+        guard let launcherController = makeLauncherController() else {
+            showUnsupportedOSAlert()
+            NSApp.terminate(nil)
+            return
+        }
+
+        self.launcherController = launcherController
+
+        statusMenuController = StatusMenuController(
+            openAction: { [weak launcherController] in launcherController?.show() },
+            reindexAction: { [weak launcherController] in launcherController?.reindex() },
+            settingsAction: { [weak self] in self?.showSettings() }
+        )
+
+        _ = registerHotKey(settingsStore.settings.hotKey)
+    }
+
+    private func makeLauncherController() -> LauncherControlling? {
+        if #available(macOS 26.0, *) {
+            return LiquidGlassLauncherWindowController(
+                settingsStore: settingsStore,
+                inclusionStore: inclusionStore,
+                exclusionStore: exclusionStore,
+                calculationHistoryStore: calculationHistoryStore,
+                openSettingsAction: { [weak self] in self?.showSettings() }
+            )
+        }
+
+        return nil
+    }
+
+    private func showSettings() {
+        if settingsWindowController == nil {
+            settingsWindowController = SettingsWindowController(
+                settingsStore: settingsStore,
+                inclusionStore: inclusionStore,
+                exclusionStore: exclusionStore,
+                hotKeyChangeHandler: { [weak self] hotKey in
+                    self?.registerHotKey(hotKey) ?? false
+                },
+                inclusionsChangedHandler: { [weak self] in
+                    self?.launcherController?.refreshAfterInclusionsChanged()
+                },
+                exclusionsChangedHandler: { [weak self] in
+                    self?.launcherController?.refreshAfterExclusionsChanged()
+                },
+                settingsChangedHandler: { [weak self] in
+                    self?.launcherController?.refreshAfterSettingsChanged()
+                }
+            )
+        }
+
+        settingsWindowController?.show()
+    }
+
+    private func registerHotKey(_ hotKey: HotKeyConfiguration) -> Bool {
+        if hotKeyController?.configuration == hotKey {
+            return true
+        }
+
+        do {
+            let controller = try HotKeyController(configuration: hotKey) { [weak self] in
+                self?.launcherController?.toggle()
+            }
+            hotKeyController = controller
+            return true
+        } catch {
+            showHotKeyAlert(error, hotKey: hotKey)
+            return false
+        }
+    }
+
+    private func showHotKeyAlert(_ error: Error, hotKey: HotKeyConfiguration) {
+        let alert = NSAlert()
+        alert.messageText = "Bucky could not register \(hotKey.displayName)"
+        alert.informativeText = error.localizedDescription
+        alert.alertStyle = .warning
+        alert.runModal()
+    }
+
+    private func showUnsupportedOSAlert() {
+        let alert = NSAlert()
+        alert.messageText = "Bucky requires macOS 26"
+        alert.informativeText = "The legacy AppKit launcher has been removed. Bucky now uses the SwiftUI Liquid Glass launcher only."
+        alert.alertStyle = .warning
+        alert.runModal()
+    }
+}
