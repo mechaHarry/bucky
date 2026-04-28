@@ -5,6 +5,7 @@ import SwiftUI
 struct LiquidGlassLauncherView: View {
     @ObservedObject var model: LiquidGlassLauncherModel
     @FocusState private var isSearchFocused: Bool
+    @Namespace private var rowGlassNamespace
     @State private var lastSelectedIndex = 0
     @State private var trailingSelectionIndexes = Set<Int>()
     @State private var handledSelectionScrollRequestID = 0
@@ -192,7 +193,7 @@ struct LiquidGlassLauncherView: View {
                 }
                 .padding(.vertical, 10)
                 .frame(maxWidth: .infinity)
-                .animation(resultUpdateAnimation, value: resultAnimationIDs)
+                .animation(resultUpdateAnimation, value: resultListIdentity)
             }
             .scrollIndicators(.hidden)
             .scrollIndicatorsFlash(trigger: false)
@@ -215,7 +216,7 @@ struct LiquidGlassLauncherView: View {
         let rowID = ResultRowID.application(item.url)
 
         return ZStack(alignment: .leading) {
-            rowPanel(state: rowSelectionState(for: index))
+            rowPanel(rowID: rowID, state: rowSelectionState(for: index))
                 .allowsHitTesting(false)
                 .zIndex(0)
 
@@ -255,7 +256,6 @@ struct LiquidGlassLauncherView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .id(rowID)
-        .transition(resultRowTransition)
         .onTapGesture {
             model.selectedIndex = index
             _ = model.handle(command: .open)
@@ -270,7 +270,7 @@ struct LiquidGlassLauncherView: View {
             _ = model.handle(command: .open)
         } label: {
             ZStack(alignment: .leading) {
-                rowPanel(state: rowSelectionState(for: index))
+                rowPanel(rowID: rowID, state: rowSelectionState(for: index))
                     .allowsHitTesting(false)
                     .zIndex(0)
 
@@ -311,11 +311,10 @@ struct LiquidGlassLauncherView: View {
         .buttonStyle(.plain)
         .frame(maxWidth: .infinity, alignment: .leading)
         .id(rowID)
-        .transition(resultRowTransition)
     }
 
     @ViewBuilder
-    private func rowPanel(state: RowSelectionState) -> some View {
+    private func rowPanel(rowID: ResultRowID, state: RowSelectionState) -> some View {
         GlassEffectContainer(spacing: 0) {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(Color.clear)
@@ -323,6 +322,7 @@ struct LiquidGlassLauncherView: View {
                     rowGlass(for: state),
                     in: RoundedRectangle(cornerRadius: 18, style: .continuous)
                 )
+                .glassEffectID(rowID.glassEffectID, in: rowGlassNamespace)
                 .glassEffectTransition(.matchedGeometry)
                 .animation(rowSelectionAnimation, value: state)
         }
@@ -400,22 +400,6 @@ struct LiquidGlassLauncherView: View {
         }
     }
 
-    private var resultAnimationIDs: [ResultRowID] {
-        switch model.mode {
-        case .applications:
-            return model.filteredItems.map { .application($0.url) }
-        case .tools:
-            return model.toolItems.map { .tool($0) }
-        }
-    }
-
-    private var resultRowTransition: AnyTransition {
-        .asymmetric(
-            insertion: .opacity.combined(with: .scale(scale: 0.985)),
-            removal: .opacity.combined(with: .scale(scale: 0.985))
-        )
-    }
-
     private var windowBackdrop: some View {
         GlassEffectContainer(spacing: 0) {
             RoundedRectangle(cornerRadius: 30, style: .continuous)
@@ -478,6 +462,42 @@ struct LiquidGlassLauncherView: View {
 private enum ResultRowID: Hashable {
     case application(URL)
     case tool(ToolItem)
+
+    var glassEffectID: RowGlassEffectID {
+        switch self {
+        case .application(let url):
+            return .application(path: url.path)
+        case .tool(let item):
+            return .tool(
+                kind: item.kind.glassEffectID,
+                title: item.title,
+                subtitle: item.subtitle,
+                copyText: item.copyText ?? ""
+            )
+        }
+    }
+}
+
+@available(macOS 26.0, *)
+private enum RowGlassEffectID: Hashable, Sendable {
+    case application(path: String)
+    case tool(kind: String, title: String, subtitle: String, copyText: String)
+}
+
+@available(macOS 26.0, *)
+private extension ToolItem.Kind {
+    var glassEffectID: String {
+        switch self {
+        case .calculation:
+            return "calculation"
+        case .calculationHistory:
+            return "calculationHistory"
+        case .dictionary:
+            return "dictionary"
+        case .message:
+            return "message"
+        }
+    }
 }
 
 @available(macOS 26.0, *)
