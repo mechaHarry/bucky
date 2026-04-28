@@ -11,7 +11,8 @@ struct LiquidGlassLauncherView: View {
     @State private var handledSelectionScrollRequestID = 0
     @State private var iconPreloadTask: Task<Void, Never>?
 
-    private let resultUpdateAnimation = Animation.interactiveSpring(duration: 0.24, extraBounce: 0.03)
+    private let resultUpdateAnimation = Animation.snappy(duration: 0.22, extraBounce: 0)
+    private let selectionScrollAnimation = Animation.snappy(duration: 0.16, extraBounce: 0)
     private let rowSelectionAnimation = Animation.smooth(duration: 0.18, extraBounce: 0)
     private let headerControlAnimation = Animation.smooth(duration: 0.18, extraBounce: 0)
 
@@ -42,7 +43,7 @@ struct LiquidGlassLauncherView: View {
         .onChange(of: model.filteredItems) { _ in
             preloadApplicationIcons()
         }
-        .animation(.interactiveSpring(duration: 0.22, extraBounce: 0.04), value: model.mode)
+        .animation(resultUpdateAnimation, value: model.mode)
     }
 
     private var launcherSurface: some View {
@@ -380,7 +381,7 @@ struct LiquidGlassLauncherView: View {
     }
 
     private func scrollToRow(_ rowID: ResultRowID, anchor: UnitPoint?, using proxy: ScrollViewProxy) {
-        withAnimation(.interactiveSpring(duration: 0.18, extraBounce: 0.02)) {
+        withAnimation(selectionScrollAnimation) {
             proxy.scrollTo(rowID, anchor: anchor)
         }
     }
