@@ -11,6 +11,8 @@ struct LiquidGlassLauncherView: View {
     @State private var iconPreloadTask: Task<Void, Never>?
 
     private let resultUpdateAnimation = Animation.interactiveSpring(duration: 0.24, extraBounce: 0.03)
+    private let rowSelectionAnimation = Animation.interactiveSpring(duration: 0.18, extraBounce: 0.02)
+    private let rowSelectionTrailDuration: TimeInterval = 0.18
 
     var body: some View {
         ZStack {
@@ -41,10 +43,14 @@ struct LiquidGlassLauncherView: View {
             lastSelectedIndex = selectedIndex
 
             guard previousIndex != selectedIndex else { return }
-            trailingSelectionIndexes.insert(previousIndex)
+            withAnimation(rowSelectionAnimation) {
+                _ = trailingSelectionIndexes.insert(previousIndex)
+            }
 
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) {
-                trailingSelectionIndexes.remove(previousIndex)
+            DispatchQueue.main.asyncAfter(deadline: .now() + rowSelectionTrailDuration) {
+                withAnimation(rowSelectionAnimation) {
+                    _ = trailingSelectionIndexes.remove(previousIndex)
+                }
             }
         }
         .onChange(of: model.isPresented) { isPresented in
@@ -324,7 +330,7 @@ struct LiquidGlassLauncherView: View {
                     in: RoundedRectangle(cornerRadius: 18, style: .continuous)
                 )
                 .glassEffectTransition(.matchedGeometry)
-                .animation(.easeInOut(duration: 0.36), value: state)
+                .animation(rowSelectionAnimation, value: state)
         }
     }
 
