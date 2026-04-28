@@ -7,11 +7,13 @@ struct LiquidGlassLauncherView: View {
     @FocusState private var isSearchFocused: Bool
     @Namespace private var rowGlassNamespace
     @Namespace private var selectionGlassNamespace
+    @Namespace private var headerGlassNamespace
     @State private var handledSelectionScrollRequestID = 0
     @State private var iconPreloadTask: Task<Void, Never>?
 
     private let resultUpdateAnimation = Animation.interactiveSpring(duration: 0.24, extraBounce: 0.03)
     private let rowSelectionAnimation = Animation.smooth(duration: 0.18, extraBounce: 0)
+    private let headerControlAnimation = Animation.smooth(duration: 0.18, extraBounce: 0)
 
     var body: some View {
         ZStack {
@@ -76,7 +78,7 @@ struct LiquidGlassLauncherView: View {
             if model.isIndexing && model.mode == .applications {
                 ProgressView()
                     .controlSize(.small)
-                    .transition(.opacity)
+                    .glassEffectTransition(.materialize)
             }
 
             headerControls
@@ -104,12 +106,15 @@ struct LiquidGlassLauncherView: View {
                 .buttonStyle(.glass)
                 .disabled(!model.canClearHistory)
                 .help("Clear calculation history")
+                .glassEffectID(HeaderGlassEffectID.clearHistory, in: headerGlassNamespace)
                 .glassEffectTransition(.materialize)
             }
 
             toolsModeControl
             pinControl
         }
+        .animation(headerControlAnimation, value: model.mode)
+        .animation(headerControlAnimation, value: model.isPinned)
     }
 
     @ViewBuilder
@@ -123,6 +128,8 @@ struct LiquidGlassLauncherView: View {
             }
             .buttonStyle(.glassProminent)
             .help("Tools (Command+/)")
+            .glassEffectID(HeaderGlassEffectID.toolsMode, in: headerGlassNamespace)
+            .glassEffectTransition(.matchedGeometry)
         } else {
             Button {
                 _ = model.handle(command: .toggleToolsMode)
@@ -132,6 +139,8 @@ struct LiquidGlassLauncherView: View {
             }
             .buttonStyle(.glass)
             .help("Tools (Command+/)")
+            .glassEffectID(HeaderGlassEffectID.toolsMode, in: headerGlassNamespace)
+            .glassEffectTransition(.matchedGeometry)
         }
     }
 
@@ -146,6 +155,8 @@ struct LiquidGlassLauncherView: View {
             }
             .buttonStyle(.glassProminent)
             .help("Unpin window (Command+P)")
+            .glassEffectID(HeaderGlassEffectID.pin, in: headerGlassNamespace)
+            .glassEffectTransition(.matchedGeometry)
         } else {
             Button {
                 _ = model.handle(command: .togglePin)
@@ -155,6 +166,8 @@ struct LiquidGlassLauncherView: View {
             }
             .buttonStyle(.glass)
             .help("Pin window (Command+P)")
+            .glassEffectID(HeaderGlassEffectID.pin, in: headerGlassNamespace)
+            .glassEffectTransition(.matchedGeometry)
         }
     }
 
@@ -466,6 +479,13 @@ private enum RowGlassEffectID: Hashable, Sendable {
     case application(path: String)
     case tool(kind: String, title: String, subtitle: String, copyText: String)
     case selection
+}
+
+@available(macOS 26.0, *)
+private enum HeaderGlassEffectID: Hashable, Sendable {
+    case clearHistory
+    case toolsMode
+    case pin
 }
 
 @available(macOS 26.0, *)
