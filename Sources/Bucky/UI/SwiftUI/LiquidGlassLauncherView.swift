@@ -6,14 +6,12 @@ struct LiquidGlassLauncherView: View {
     @ObservedObject var model: LiquidGlassLauncherModel
     @FocusState private var isSearchFocused: Bool
     @Namespace private var rowGlassNamespace
-    @State private var lastSelectedIndex = 0
-    @State private var trailingSelectionIndexes = Set<Int>()
+    @Namespace private var selectionGlassNamespace
     @State private var handledSelectionScrollRequestID = 0
     @State private var iconPreloadTask: Task<Void, Never>?
 
     private let resultUpdateAnimation = Animation.interactiveSpring(duration: 0.24, extraBounce: 0.03)
-    private let rowSelectionAnimation = Animation.interactiveSpring(duration: 0.18, extraBounce: 0.02)
-    private let rowSelectionTrailDuration: TimeInterval = 0.18
+    private let rowSelectionAnimation = Animation.smooth(duration: 0.18, extraBounce: 0)
 
     var body: some View {
         ZStack {
@@ -24,31 +22,11 @@ struct LiquidGlassLauncherView: View {
         }
         .onAppear {
             isSearchFocused = true
-            lastSelectedIndex = model.selectedIndex
             preloadApplicationIcons()
         }
         .onChange(of: model.mode) { _ in
             isSearchFocused = true
             preloadApplicationIcons()
-        }
-        .onChange(of: resultListIdentity) { _ in
-            trailingSelectionIndexes.removeAll()
-            lastSelectedIndex = model.selectedIndex
-        }
-        .onChange(of: model.selectedIndex) { selectedIndex in
-            let previousIndex = lastSelectedIndex
-            lastSelectedIndex = selectedIndex
-
-            guard previousIndex != selectedIndex else { return }
-            withAnimation(rowSelectionAnimation) {
-                _ = trailingSelectionIndexes.insert(previousIndex)
-            }
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + rowSelectionTrailDuration) {
-                withAnimation(rowSelectionAnimation) {
-                    _ = trailingSelectionIndexes.remove(previousIndex)
-                }
-            }
         }
         .onChange(of: model.isPresented) { isPresented in
             if isPresented {
@@ -246,7 +224,7 @@ struct LiquidGlassLauncherView: View {
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
-            rowPanel(rowID: rowID, state: rowSelectionState(for: index))
+            rowPanel(rowID: rowID, isSelected: index == model.selectedIndex)
         }
         .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .id(rowID)
@@ -293,7 +271,7 @@ struct LiquidGlassLauncherView: View {
             .padding(.vertical, 11)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background {
-                rowPanel(rowID: rowID, state: rowSelectionState(for: index))
+                rowPanel(rowID: rowID, isSelected: index == model.selectedIndex)
             }
             .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         }
@@ -303,38 +281,30 @@ struct LiquidGlassLauncherView: View {
     }
 
     @ViewBuilder
-    private func rowPanel(rowID: ResultRowID, state: RowSelectionState) -> some View {
+    private func rowPanel(rowID: ResultRowID, isSelected: Bool) -> some View {
         GlassEffectContainer(spacing: 0) {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.clear)
-                .glassEffect(
-                    rowGlass(for: state),
-                    in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-                )
-                .glassEffectID(rowID.glassEffectID, in: rowGlassNamespace)
-                .glassEffectTransition(.matchedGeometry)
-                .animation(rowSelectionAnimation, value: state)
-        }
-    }
+            ZStack {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Color.clear)
+                    .glassEffect(
+                        .regular.tint(Color(nsColor: .windowBackgroundColor).opacity(0.035)).interactive(false),
+                        in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    )
+                    .glassEffectID(rowID.glassEffectID, in: rowGlassNamespace)
+                    .glassEffectTransition(.matchedGeometry)
 
-    private func rowSelectionState(for index: Int) -> RowSelectionState {
-        if index == model.selectedIndex {
-            return .selected
-        }
-        if trailingSelectionIndexes.contains(index) {
-            return .trailing
-        }
-        return .normal
-    }
-
-    private func rowGlass(for state: RowSelectionState) -> Glass {
-        switch state {
-        case .selected:
-            return .regular.tint(.accentColor.opacity(0.18)).interactive()
-        case .trailing:
-            return .regular.tint(.accentColor.opacity(0.08))
-        case .normal:
-            return .regular.tint(Color(nsColor: .windowBackgroundColor).opacity(0.035)).interactive(false)
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(Color.clear)
+                        .glassEffect(
+                            .regular.tint(.accentColor.opacity(0.18)).interactive(),
+                            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        )
+                        .glassEffectID(RowGlassEffectID.selection, in: selectionGlassNamespace)
+                        .glassEffectTransition(.matchedGeometry)
+                }
+            }
+            .animation(rowSelectionAnimation, value: isSelected)
         }
     }
 
@@ -471,6 +441,7 @@ private enum ResultRowID: Hashable {
 private enum RowGlassEffectID: Hashable, Sendable {
     case application(path: String)
     case tool(kind: String, title: String, subtitle: String, copyText: String)
+    case selection
 }
 
 @available(macOS 26.0, *)
@@ -487,13 +458,6 @@ private extension ToolItem.Kind {
             return "message"
         }
     }
-}
-
-@available(macOS 26.0, *)
-private enum RowSelectionState: Equatable {
-    case normal
-    case trailing
-    case selected
 }
 
 @available(macOS 26.0, *)
