@@ -281,7 +281,6 @@ import json
 
 print(json.dumps({
     "draft": False,
-    "make_latest": "true",
 }))
 PY
 )"
