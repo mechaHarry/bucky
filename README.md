@@ -16,6 +16,40 @@ The app bundle is created at `build/Bucky.app`.
 open build/Bucky.app
 ```
 
+## Distribution
+
+For a local distributable archive, run the package script. It starts from a clean rebuild, packages only the `.app` bundle, and writes a zip plus SHA-256 checksum under `dist/`.
+
+```sh
+./package.sh
+```
+
+The generated archive uses this naming pattern:
+
+```text
+dist/Bucky-<semantic-version>-macos-<architecture>.zip
+```
+
+To test the archive from Terminal:
+
+```sh
+ZIP_PATH="$(ls -t dist/Bucky-*.zip | head -n 1)"
+mkdir -p /tmp/bucky-distribution-test
+ditto -x -k "$ZIP_PATH" /tmp/bucky-distribution-test
+open /tmp/bucky-distribution-test/Bucky.app
+```
+
+To install it manually from Terminal after unzipping:
+
+```sh
+ZIP_PATH="$(ls -t dist/Bucky-*.zip | head -n 1)"
+ditto -x -k "$ZIP_PATH" /tmp
+mv /tmp/Bucky.app /Applications/Bucky.app
+open /Applications/Bucky.app
+```
+
+This zip is a local unsigned build artifact. For broad distribution outside your own machine, sign and notarize the app before sharing it.
+
 ## Behavior
 
 Use Option+Space to open or hide the floating launcher by default. Type to filter parsed app names, use the up and down arrows to move through the list, use Command+Up and Command+Down to jump to the top or bottom, and press Return to launch the selected app.

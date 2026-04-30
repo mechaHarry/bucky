@@ -12,11 +12,17 @@
 !Package.resolved
 !Makefile
 !package.sh
+!release.sh
 
 # App source.
 !Sources/
 !Sources/**/
 !Sources/**/*.swift
+
+# Tests.
+!Tests/
+!Tests/**/
+!Tests/**/*.swift
 
 # App bundle metadata needed by the Makefile.
 !packaging/
@@ -27,3 +33,8 @@
 !.agents/**
 !README.md
 !AGENTS.md
+!CHANGELOG.md
+
+# GitHub repository automation.
+!.github/
+!.github/release.yml

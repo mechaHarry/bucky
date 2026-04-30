@@ -7,8 +7,11 @@ EXECUTABLE_PATH="${APP_PATH}/Contents/MacOS/${APP_NAME}"
 INFO_PLIST="${APP_PATH}/Contents/Info.plist"
 DIST_DIR="dist"
 
+make clean
+make bundle
+
 if [[ ! -d "${APP_PATH}" ]]; then
-    echo "error: ${APP_PATH} does not exist. Run 'make bundle' first." >&2
+    echo "error: ${APP_PATH} does not exist after build." >&2
     exit 1
 fi
 
