@@ -6,7 +6,6 @@ struct LiquidGlassLauncherView: View {
     @ObservedObject var model: LiquidGlassLauncherModel
     @FocusState private var isSearchFocused: Bool
     @Namespace private var rowGlassNamespace
-    @Namespace private var selectionGlassNamespace
     @Namespace private var headerGlassNamespace
     @State private var handledSelectionScrollRequestID = 0
     @State private var iconPreloadTask: Task<Void, Never>?
@@ -585,8 +584,7 @@ struct LiquidGlassLauncherView: View {
                             .regular.tint(LauncherVisualStyle.selection.opacity(interactionState.selectionTintOpacity)).interactive(),
                             in: RoundedRectangle(cornerRadius: 18, style: .continuous)
                         )
-                        .glassEffectID(RowGlassEffectID.selection, in: selectionGlassNamespace)
-                        .glassEffectTransition(.matchedGeometry)
+                        .glassEffectTransition(selectionGlassTransition(for: interactionState.selectionTransitionStyle))
                 }
             }
             .overlay {
@@ -595,6 +593,15 @@ struct LiquidGlassLauncherView: View {
             }
             .shadow(color: LauncherVisualStyle.elevationShadow.opacity(interactionState.shadowOpacity), radius: interactionState.shadowRadius, x: 0, y: interactionState.shadowY)
             .animation(rowSelectionAnimation, value: interactionState)
+        }
+    }
+
+    private func selectionGlassTransition(
+        for style: LauncherSelectionTransitionStyle
+    ) -> GlassEffectTransition {
+        switch style {
+        case .materialize:
+            return .materialize
         }
     }
 
@@ -882,7 +889,6 @@ private enum ResultRowID: Hashable {
 private enum RowGlassEffectID: Hashable, Sendable {
     case application(path: String)
     case tool(kind: String, title: String, subtitle: String, copyText: String)
-    case selection
 }
 
 @available(macOS 26.0, *)

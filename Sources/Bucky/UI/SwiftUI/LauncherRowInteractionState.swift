@@ -1,3 +1,7 @@
+enum LauncherSelectionTransitionStyle: Equatable {
+    case materialize
+}
+
 struct LauncherRowInteractionState: Equatable {
     let isSelected: Bool
     let isHovered: Bool
@@ -8,6 +12,14 @@ struct LauncherRowInteractionState: Equatable {
 
     var revealsAuxiliaryAction: Bool {
         isSelected || isHovered
+    }
+
+    var selectionTransitionStyle: LauncherSelectionTransitionStyle {
+        .materialize
+    }
+
+    var usesSharedSelectionGlassIdentity: Bool {
+        false
     }
 
     var baseTintOpacity: Double {

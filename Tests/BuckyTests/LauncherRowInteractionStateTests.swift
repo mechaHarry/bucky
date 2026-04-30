@@ -28,6 +28,13 @@ final class LauncherRowInteractionStateTests: XCTestCase {
         XCTAssertGreaterThan(selectedAndHovered.borderOpacity, hovered.borderOpacity)
     }
 
+    func testSelectionSurfaceUsesIndependentMaterializeTransition() {
+        let selected = LauncherRowInteractionState(isSelected: true, isHovered: false)
+
+        XCTAssertEqual(selected.selectionTransitionStyle, .materialize)
+        XCTAssertFalse(selected.usesSharedSelectionGlassIdentity)
+    }
+
     func testHeaderFocusAndIndexingIncreaseSurfaceEmphasis() {
         let idle = LauncherHeaderInteractionState(
             isHovered: false,
