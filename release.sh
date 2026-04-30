@@ -7,7 +7,7 @@ INFO_PLIST="packaging/Info.plist"
 APP_PATH="build/${APP_NAME}.app"
 EXECUTABLE_PATH="${APP_PATH}/Contents/MacOS/${APP_NAME}"
 API_ROOT="${GITHUB_API_URL:-https://api.github.com}"
-API_VERSION="2026-03-10"
+API_VERSION="2022-11-28"
 DRY_RUN=0
 CREATED_DRAFT_RELEASE_ID=""
 RELEASE_PUBLISHED=0
@@ -60,6 +60,8 @@ require_command shasum
 
 api_curl() {
     curl --fail-with-body -L \
+        --silent \
+        --show-error \
         -H "Accept: application/vnd.github+json" \
         -H "Authorization: Bearer ${GITHUB_TOKEN}" \
         -H "X-GitHub-Api-Version: ${API_VERSION}" \
@@ -154,15 +156,17 @@ if [[ "${local_head}" != "${remote_head}" ]]; then
     exit 1
 fi
 
+LOCAL_TAG_EXISTS=0
+REMOTE_TAG_EXISTS=0
+LOCAL_TAG_CREATED=0
+
 if git rev-parse --verify --quiet "refs/tags/${TAG_NAME}" >/dev/null; then
     tag_head="$(git rev-list -n 1 "${TAG_NAME}")"
     if [[ "${tag_head}" != "${local_head}" ]]; then
         echo "error: local tag ${TAG_NAME} already exists but does not point to HEAD" >&2
         exit 1
     fi
-    TAG_ALREADY_EXISTS=1
-else
-    TAG_ALREADY_EXISTS=0
+    LOCAL_TAG_EXISTS=1
 fi
 
 remote_tag_head="$(git ls-remote --tags "${REMOTE}" "refs/tags/${TAG_NAME}" | awk 'NR == 1 { print $1 }')"
@@ -172,7 +176,45 @@ if [[ -n "${remote_tag_head}" ]]; then
         echo "error: remote tag ${TAG_NAME} already exists but does not point to HEAD" >&2
         exit 1
     fi
-    TAG_ALREADY_EXISTS=1
+    REMOTE_TAG_EXISTS=1
+fi
+
+if [[ "${DRY_RUN}" -eq 0 ]]; then
+    if [[ "${LOCAL_TAG_EXISTS}" -eq 0 ]]; then
+        echo "Creating signed tag ${TAG_NAME}..."
+        git tag -s "${TAG_NAME}" -m "${RELEASE_NAME}"
+        git tag -v "${TAG_NAME}" >/dev/null
+        LOCAL_TAG_CREATED=1
+    else
+        echo "Using existing local tag ${TAG_NAME} at HEAD."
+    fi
+
+    if [[ "${REMOTE_TAG_EXISTS}" -eq 0 ]]; then
+        echo "Pushing tag ${TAG_NAME}..."
+        if ! git push "${REMOTE}" "${TAG_NAME}"; then
+            if [[ "${LOCAL_TAG_CREATED}" -eq 1 ]]; then
+                git tag -d "${TAG_NAME}" >/dev/null
+            fi
+            echo "error: failed to push ${TAG_NAME}; repository rules may restrict tag creation." >&2
+            echo "Allow this release actor to create refs/tags/${TAG_NAME}, then rerun." >&2
+            exit 1
+        fi
+    else
+        echo "Using existing remote tag ${TAG_NAME} at HEAD."
+    fi
+
+    remote_tag_head="$(git ls-remote --tags "${REMOTE}" "refs/tags/${TAG_NAME}" | awk 'NR == 1 { print $1 }')"
+    if [[ -z "${remote_tag_head}" ]]; then
+        echo "error: remote tag ${TAG_NAME} does not exist; refusing to create a release that would need GitHub to create it during publish." >&2
+        exit 1
+    fi
+fi
+
+if [[ "${DRY_RUN}" -eq 0 ]] && api_curl "${API_ROOT}/repos/${OWNER}/${REPO}/releases/tags/${TAG_NAME}" >/tmp/bucky-existing-release.json 2>/dev/null; then
+    existing_release_url="$(python3 -c 'import json, sys; print(json.load(sys.stdin)["html_url"])' </tmp/bucky-existing-release.json)"
+    echo "error: release ${TAG_NAME} already exists: ${existing_release_url}" >&2
+    echo "If immutable releases are enabled and this release was published without assets, bump the plist version and release a new tag." >&2
+    exit 1
 fi
 
 echo "Packaging ${APP_NAME} ${VERSION}..."
@@ -204,24 +246,6 @@ if [[ "${DRY_RUN}" -eq 1 ]]; then
     echo "    ${ZIP_PATH}"
     echo "    ${SHA_PATH}"
     exit 0
-fi
-
-if [[ "${TAG_ALREADY_EXISTS}" -eq 0 ]]; then
-    echo "Creating signed tag ${TAG_NAME}..."
-    git tag -s "${TAG_NAME}" -m "${RELEASE_NAME}"
-    git tag -v "${TAG_NAME}" >/dev/null
-
-    echo "Pushing tag ${TAG_NAME}..."
-    git push "${REMOTE}" "${TAG_NAME}"
-else
-    echo "Using existing tag ${TAG_NAME} at HEAD."
-fi
-
-if api_curl "${API_ROOT}/repos/${OWNER}/${REPO}/releases/tags/${TAG_NAME}" >/tmp/bucky-existing-release.json 2>/dev/null; then
-    existing_release_url="$(python3 -c 'import json, sys; print(json.load(sys.stdin)["html_url"])' </tmp/bucky-existing-release.json)"
-    echo "error: release ${TAG_NAME} already exists: ${existing_release_url}" >&2
-    echo "If immutable releases are enabled and this release was published without assets, bump the plist version and release a new tag." >&2
-    exit 1
 fi
 
 release_payload="$(python3 - "${TAG_NAME}" "${RELEASE_NAME}" <<'PY'
@@ -290,7 +314,7 @@ api_curl \
     -X PATCH \
     -H "Content-Type: application/json" \
     "${API_ROOT}/repos/${OWNER}/${REPO}/releases/${CREATED_DRAFT_RELEASE_ID}" \
-    -d "${publish_payload}" >/dev/null
+    -d "${publish_payload}"
 RELEASE_PUBLISHED=1
 
 echo "Released ${TAG_NAME}: https://github.com/${OWNER}/${REPO}/releases/tag/${TAG_NAME}"
