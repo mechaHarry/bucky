@@ -9,6 +9,8 @@ EXECUTABLE_PATH="${APP_PATH}/Contents/MacOS/${APP_NAME}"
 API_ROOT="${GITHUB_API_URL:-https://api.github.com}"
 API_VERSION="2026-03-10"
 DRY_RUN=0
+CREATED_DRAFT_RELEASE_ID=""
+RELEASE_PUBLISHED=0
 
 usage() {
     cat <<USAGE
@@ -55,6 +57,25 @@ require_command git
 require_command lipo
 require_command python3
 require_command shasum
+
+api_curl() {
+    curl --fail-with-body -L \
+        -H "Accept: application/vnd.github+json" \
+        -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+        -H "X-GitHub-Api-Version: ${API_VERSION}" \
+        "$@"
+}
+
+cleanup_draft_release() {
+    if [[ -n "${CREATED_DRAFT_RELEASE_ID}" && "${RELEASE_PUBLISHED}" -eq 0 ]]; then
+        echo "Cleaning up unpublished draft release ${CREATED_DRAFT_RELEASE_ID}..." >&2
+        api_curl \
+            -X DELETE \
+            "${API_ROOT}/repos/${OWNER}/${REPO}/releases/${CREATED_DRAFT_RELEASE_ID}" >/dev/null || true
+    fi
+}
+
+trap cleanup_draft_release EXIT
 
 if [[ ! -f "${INFO_PLIST}" ]]; then
     echo "error: ${INFO_PLIST} does not exist" >&2
@@ -134,13 +155,24 @@ if [[ "${local_head}" != "${remote_head}" ]]; then
 fi
 
 if git rev-parse --verify --quiet "refs/tags/${TAG_NAME}" >/dev/null; then
-    echo "error: local tag ${TAG_NAME} already exists" >&2
-    exit 1
+    tag_head="$(git rev-list -n 1 "${TAG_NAME}")"
+    if [[ "${tag_head}" != "${local_head}" ]]; then
+        echo "error: local tag ${TAG_NAME} already exists but does not point to HEAD" >&2
+        exit 1
+    fi
+    TAG_ALREADY_EXISTS=1
+else
+    TAG_ALREADY_EXISTS=0
 fi
 
-if git ls-remote --exit-code --tags "${REMOTE}" "refs/tags/${TAG_NAME}" >/dev/null 2>&1; then
-    echo "error: remote tag ${TAG_NAME} already exists" >&2
-    exit 1
+remote_tag_head="$(git ls-remote --tags "${REMOTE}" "refs/tags/${TAG_NAME}" | awk 'NR == 1 { print $1 }')"
+if [[ -n "${remote_tag_head}" ]]; then
+    remote_tag_commit="$(git rev-list -n 1 "${remote_tag_head}")"
+    if [[ "${remote_tag_commit}" != "${local_head}" ]]; then
+        echo "error: remote tag ${TAG_NAME} already exists but does not point to HEAD" >&2
+        exit 1
+    fi
+    TAG_ALREADY_EXISTS=1
 fi
 
 echo "Packaging ${APP_NAME} ${VERSION}..."
@@ -174,20 +206,23 @@ if [[ "${DRY_RUN}" -eq 1 ]]; then
     exit 0
 fi
 
-echo "Creating signed tag ${TAG_NAME}..."
-git tag -s "${TAG_NAME}" -m "${RELEASE_NAME}"
-git tag -v "${TAG_NAME}" >/dev/null
+if [[ "${TAG_ALREADY_EXISTS}" -eq 0 ]]; then
+    echo "Creating signed tag ${TAG_NAME}..."
+    git tag -s "${TAG_NAME}" -m "${RELEASE_NAME}"
+    git tag -v "${TAG_NAME}" >/dev/null
 
-echo "Pushing tag ${TAG_NAME}..."
-git push "${REMOTE}" "${TAG_NAME}"
+    echo "Pushing tag ${TAG_NAME}..."
+    git push "${REMOTE}" "${TAG_NAME}"
+else
+    echo "Using existing tag ${TAG_NAME} at HEAD."
+fi
 
-api_curl() {
-    curl --fail-with-body -L \
-        -H "Accept: application/vnd.github+json" \
-        -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-        -H "X-GitHub-Api-Version: ${API_VERSION}" \
-        "$@"
-}
+if api_curl "${API_ROOT}/repos/${OWNER}/${REPO}/releases/tags/${TAG_NAME}" >/tmp/bucky-existing-release.json 2>/dev/null; then
+    existing_release_url="$(python3 -c 'import json, sys; print(json.load(sys.stdin)["html_url"])' </tmp/bucky-existing-release.json)"
+    echo "error: release ${TAG_NAME} already exists: ${existing_release_url}" >&2
+    echo "If immutable releases are enabled and this release was published without assets, bump the plist version and release a new tag." >&2
+    exit 1
+fi
 
 release_payload="$(python3 - "${TAG_NAME}" "${RELEASE_NAME}" <<'PY'
 import json
@@ -198,21 +233,21 @@ release_name = sys.argv[2]
 print(json.dumps({
     "tag_name": tag_name,
     "name": release_name,
-    "draft": False,
+    "draft": True,
     "prerelease": False,
     "generate_release_notes": True,
-    "make_latest": "true",
 }))
 PY
 )"
 
-echo "Creating GitHub release ${TAG_NAME}..."
+echo "Creating draft GitHub release ${TAG_NAME}..."
 release_response="$(api_curl \
     -X POST \
     -H "Content-Type: application/json" \
     "${API_ROOT}/repos/${OWNER}/${REPO}/releases" \
     -d "${release_payload}")"
 
+CREATED_DRAFT_RELEASE_ID="$(python3 -c 'import json, sys; print(json.load(sys.stdin)["id"])' <<<"${release_response}")"
 upload_url="$(python3 -c 'import json, sys; print(json.load(sys.stdin)["upload_url"].split("{", 1)[0])' <<<"${release_response}")"
 
 upload_asset() {
@@ -240,5 +275,23 @@ PY
 
 upload_asset "${ZIP_PATH}" "application/zip"
 upload_asset "${SHA_PATH}" "text/plain"
+
+publish_payload="$(python3 - <<'PY'
+import json
+
+print(json.dumps({
+    "draft": False,
+    "make_latest": "true",
+}))
+PY
+)"
+
+echo "Publishing GitHub release ${TAG_NAME}..."
+api_curl \
+    -X PATCH \
+    -H "Content-Type: application/json" \
+    "${API_ROOT}/repos/${OWNER}/${REPO}/releases/${CREATED_DRAFT_RELEASE_ID}" \
+    -d "${publish_payload}" >/dev/null
+RELEASE_PUBLISHED=1
 
 echo "Released ${TAG_NAME}: https://github.com/${OWNER}/${REPO}/releases/tag/${TAG_NAME}"
