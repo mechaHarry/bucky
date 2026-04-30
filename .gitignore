@@ -32,3 +32,8 @@
 !.agents/**
 !README.md
 !AGENTS.md
+!CHANGELOG.md
+
+# GitHub repository automation.
+!.github/
+!.github/release.yml
