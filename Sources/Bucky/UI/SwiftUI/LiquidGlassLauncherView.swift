@@ -124,10 +124,10 @@ struct LiquidGlassLauncherView: View {
         }
         .overlay {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .strokeBorder(Color.white.opacity(interactionState.borderOpacity), lineWidth: 1)
+                .strokeBorder(LauncherVisualStyle.highlightRim.opacity(interactionState.borderOpacity), lineWidth: 1)
         }
-        .shadow(color: .black.opacity(interactionState.depthShadowOpacity), radius: interactionState.depthShadowRadius, x: 0, y: interactionState.depthShadowY)
-        .shadow(color: .accentColor.opacity(interactionState.glowOpacity), radius: interactionState.isActive ? 22 : 0, x: 0, y: 0)
+        .shadow(color: LauncherVisualStyle.elevationShadow.opacity(interactionState.depthShadowOpacity), radius: interactionState.depthShadowRadius, x: 0, y: interactionState.depthShadowY)
+        .shadow(color: LauncherVisualStyle.accent.opacity(interactionState.glowOpacity), radius: interactionState.isActive ? 22 : 0, x: 0, y: 0)
         .onHover { isHovered in
             updateHeaderHover(isHovered)
         }
@@ -139,7 +139,7 @@ struct LiquidGlassLauncherView: View {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(Color.clear)
                 .glassEffect(
-                    .regular.tint(.accentColor.opacity(interactionState.tintOpacity)).interactive(),
+                    .regular.tint(LauncherVisualStyle.accent.opacity(interactionState.tintOpacity)).interactive(),
                     in: RoundedRectangle(cornerRadius: 22, style: .continuous)
                 )
         }
@@ -155,7 +155,7 @@ struct LiquidGlassLauncherView: View {
                 } label: {
                     headerControlIcon(symbol: "trash", filledSymbol: "trash.fill", state: controlState)
                 }
-                .buttonStyle(.glass(.regular.tint(.accentColor.opacity(controlState.tintOpacity))))
+                .buttonStyle(.glass(.regular.tint(LauncherVisualStyle.accent.opacity(controlState.tintOpacity))))
                 .disabled(!model.canClearHistory)
                 .help("Clear calculation history")
                 .glassEffectID(HeaderGlassEffectID.clearHistory, in: headerGlassNamespace)
@@ -199,7 +199,7 @@ struct LiquidGlassLauncherView: View {
             } label: {
                 headerControlIcon(symbol: "wrench.and.screwdriver", filledSymbol: "wrench.and.screwdriver.fill", state: controlState)
             }
-            .buttonStyle(.glass(.regular.tint(.accentColor.opacity(controlState.tintOpacity))))
+            .buttonStyle(.glass(.regular.tint(LauncherVisualStyle.accent.opacity(controlState.tintOpacity))))
             .help("Tools (Command+/)")
             .glassEffectID(HeaderGlassEffectID.toolsMode, in: headerGlassNamespace)
             .glassEffectTransition(.matchedGeometry)
@@ -236,7 +236,7 @@ struct LiquidGlassLauncherView: View {
             } label: {
                 headerControlIcon(symbol: "pin", filledSymbol: "pin.fill", state: controlState)
             }
-            .buttonStyle(.glass(.regular.tint(.accentColor.opacity(controlState.tintOpacity))))
+            .buttonStyle(.glass(.regular.tint(LauncherVisualStyle.accent.opacity(controlState.tintOpacity))))
             .help("Pin window (Command+P)")
             .glassEffectID(HeaderGlassEffectID.pin, in: headerGlassNamespace)
             .glassEffectTransition(.matchedGeometry)
@@ -305,17 +305,17 @@ struct LiquidGlassLauncherView: View {
         .clipShape(RoundedRectangle(cornerRadius: CGFloat(metrics.cornerRadius), style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: CGFloat(metrics.cornerRadius), style: .continuous)
-                .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
+                .strokeBorder(LauncherVisualStyle.highlightRim.opacity(0.14), lineWidth: 1)
         }
         .overlay {
             RoundedRectangle(cornerRadius: CGFloat(metrics.cornerRadius), style: .continuous)
-                .strokeBorder(Color.black.opacity(0.16), lineWidth: 1)
+                .strokeBorder(LauncherVisualStyle.recessedRim.opacity(0.16), lineWidth: 1)
                 .blendMode(.multiply)
         }
         .overlay {
             RoundedRectangle(cornerRadius: CGFloat(metrics.cornerRadius), style: .continuous)
-                .strokeBorder(Color.black.opacity(0.30), lineWidth: 2)
-                .shadow(color: .black.opacity(0.46), radius: 7, x: 0, y: 3)
+                .strokeBorder(LauncherVisualStyle.recessedRim.opacity(0.30), lineWidth: 2)
+                .shadow(color: LauncherVisualStyle.recessedShadow.opacity(0.46), radius: 7, x: 0, y: 3)
                 .blur(radius: 1.5)
                 .clipShape(RoundedRectangle(cornerRadius: CGFloat(metrics.cornerRadius), style: .continuous))
                 .blendMode(.multiply)
@@ -355,7 +355,7 @@ struct LiquidGlassLauncherView: View {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .fill(Color.clear)
                 .glassEffect(
-                    .regular.tint(Color.black.opacity(resultsLayoutMetrics.insetBackingTintOpacity)),
+                    .regular.tint(LauncherVisualStyle.insetBacking.opacity(resultsLayoutMetrics.insetBackingTintOpacity)),
                     in: RoundedRectangle(cornerRadius: 24, style: .continuous)
                 )
         }
@@ -430,7 +430,7 @@ struct LiquidGlassLauncherView: View {
             } label: {
                 rowActionIcon(symbol: "eye.slash", filledSymbol: "eye.slash.fill", state: actionState)
             }
-            .buttonStyle(.glass(.regular.tint(.accentColor.opacity(actionState.tintOpacity))))
+            .buttonStyle(.glass(.regular.tint(LauncherVisualStyle.accent.opacity(actionState.tintOpacity))))
             .foregroundStyle(.secondary)
             .help("Hide from results")
             .glassEffectTransition(.materialize)
@@ -508,7 +508,7 @@ struct LiquidGlassLauncherView: View {
                         state: actionState
                     )
                 }
-                .buttonStyle(.glass(.regular.tint(.accentColor.opacity(actionState.tintOpacity))))
+                .buttonStyle(.glass(.regular.tint(LauncherVisualStyle.accent.opacity(actionState.tintOpacity))))
                 .foregroundStyle(.secondary)
                 .help(actionConfiguration.help)
                 .glassEffectTransition(.materialize)
@@ -562,7 +562,7 @@ struct LiquidGlassLauncherView: View {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .fill(Color.clear)
                     .glassEffect(
-                        .regular.tint(Color(nsColor: .windowBackgroundColor).opacity(interactionState.baseTintOpacity)).interactive(false),
+                        .regular.tint(LauncherVisualStyle.rowBase.opacity(interactionState.baseTintOpacity)).interactive(false),
                         in: RoundedRectangle(cornerRadius: 18, style: .continuous)
                     )
                     .glassEffectID(rowID.glassEffectID, in: rowGlassNamespace)
@@ -582,7 +582,7 @@ struct LiquidGlassLauncherView: View {
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .fill(Color.clear)
                         .glassEffect(
-                            .regular.tint(.accentColor.opacity(interactionState.selectionTintOpacity)).interactive(),
+                            .regular.tint(LauncherVisualStyle.selection.opacity(interactionState.selectionTintOpacity)).interactive(),
                             in: RoundedRectangle(cornerRadius: 18, style: .continuous)
                         )
                         .glassEffectID(RowGlassEffectID.selection, in: selectionGlassNamespace)
@@ -593,16 +593,16 @@ struct LiquidGlassLauncherView: View {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .strokeBorder(rowBorderColor(interactionState), lineWidth: interactionState.isSelected ? 1.25 : 1)
             }
-            .shadow(color: .black.opacity(interactionState.shadowOpacity), radius: interactionState.shadowRadius, x: 0, y: interactionState.shadowY)
+            .shadow(color: LauncherVisualStyle.elevationShadow.opacity(interactionState.shadowOpacity), radius: interactionState.shadowRadius, x: 0, y: interactionState.shadowY)
             .animation(rowSelectionAnimation, value: interactionState)
         }
     }
 
     private func rowBorderColor(_ interactionState: LauncherRowInteractionState) -> Color {
         if interactionState.isSelected {
-            return .accentColor.opacity(interactionState.borderOpacity)
+            return LauncherVisualStyle.selectionRim.opacity(interactionState.borderOpacity)
         }
-        return Color.white.opacity(interactionState.borderOpacity)
+        return LauncherVisualStyle.highlightRim.opacity(interactionState.borderOpacity)
     }
 
     private func updateHoveredRow(_ rowID: ResultRowID, isHovered: Bool) {
@@ -742,13 +742,13 @@ struct LiquidGlassLauncherView: View {
             RoundedRectangle(cornerRadius: 30, style: .continuous)
                 .fill(Color.clear)
                 .glassEffect(
-                    .regular.tint(Color(nsColor: .windowBackgroundColor).opacity(model.resultCount == 0 ? 0.025 : resultsLayoutMetrics.mainPanelTintOpacity)),
+                    .regular.tint(LauncherVisualStyle.mainPanel.opacity(model.resultCount == 0 ? 0.025 : resultsLayoutMetrics.mainPanelTintOpacity)),
                     in: RoundedRectangle(cornerRadius: 30, style: .continuous)
                 )
         }
         .overlay {
             RoundedRectangle(cornerRadius: 30, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
+                .strokeBorder(LauncherVisualStyle.highlightRim.opacity(0.14), lineWidth: 1)
         }
     }
 
@@ -768,9 +768,9 @@ struct LiquidGlassLauncherView: View {
     private func toolColor(for kind: ToolItem.Kind) -> Color {
         switch kind {
         case .calculation, .calculationHistory:
-            return .cyan
+            return LauncherVisualStyle.accent
         case .dictionary:
-            return .mint
+            return .primary
         case .message:
             return .secondary
         }
@@ -845,6 +845,20 @@ struct LiquidGlassLauncherView: View {
 }
 
 @available(macOS 26.0, *)
+private enum LauncherVisualStyle {
+    static let accent = Color(nsColor: .controlAccentColor)
+    static let mainPanel = Color(nsColor: .windowBackgroundColor)
+    static let insetBacking = Color(nsColor: .underPageBackgroundColor)
+    static let rowBase = Color(nsColor: .controlBackgroundColor)
+    static let selection = Color(nsColor: .selectedContentBackgroundColor)
+    static let selectionRim = Color(nsColor: .selectedContentBackgroundColor)
+    static let highlightRim = Color(nsColor: .separatorColor)
+    static let recessedRim = Color(nsColor: .separatorColor)
+    static let elevationShadow = Color(nsColor: .shadowColor)
+    static let recessedShadow = Color(nsColor: .shadowColor)
+}
+
+@available(macOS 26.0, *)
 private enum ResultRowID: Hashable {
     case application(URL)
     case tool(ToolItem)
@@ -907,18 +921,18 @@ private extension View {
         self
             .overlay {
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .strokeBorder(Color.white.opacity(state.borderOpacity), lineWidth: 1)
+                    .strokeBorder(LauncherVisualStyle.highlightRim.opacity(state.borderOpacity), lineWidth: 1)
             }
-            .shadow(color: .black.opacity(state.depthShadowOpacity), radius: state.depthShadowRadius, x: 0, y: state.depthShadowY)
+            .shadow(color: LauncherVisualStyle.elevationShadow.opacity(state.depthShadowOpacity), radius: state.depthShadowRadius, x: 0, y: state.depthShadowY)
     }
 
     func launcherRowActionDepth(_ state: LauncherRowActionInteractionState) -> some View {
         self
             .overlay {
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .strokeBorder(Color.white.opacity(state.borderOpacity), lineWidth: 1)
+                    .strokeBorder(LauncherVisualStyle.highlightRim.opacity(state.borderOpacity), lineWidth: 1)
             }
-            .shadow(color: .black.opacity(state.depthShadowOpacity), radius: state.depthShadowRadius, x: 0, y: state.depthShadowY)
+            .shadow(color: LauncherVisualStyle.elevationShadow.opacity(state.depthShadowOpacity), radius: state.depthShadowRadius, x: 0, y: state.depthShadowY)
     }
 }
 
