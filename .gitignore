@@ -12,6 +12,7 @@
 !Package.resolved
 !Makefile
 !package.sh
+!release.sh
 
 # App source.
 !Sources/
