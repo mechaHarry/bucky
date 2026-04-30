@@ -19,6 +19,10 @@ let package = Package(
                 .linkedFramework("ServiceManagement"),
                 .linkedFramework("SwiftUI")
             ]
+        ),
+        .testTarget(
+            name: "BuckyTests",
+            dependencies: ["Bucky"]
         )
     ],
     swiftLanguageVersions: [.v5]

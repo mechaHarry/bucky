@@ -35,6 +35,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private var pendingCalculationHistoryExpression: String?
     private var pendingCalculationHistoryResult: String?
     private var selectionScrollRequestID = 0
+    private let queryUpdatePolicy = LauncherQueryUpdatePolicy.standard
 
     init(
         settingsStore: SettingsStore,
@@ -106,7 +107,11 @@ final class LiquidGlassLauncherModel: ObservableObject {
 
     func queryDidChange() {
         storeCurrentQuery()
+        selectedIndex = queryUpdatePolicy.selectedIndexAfterQueryChange(resultCount: resultCount)
         applyCurrentMode(preservePreviousOnEmpty: true)
+        if queryUpdatePolicy.shouldRequestTopScrollAfterQueryChange(resultCount: resultCount) {
+            requestSelectionScroll(anchor: .top)
+        }
     }
 
     func handle(command: LauncherCommand) -> Bool {
@@ -188,6 +193,20 @@ final class LiquidGlassLauncherModel: ObservableObject {
     func clearHistory() {
         calculationHistoryStore.clear()
         applyToolsResults(scheduleHistory: false)
+    }
+
+    func activateToolAction(_ item: ToolItem) {
+        switch item.kind {
+        case .calculation:
+            commitPendingCalculationHistory(refreshResults: false)
+            copyToPasteboard(item.copyText)
+        case .calculationHistory:
+            copyToPasteboard(item.copyText)
+        case .dictionary:
+            openDictionary(term: item.title)
+        case .message:
+            return
+        }
     }
 
     func cancelPendingCalculationHistory() {
@@ -498,13 +517,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
 
     private func activate(_ item: ToolItem) {
         switch item.kind {
-        case .calculation:
-            commitPendingCalculationHistory(refreshResults: false)
-            copyToPasteboard(item.copyText)
-        case .calculationHistory:
-            copyToPasteboard(item.copyText)
-        case .dictionary:
-            openDictionary(term: item.title)
+        case .calculation, .calculationHistory, .dictionary:
+            activateToolAction(item)
         case .message:
             return
         }

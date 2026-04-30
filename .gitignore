@@ -18,6 +18,11 @@
 !Sources/**/
 !Sources/**/*.swift
 
+# Tests.
+!Tests/
+!Tests/**/
+!Tests/**/*.swift
+
 # App bundle metadata needed by the Makefile.
 !packaging/
 !packaging/Info.plist
