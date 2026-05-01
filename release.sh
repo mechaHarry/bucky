@@ -155,6 +155,8 @@ if [[ "${local_head}" != "${remote_head}" ]]; then
     echo "error: HEAD is not ${REMOTE}/${default_branch}" >&2
     exit 1
 fi
+release_ref="${REMOTE}/${default_branch}"
+release_commit="${remote_head}"
 
 LOCAL_TAG_EXISTS=0
 REMOTE_TAG_EXISTS=0
@@ -162,8 +164,8 @@ LOCAL_TAG_CREATED=0
 
 if git rev-parse --verify --quiet "refs/tags/${TAG_NAME}" >/dev/null; then
     tag_head="$(git rev-list -n 1 "${TAG_NAME}")"
-    if [[ "${tag_head}" != "${local_head}" ]]; then
-        echo "error: local tag ${TAG_NAME} already exists but does not point to HEAD" >&2
+    if [[ "${tag_head}" != "${release_commit}" ]]; then
+        echo "error: local tag ${TAG_NAME} already exists but does not point to ${release_ref}" >&2
         exit 1
     fi
     LOCAL_TAG_EXISTS=1
@@ -172,8 +174,8 @@ fi
 remote_tag_head="$(git ls-remote --tags "${REMOTE}" "refs/tags/${TAG_NAME}" | awk 'NR == 1 { print $1 }')"
 if [[ -n "${remote_tag_head}" ]]; then
     remote_tag_commit="$(git rev-list -n 1 "${remote_tag_head}")"
-    if [[ "${remote_tag_commit}" != "${local_head}" ]]; then
-        echo "error: remote tag ${TAG_NAME} already exists but does not point to HEAD" >&2
+    if [[ "${remote_tag_commit}" != "${release_commit}" ]]; then
+        echo "error: remote tag ${TAG_NAME} already exists but does not point to ${release_ref}" >&2
         exit 1
     fi
     REMOTE_TAG_EXISTS=1
@@ -181,12 +183,12 @@ fi
 
 if [[ "${DRY_RUN}" -eq 0 ]]; then
     if [[ "${LOCAL_TAG_EXISTS}" -eq 0 ]]; then
-        echo "Creating signed tag ${TAG_NAME}..."
-        git tag -s "${TAG_NAME}" -m "${RELEASE_NAME}"
+        echo "Creating signed tag ${TAG_NAME} at ${release_ref}..."
+        git tag -s "${TAG_NAME}" -m "${RELEASE_NAME}" "${release_ref}"
         git tag -v "${TAG_NAME}" >/dev/null
         LOCAL_TAG_CREATED=1
     else
-        echo "Using existing local tag ${TAG_NAME} at HEAD."
+        echo "Using existing local tag ${TAG_NAME} at ${release_ref}."
     fi
 
     if [[ "${REMOTE_TAG_EXISTS}" -eq 0 ]]; then
@@ -200,7 +202,7 @@ if [[ "${DRY_RUN}" -eq 0 ]]; then
             exit 1
         fi
     else
-        echo "Using existing remote tag ${TAG_NAME} at HEAD."
+        echo "Using existing remote tag ${TAG_NAME} at ${release_ref}."
     fi
 
     remote_tag_head="$(git ls-remote --tags "${REMOTE}" "refs/tags/${TAG_NAME}" | awk 'NR == 1 { print $1 }')"
