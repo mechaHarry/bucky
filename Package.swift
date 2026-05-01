@@ -22,7 +22,8 @@ let package = Package(
         ),
         .testTarget(
             name: "BuckyTests",
-            dependencies: ["Bucky"]
+            dependencies: ["Bucky"],
+            path: "Tests/BuckyTests"
         )
     ],
     swiftLanguageVersions: [.v5]
