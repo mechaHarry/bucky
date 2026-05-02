@@ -628,10 +628,12 @@ private extension SelectionScrollAnchor {
 private extension View {
     @ViewBuilder
     func launcherHeaderButtonStyle(_ policy: LauncherHeaderButtonStylePolicy) -> some View {
-        if policy.usesAccentGlassTint {
-            buttonStyle(.glass(.regular.tint(LauncherVisualStyle.activeHeaderControlTint)))
-        } else {
+        switch policy.style {
+        case .stockGlass:
             buttonStyle(.glass)
+        case .prominentAccentGlass:
+            buttonStyle(.glassProminent)
+                .tint(LauncherVisualStyle.activeHeaderControlTint)
         }
     }
 

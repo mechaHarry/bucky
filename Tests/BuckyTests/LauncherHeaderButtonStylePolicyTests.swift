@@ -2,15 +2,15 @@ import XCTest
 @testable import Bucky
 
 final class LauncherHeaderButtonStylePolicyTests: XCTestCase {
-    func testActiveHeaderButtonUsesAccentGlassTint() {
+    func testActiveHeaderButtonUsesProminentAccentGlassStyle() {
         let policy = LauncherHeaderButtonStylePolicy(isActive: true)
 
-        XCTAssertTrue(policy.usesAccentGlassTint)
+        XCTAssertEqual(policy.style, .prominentAccentGlass)
     }
 
     func testInactiveHeaderButtonUsesStockGlassStyle() {
         let policy = LauncherHeaderButtonStylePolicy(isActive: false)
 
-        XCTAssertFalse(policy.usesAccentGlassTint)
+        XCTAssertEqual(policy.style, .stockGlass)
     }
 }

@@ -1,7 +1,12 @@
+enum LauncherHeaderButtonStyle: Equatable {
+    case stockGlass
+    case prominentAccentGlass
+}
+
 struct LauncherHeaderButtonStylePolicy: Equatable {
     let isActive: Bool
 
-    var usesAccentGlassTint: Bool {
-        isActive
+    var style: LauncherHeaderButtonStyle {
+        isActive ? .prominentAccentGlass : .stockGlass
     }
 }
