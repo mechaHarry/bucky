@@ -12,6 +12,7 @@ struct LiquidGlassLauncherView: View {
     @State private var iconPreloadTask: Task<Void, Never>?
     @State private var scrollTargetID: ResultRowID?
     @State private var scrollTargetAnchor: UnitPoint?
+    @State private var hoveredRowID: ResultRowID?
 
     private var resultUpdateAnimation: Animation {
         model.animationTiming.animation(duration: 0.22)
@@ -106,6 +107,10 @@ struct LiquidGlassLauncherView: View {
                     .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
             }
         }
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(LauncherVisualStyle.surfaceRim.opacity(0.24), lineWidth: 1)
+        }
     }
 
     private var headerControls: some View {
@@ -187,30 +192,52 @@ struct LiquidGlassLauncherView: View {
 
     private var results: some View {
         ZStack {
-            if let emptyMessage = model.emptyMessage {
-                Text(emptyMessage)
-                    .font(.system(size: 17, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .transition(.opacity)
-            } else {
-                Group {
-                    switch model.mode {
-                    case .applications:
-                        resultScrollView {
-                            ForEach(Array(model.filteredItems.enumerated()), id: \.element.url) { index, item in
-                                applicationRow(item: item, index: index)
-                            }
+            resultsBackdrop
+            resultContent
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .strokeBorder(LauncherVisualStyle.panelRim.opacity(0.26), lineWidth: 1)
+        }
+    }
+
+    @ViewBuilder
+    private var resultContent: some View {
+        if let emptyMessage = model.emptyMessage {
+            Text(emptyMessage)
+                .font(.system(size: 17, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .transition(.opacity)
+        } else {
+            Group {
+                switch model.mode {
+                case .applications:
+                    resultScrollView {
+                        ForEach(Array(model.filteredItems.enumerated()), id: \.element.url) { index, item in
+                            applicationRow(item: item, index: index)
                         }
-                    case .tools:
-                        resultScrollView {
-                            ForEach(Array(model.toolItems.enumerated()), id: \.element) { index, item in
-                                toolRow(item: item, index: index)
-                            }
+                    }
+                case .tools:
+                    resultScrollView {
+                        ForEach(Array(model.toolItems.enumerated()), id: \.element) { index, item in
+                            toolRow(item: item, index: index)
                         }
                     }
                 }
             }
+        }
+    }
+
+    private var resultsBackdrop: some View {
+        GlassEffectContainer(spacing: 0) {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(Color.clear)
+                .glassEffect(
+                    .regular.tint(LauncherVisualStyle.panelFill.opacity(model.resultCount == 0 ? 0.018 : 0.032)),
+                    in: RoundedRectangle(cornerRadius: 24, style: .continuous)
+                )
         }
     }
 
@@ -220,10 +247,10 @@ struct LiquidGlassLauncherView: View {
                 content()
             }
             .scrollTargetLayout()
-            .padding(.vertical, 10)
             .frame(maxWidth: .infinity)
             .animation(resultUpdateAnimation, value: resultListIdentity)
         }
+        .contentMargins(.vertical, 10, for: .scrollContent)
         .scrollPosition(id: $scrollTargetID, anchor: scrollTargetAnchor)
         .scrollIndicators(.hidden)
         .scrollIndicatorsFlash(trigger: false)
@@ -241,55 +268,76 @@ struct LiquidGlassLauncherView: View {
 
     private func applicationRow(item: LaunchItem, index: Int) -> some View {
         let rowID = ResultRowID.application(item.url)
+        let isSelected = index == model.selectedIndex
+        let isHovered = hoveredRowID == rowID
+        let actionVisibility = LauncherRowActionVisibilityPolicy(
+            hasAction: true,
+            isSelected: isSelected,
+            isHovered: isHovered
+        )
 
         return HStack(spacing: 14) {
-            ApplicationIconView(url: item.url, animationTiming: model.animationTiming)
+            HStack(spacing: 14) {
+                ApplicationIconView(url: item.url, animationTiming: model.animationTiming)
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(item.title)
-                    .font(.system(size: 18, weight: .semibold))
-                    .lineLimit(1)
-                Text(item.subtitle)
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.title)
+                        .font(.system(size: 18, weight: .semibold))
+                        .lineLimit(1)
+                    Text(item.subtitle)
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 12)
             }
-
-            Spacer(minLength: 12)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                model.selectedIndex = index
+                _ = model.handle(command: .open)
+            }
 
             Button {
                 model.exclude(item)
             } label: {
                 Image(systemName: "eye.slash")
                     .frame(width: 16, height: 16)
-                    .padding(6)
-                    .background(Circle().fill(Color.primary.opacity(0.06)))
+                    .padding(5)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.glass)
             .foregroundStyle(.secondary)
             .help("Hide from results")
+            .opacity(actionVisibility.isVisible ? 1 : 0)
+            .allowsHitTesting(actionVisibility.allowsHitTesting)
+            .launcherActionButtonRim(isVisible: actionVisibility.isVisible)
+            .animation(rowSelectionAnimation, value: actionVisibility)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
-            rowPanel(rowID: rowID, isSelected: index == model.selectedIndex)
+            rowPanel(rowID: rowID, isSelected: isSelected, isHovered: isHovered)
         }
         .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .id(rowID)
-        .onTapGesture {
-            model.selectedIndex = index
-            _ = model.handle(command: .open)
+        .onHover { isHovering in
+            updateHoveredRow(rowID, isHovering: isHovering)
         }
     }
 
     private func toolRow(item: ToolItem, index: Int) -> some View {
         let rowID = ResultRowID.tool(item)
+        let isSelected = index == model.selectedIndex
+        let isHovered = hoveredRowID == rowID
+        let actionConfiguration = toolActionConfiguration(for: item)
+        let actionVisibility = LauncherRowActionVisibilityPolicy(
+            hasAction: actionConfiguration != nil,
+            isSelected: isSelected,
+            isHovered: isHovered
+        )
 
-        return Button {
-            model.selectedIndex = index
-            _ = model.handle(command: .open)
-        } label: {
+        return HStack(spacing: 14) {
             HStack(spacing: 14) {
                 Image(systemName: toolSymbol(for: item.kind))
                     .font(.system(size: 20, weight: .semibold))
@@ -307,36 +355,52 @@ struct LiquidGlassLauncherView: View {
                 }
 
                 Spacer(minLength: 12)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                model.selectedIndex = index
+                _ = model.handle(command: .open)
+            }
 
-                if item.kind == .calculation || item.kind == .calculationHistory {
-                    Image(systemName: "doc.on.doc")
-                        .foregroundStyle(.tertiary)
-                } else if item.kind == .dictionary {
-                    Image(systemName: "book")
-                        .foregroundStyle(.tertiary)
+            if let actionConfiguration {
+                Button {
+                    model.selectedIndex = index
+                    _ = model.handle(command: .open)
+                } label: {
+                    Image(systemName: actionConfiguration.symbol)
+                        .frame(width: 16, height: 16)
+                        .padding(5)
                 }
+                .buttonStyle(.glass)
+                .foregroundStyle(.secondary)
+                .help(actionConfiguration.help)
+                .opacity(actionVisibility.isVisible ? 1 : 0)
+                .allowsHitTesting(actionVisibility.allowsHitTesting)
+                .launcherActionButtonRim(isVisible: actionVisibility.isVisible)
+                .animation(rowSelectionAnimation, value: actionVisibility)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 11)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background {
-                rowPanel(rowID: rowID, isSelected: index == model.selectedIndex)
-            }
-            .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            rowPanel(rowID: rowID, isSelected: isSelected, isHovered: isHovered)
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .id(rowID)
+        .onHover { isHovering in
+            updateHoveredRow(rowID, isHovering: isHovering)
+        }
     }
 
     @ViewBuilder
-    private func rowPanel(rowID: ResultRowID, isSelected: Bool) -> some View {
+    private func rowPanel(rowID: ResultRowID, isSelected: Bool, isHovered: Bool) -> some View {
         GlassEffectContainer(spacing: 0) {
             ZStack {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .fill(Color.clear)
                     .glassEffect(
-                        .regular.tint(Color(nsColor: .windowBackgroundColor).opacity(0.035)).interactive(false),
+                        .regular.tint(LauncherVisualStyle.rowFill.opacity(isHovered ? 0.060 : 0.035)).interactive(false),
                         in: RoundedRectangle(cornerRadius: 18, style: .continuous)
                     )
                     .glassEffectID(rowID.glassEffectID, in: rowGlassNamespace)
@@ -346,14 +410,36 @@ struct LiquidGlassLauncherView: View {
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .fill(Color.clear)
                         .glassEffect(
-                            .regular.tint(.accentColor.opacity(0.18)).interactive(),
+                            .regular.tint(LauncherVisualStyle.selectionFill.opacity(0.18)).interactive(),
                             in: RoundedRectangle(cornerRadius: 18, style: .continuous)
                         )
                         .glassEffectID(RowGlassEffectID.selection, in: selectionGlassNamespace)
                         .glassEffectTransition(.matchedGeometry)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .strokeBorder(LauncherVisualStyle.selectionRim.opacity(0.42), lineWidth: 1)
+                        }
                 }
             }
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(
+                        isSelected ? LauncherVisualStyle.selectionRim.opacity(0.34) : LauncherVisualStyle.surfaceRim.opacity(isHovered ? 0.28 : 0.18),
+                        lineWidth: isSelected ? 1.15 : 1
+                    )
+            }
             .animation(rowSelectionAnimation, value: isSelected)
+            .animation(rowSelectionAnimation, value: isHovered)
+        }
+    }
+
+    private func updateHoveredRow(_ rowID: ResultRowID, isHovering: Bool) {
+        withAnimation(rowSelectionAnimation) {
+            if isHovering {
+                hoveredRowID = rowID
+            } else if hoveredRowID == rowID {
+                hoveredRowID = nil
+            }
         }
     }
 
@@ -401,9 +487,13 @@ struct LiquidGlassLauncherView: View {
             RoundedRectangle(cornerRadius: 30, style: .continuous)
                 .fill(Color.clear)
                 .glassEffect(
-                    .regular.tint(Color(nsColor: .windowBackgroundColor).opacity(model.resultCount == 0 ? 0.025 : 0.04)),
+                    .regular.tint(LauncherVisualStyle.windowFill.opacity(model.resultCount == 0 ? 0.025 : 0.04)),
                     in: RoundedRectangle(cornerRadius: 30, style: .continuous)
                 )
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 30, style: .continuous)
+                .strokeBorder(LauncherVisualStyle.surfaceRim.opacity(0.30), lineWidth: 1)
         }
         .shadow(color: .black.opacity(0.22), radius: 30, x: 0, y: 20)
         .padding(2)
@@ -430,6 +520,18 @@ struct LiquidGlassLauncherView: View {
             return .mint
         case .message:
             return .secondary
+        }
+    }
+
+    private func toolActionConfiguration(for item: ToolItem) -> RowActionConfiguration? {
+        switch item.kind {
+        case .calculation, .calculationHistory:
+            guard item.copyText != nil else { return nil }
+            return RowActionConfiguration(symbol: "doc.on.doc", help: "Copy result")
+        case .dictionary:
+            return RowActionConfiguration(symbol: "book", help: "Open in Dictionary")
+        case .message:
+            return nil
         }
     }
 
@@ -489,6 +591,24 @@ private enum HeaderGlassEffectID: Hashable, Sendable {
 }
 
 @available(macOS 26.0, *)
+private enum LauncherVisualStyle {
+    static let windowFill = Color(nsColor: .windowBackgroundColor)
+    static let panelFill = Color(nsColor: .underPageBackgroundColor)
+    static let rowFill = Color(nsColor: .windowBackgroundColor)
+    static let selectionFill = Color(nsColor: .selectedContentBackgroundColor)
+    static let surfaceRim = Color(nsColor: .separatorColor)
+    static let panelRim = Color(nsColor: .separatorColor)
+    static let selectionRim = Color(nsColor: .selectedContentBackgroundColor)
+    static let actionRim = Color(nsColor: .separatorColor)
+}
+
+@available(macOS 26.0, *)
+private struct RowActionConfiguration {
+    let symbol: String
+    let help: String
+}
+
+@available(macOS 26.0, *)
 private extension SelectionScrollAnchor {
     var unitPoint: UnitPoint? {
         switch self {
@@ -498,6 +618,16 @@ private extension SelectionScrollAnchor {
             return .top
         case .bottom:
             return .bottom
+        }
+    }
+}
+
+@available(macOS 26.0, *)
+private extension View {
+    func launcherActionButtonRim(isVisible: Bool) -> some View {
+        self.overlay {
+            Circle()
+                .strokeBorder(LauncherVisualStyle.actionRim.opacity(isVisible ? 0.34 : 0), lineWidth: 1)
         }
     }
 }
