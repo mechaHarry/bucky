@@ -35,7 +35,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private var pendingCalculationHistoryExpression: String?
     private var pendingCalculationHistoryResult: String?
     private var selectionScrollRequestID = 0
-    private let queryUpdatePolicy = LauncherQueryUpdatePolicy.standard
 
     init(
         settingsStore: SettingsStore,
@@ -107,11 +106,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
 
     func queryDidChange() {
         storeCurrentQuery()
-        selectedIndex = queryUpdatePolicy.selectedIndexAfterQueryChange(resultCount: resultCount)
         applyCurrentMode(preservePreviousOnEmpty: true)
-        if queryUpdatePolicy.shouldRequestTopScrollAfterQueryChange(resultCount: resultCount) {
-            requestSelectionScroll(anchor: .top)
-        }
     }
 
     func handle(command: LauncherCommand) -> Bool {
@@ -195,20 +190,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
         applyToolsResults(scheduleHistory: false)
     }
 
-    func activateToolAction(_ item: ToolItem) {
-        switch item.kind {
-        case .calculation:
-            commitPendingCalculationHistory(refreshResults: false)
-            copyToPasteboard(item.copyText)
-        case .calculationHistory:
-            copyToPasteboard(item.copyText)
-        case .dictionary:
-            openDictionary(term: item.title)
-        case .message:
-            return
-        }
-    }
-
     func cancelPendingCalculationHistory() {
         pendingCalculationHistoryTimer?.invalidate()
         pendingCalculationHistoryTimer = nil
@@ -261,7 +242,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         }
     }
 
-    private static func filter(_ items: [LaunchItem], normalizedQuery: String) -> [LaunchItem] {
+    static func filter(_ items: [LaunchItem], normalizedQuery: String) -> [LaunchItem] {
         guard !normalizedQuery.isEmpty else {
             return Array(items.prefix(80))
         }
@@ -517,8 +498,13 @@ final class LiquidGlassLauncherModel: ObservableObject {
 
     private func activate(_ item: ToolItem) {
         switch item.kind {
-        case .calculation, .calculationHistory, .dictionary:
-            activateToolAction(item)
+        case .calculation:
+            commitPendingCalculationHistory(refreshResults: false)
+            copyToPasteboard(item.copyText)
+        case .calculationHistory:
+            copyToPasteboard(item.copyText)
+        case .dictionary:
+            openDictionary(term: item.title)
         case .message:
             return
         }

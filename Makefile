@@ -6,7 +6,7 @@ CONTENTS_DIR := $(APP_DIR)/Contents
 MACOS_DIR := $(CONTENTS_DIR)/MacOS
 RESOURCES_DIR := $(CONTENTS_DIR)/Resources
 
-.PHONY: build bundle run clean
+.PHONY: build bundle run clean perf perf-baseline
 
 build:
 	swift build -c $(CONFIGURATION)
@@ -24,3 +24,9 @@ run: bundle
 clean:
 	swift package clean
 	rm -rf build
+
+perf:
+	swift test --filter LauncherFilterPerformanceTests
+
+perf-baseline:
+	BUCKY_PERF_UPDATE_BASELINE=1 BUCKY_PERF_GIT_COMMIT="$$(git rev-parse --short HEAD 2>/dev/null || true)" swift test --filter LauncherFilterPerformanceTests
