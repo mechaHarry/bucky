@@ -145,7 +145,7 @@ struct LiquidGlassLauncherView: View {
                 Image(systemName: "wrench.and.screwdriver.fill")
                     .frame(width: 18, height: 18)
             }
-            .buttonStyle(.glass)
+            .launcherHeaderButtonStyle(LauncherHeaderButtonStylePolicy(isActive: true))
             .help("Tools (Command+/)")
             .glassEffectID(HeaderGlassEffectID.toolsMode, in: headerGlassNamespace)
             .glassEffectTransition(.matchedGeometry)
@@ -156,7 +156,7 @@ struct LiquidGlassLauncherView: View {
                 Image(systemName: "wrench.and.screwdriver")
                     .frame(width: 18, height: 18)
             }
-            .buttonStyle(.glass)
+            .launcherHeaderButtonStyle(LauncherHeaderButtonStylePolicy(isActive: false))
             .help("Tools (Command+/)")
             .glassEffectID(HeaderGlassEffectID.toolsMode, in: headerGlassNamespace)
             .glassEffectTransition(.matchedGeometry)
@@ -172,7 +172,7 @@ struct LiquidGlassLauncherView: View {
                 Image(systemName: "pin.fill")
                     .frame(width: 18, height: 18)
             }
-            .buttonStyle(.glass)
+            .launcherHeaderButtonStyle(LauncherHeaderButtonStylePolicy(isActive: true))
             .help("Unpin window (Command+P)")
             .glassEffectID(HeaderGlassEffectID.pin, in: headerGlassNamespace)
             .glassEffectTransition(.matchedGeometry)
@@ -183,7 +183,7 @@ struct LiquidGlassLauncherView: View {
                 Image(systemName: "pin")
                     .frame(width: 18, height: 18)
             }
-            .buttonStyle(.glass)
+            .launcherHeaderButtonStyle(LauncherHeaderButtonStylePolicy(isActive: false))
             .help("Pin window (Command+P)")
             .glassEffectID(HeaderGlassEffectID.pin, in: headerGlassNamespace)
             .glassEffectTransition(.matchedGeometry)
@@ -597,6 +597,7 @@ private enum LauncherVisualStyle {
     static let panelFill = Color(nsColor: .underPageBackgroundColor)
     static let rowFill = Color(nsColor: .windowBackgroundColor)
     static let selectionFill = Color(nsColor: .selectedContentBackgroundColor)
+    static let activeHeaderControlTint = Color(nsColor: .controlAccentColor)
     static let surfaceRim = Color(nsColor: .separatorColor)
     static let panelRim = Color(nsColor: .separatorColor)
     static let selectionRim = Color(nsColor: .selectedContentBackgroundColor)
@@ -625,6 +626,15 @@ private extension SelectionScrollAnchor {
 
 @available(macOS 26.0, *)
 private extension View {
+    @ViewBuilder
+    func launcherHeaderButtonStyle(_ policy: LauncherHeaderButtonStylePolicy) -> some View {
+        if policy.usesAccentGlassTint {
+            buttonStyle(.glass(.regular.tint(LauncherVisualStyle.activeHeaderControlTint)))
+        } else {
+            buttonStyle(.glass)
+        }
+    }
+
     func launcherActionButtonRim(isVisible: Bool) -> some View {
         self.overlay {
             Circle()
