@@ -121,16 +121,11 @@ struct LiquidGlassLauncherView: View {
                 Button {
                     _ = model.handle(command: .clearHistory)
                 } label: {
-                    buttonIcon(
-                        symbol: "trash",
-                        role: .destructive,
-                        isSelected: false,
-                        isHovered: isHovered,
-                        size: 18,
-                        isEnabled: model.canClearHistory
-                    )
+                    Image(systemName: "trash")
+                        .frame(width: 18, height: 18)
                 }
                 .buttonStyle(.glass(.regular.tint(buttonTint(.destructive, isSelected: false, isHovered: isHovered, isEnabled: model.canClearHistory))))
+                .launcherButtonSurfaceTint(.destructive, isSelected: false, isHovered: isHovered, isEnabled: model.canClearHistory)
                 .disabled(!model.canClearHistory)
                 .help("Clear calculation history")
                 .glassEffectID(HeaderGlassEffectID.clearHistory, in: headerGlassNamespace)
@@ -153,15 +148,11 @@ struct LiquidGlassLauncherView: View {
             Button {
                 _ = model.handle(command: .toggleToolsMode)
             } label: {
-                buttonIcon(
-                    symbol: "wrench.and.screwdriver.fill",
-                    role: .standard,
-                    isSelected: true,
-                    isHovered: isHovered,
-                    size: 18
-                )
+                Image(systemName: "wrench.and.screwdriver.fill")
+                    .frame(width: 18, height: 18)
             }
             .buttonStyle(.glass(.regular.tint(buttonTint(.standard, isSelected: true, isHovered: isHovered))))
+            .launcherButtonSurfaceTint(.standard, isSelected: true, isHovered: isHovered)
             .help("Tools (Command+/)")
             .glassEffectID(HeaderGlassEffectID.toolsMode, in: headerGlassNamespace)
             .glassEffectTransition(.matchedGeometry)
@@ -170,15 +161,11 @@ struct LiquidGlassLauncherView: View {
             Button {
                 _ = model.handle(command: .toggleToolsMode)
             } label: {
-                buttonIcon(
-                    symbol: "wrench.and.screwdriver",
-                    role: .standard,
-                    isSelected: false,
-                    isHovered: isHovered,
-                    size: 18
-                )
+                Image(systemName: "wrench.and.screwdriver")
+                    .frame(width: 18, height: 18)
             }
             .buttonStyle(.glass(.regular.tint(buttonTint(.standard, isSelected: false, isHovered: isHovered))))
+            .launcherButtonSurfaceTint(.standard, isSelected: false, isHovered: isHovered)
             .help("Tools (Command+/)")
             .glassEffectID(HeaderGlassEffectID.toolsMode, in: headerGlassNamespace)
             .glassEffectTransition(.matchedGeometry)
@@ -194,15 +181,11 @@ struct LiquidGlassLauncherView: View {
             Button {
                 _ = model.handle(command: .togglePin)
             } label: {
-                buttonIcon(
-                    symbol: "pin.fill",
-                    role: .standard,
-                    isSelected: true,
-                    isHovered: isHovered,
-                    size: 18
-                )
+                Image(systemName: "pin.fill")
+                    .frame(width: 18, height: 18)
             }
             .buttonStyle(.glass(.regular.tint(buttonTint(.standard, isSelected: true, isHovered: isHovered))))
+            .launcherButtonSurfaceTint(.standard, isSelected: true, isHovered: isHovered)
             .help("Unpin window (Command+P)")
             .glassEffectID(HeaderGlassEffectID.pin, in: headerGlassNamespace)
             .glassEffectTransition(.matchedGeometry)
@@ -211,15 +194,11 @@ struct LiquidGlassLauncherView: View {
             Button {
                 _ = model.handle(command: .togglePin)
             } label: {
-                buttonIcon(
-                    symbol: "pin",
-                    role: .standard,
-                    isSelected: false,
-                    isHovered: isHovered,
-                    size: 18
-                )
+                Image(systemName: "pin")
+                    .frame(width: 18, height: 18)
             }
             .buttonStyle(.glass(.regular.tint(buttonTint(.standard, isSelected: false, isHovered: isHovered))))
+            .launcherButtonSurfaceTint(.standard, isSelected: false, isHovered: isHovered)
             .help("Pin window (Command+P)")
             .glassEffectID(HeaderGlassEffectID.pin, in: headerGlassNamespace)
             .glassEffectTransition(.matchedGeometry)
@@ -339,16 +318,12 @@ struct LiquidGlassLauncherView: View {
             Button {
                 model.exclude(item)
             } label: {
-                buttonIcon(
-                    symbol: "eye.slash",
-                    role: .destructive,
-                    isSelected: isSelected,
-                    isHovered: isHovered,
-                    size: 16,
-                    contentPadding: 5
-                )
+                Image(systemName: "eye.slash")
+                    .frame(width: 16, height: 16)
+                    .padding(5)
             }
             .buttonStyle(.glass(.regular.tint(buttonTint(.destructive, isSelected: isSelected, isHovered: isHovered))))
+            .launcherButtonSurfaceTint(.destructive, isSelected: isSelected, isHovered: isHovered)
             .foregroundStyle(.secondary)
             .help("Hide from results")
             .opacity(actionVisibility.isVisible ? 1 : 0)
@@ -410,16 +385,12 @@ struct LiquidGlassLauncherView: View {
                     model.selectedIndex = index
                     _ = model.handle(command: .open)
                 } label: {
-                    buttonIcon(
-                        symbol: actionConfiguration.symbol,
-                        role: actionConfiguration.tintRole,
-                        isSelected: isSelected,
-                        isHovered: isHovered,
-                        size: 16,
-                        contentPadding: 5
-                    )
+                    Image(systemName: actionConfiguration.symbol)
+                        .frame(width: 16, height: 16)
+                        .padding(5)
                 }
                 .buttonStyle(.glass(.regular.tint(buttonTint(actionConfiguration.tintRole, isSelected: isSelected, isHovered: isHovered))))
+                .launcherButtonSurfaceTint(actionConfiguration.tintRole, isSelected: isSelected, isHovered: isHovered)
                 .foregroundStyle(.secondary)
                 .help(actionConfiguration.help)
                 .opacity(actionVisibility.isVisible ? 1 : 0)
@@ -604,29 +575,6 @@ struct LiquidGlassLauncherView: View {
         return role.color.opacity(policy.tintOpacity)
     }
 
-    private func buttonIcon(
-        symbol: String,
-        role: LauncherButtonTintRole,
-        isSelected: Bool,
-        isHovered: Bool,
-        size: CGFloat,
-        contentPadding: CGFloat = 0,
-        isEnabled: Bool = true
-    ) -> some View {
-        let policy = LauncherButtonTintPolicy(isSelected: isSelected, isHovered: isHovered)
-        let washOpacity = isEnabled ? policy.washOpacity : 0
-        let washDiameter = size + (contentPadding * 2) + 2
-
-        return Image(systemName: symbol)
-            .frame(width: size, height: size)
-            .padding(contentPadding)
-            .background {
-                Circle()
-                    .fill(role.color.opacity(washOpacity))
-                    .frame(width: washDiameter, height: washDiameter)
-            }
-    }
-
     private func preloadApplicationIcons() {
         guard model.mode == .applications, model.isPresented else { return }
         let urls = Array(model.filteredItems.prefix(18).map(\.url))
@@ -743,6 +691,41 @@ private extension View {
             Circle()
                 .strokeBorder(LauncherVisualStyle.actionRim.opacity(isVisible ? 0.34 : 0), lineWidth: 1)
         }
+    }
+
+    func launcherButtonSurfaceTint(
+        _ role: LauncherButtonTintRole,
+        isSelected: Bool,
+        isHovered: Bool,
+        isEnabled: Bool = true
+    ) -> some View {
+        modifier(LauncherButtonSurfaceTint(
+            role: role,
+            isSelected: isSelected,
+            isHovered: isHovered,
+            isEnabled: isEnabled
+        ))
+    }
+}
+
+@available(macOS 26.0, *)
+private struct LauncherButtonSurfaceTint: ViewModifier {
+    let role: LauncherButtonTintRole
+    let isSelected: Bool
+    let isHovered: Bool
+    let isEnabled: Bool
+
+    func body(content: Content) -> some View {
+        let policy = LauncherButtonTintPolicy(isSelected: isSelected, isHovered: isHovered)
+        let opacity = isEnabled ? policy.washOpacity : 0
+
+        content
+            .background {
+                Capsule(style: .continuous)
+                    .fill(role.color.opacity(opacity))
+                    .allowsHitTesting(false)
+            }
+            .animation(.easeOut(duration: 0.12), value: opacity)
     }
 }
 
