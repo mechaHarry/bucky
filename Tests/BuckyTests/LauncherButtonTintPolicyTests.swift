@@ -6,6 +6,7 @@ final class LauncherButtonTintPolicyTests: XCTestCase {
         let policy = LauncherButtonTintPolicy(isSelected: false, isHovered: false)
 
         XCTAssertEqual(policy.tintOpacity, 0)
+        XCTAssertEqual(policy.washOpacity, 0)
     }
 
     func testHoverTintIsHalfOfSelectedTint() {
@@ -20,5 +21,19 @@ final class LauncherButtonTintPolicyTests: XCTestCase {
         let policy = LauncherButtonTintPolicy(isSelected: true, isHovered: true)
 
         XCTAssertEqual(policy.tintOpacity, LauncherButtonTintPolicy.selectedTintOpacity)
+    }
+
+    func testHoverWashIsHalfOfSelectedWash() {
+        let hovered = LauncherButtonTintPolicy(isSelected: false, isHovered: true)
+        let selected = LauncherButtonTintPolicy(isSelected: true, isHovered: false)
+
+        XCTAssertGreaterThan(hovered.washOpacity, 0)
+        XCTAssertEqual(hovered.washOpacity * 2, selected.washOpacity, accuracy: 0.001)
+    }
+
+    func testSelectedWashWinsOverHoverWash() {
+        let policy = LauncherButtonTintPolicy(isSelected: true, isHovered: true)
+
+        XCTAssertEqual(policy.washOpacity, LauncherButtonTintPolicy.selectedWashOpacity)
     }
 }

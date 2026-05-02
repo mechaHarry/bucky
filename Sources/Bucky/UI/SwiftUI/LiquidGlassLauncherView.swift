@@ -121,8 +121,14 @@ struct LiquidGlassLauncherView: View {
                 Button {
                     _ = model.handle(command: .clearHistory)
                 } label: {
-                    Image(systemName: "trash")
-                        .frame(width: 18, height: 18)
+                    buttonIcon(
+                        symbol: "trash",
+                        role: .destructive,
+                        isSelected: false,
+                        isHovered: isHovered,
+                        size: 18,
+                        isEnabled: model.canClearHistory
+                    )
                 }
                 .buttonStyle(.glass(.regular.tint(buttonTint(.destructive, isSelected: false, isHovered: isHovered, isEnabled: model.canClearHistory))))
                 .disabled(!model.canClearHistory)
@@ -147,8 +153,13 @@ struct LiquidGlassLauncherView: View {
             Button {
                 _ = model.handle(command: .toggleToolsMode)
             } label: {
-                Image(systemName: "wrench.and.screwdriver.fill")
-                    .frame(width: 18, height: 18)
+                buttonIcon(
+                    symbol: "wrench.and.screwdriver.fill",
+                    role: .standard,
+                    isSelected: true,
+                    isHovered: isHovered,
+                    size: 18
+                )
             }
             .buttonStyle(.glass(.regular.tint(buttonTint(.standard, isSelected: true, isHovered: isHovered))))
             .help("Tools (Command+/)")
@@ -159,8 +170,13 @@ struct LiquidGlassLauncherView: View {
             Button {
                 _ = model.handle(command: .toggleToolsMode)
             } label: {
-                Image(systemName: "wrench.and.screwdriver")
-                    .frame(width: 18, height: 18)
+                buttonIcon(
+                    symbol: "wrench.and.screwdriver",
+                    role: .standard,
+                    isSelected: false,
+                    isHovered: isHovered,
+                    size: 18
+                )
             }
             .buttonStyle(.glass(.regular.tint(buttonTint(.standard, isSelected: false, isHovered: isHovered))))
             .help("Tools (Command+/)")
@@ -178,8 +194,13 @@ struct LiquidGlassLauncherView: View {
             Button {
                 _ = model.handle(command: .togglePin)
             } label: {
-                Image(systemName: "pin.fill")
-                    .frame(width: 18, height: 18)
+                buttonIcon(
+                    symbol: "pin.fill",
+                    role: .standard,
+                    isSelected: true,
+                    isHovered: isHovered,
+                    size: 18
+                )
             }
             .buttonStyle(.glass(.regular.tint(buttonTint(.standard, isSelected: true, isHovered: isHovered))))
             .help("Unpin window (Command+P)")
@@ -190,8 +211,13 @@ struct LiquidGlassLauncherView: View {
             Button {
                 _ = model.handle(command: .togglePin)
             } label: {
-                Image(systemName: "pin")
-                    .frame(width: 18, height: 18)
+                buttonIcon(
+                    symbol: "pin",
+                    role: .standard,
+                    isSelected: false,
+                    isHovered: isHovered,
+                    size: 18
+                )
             }
             .buttonStyle(.glass(.regular.tint(buttonTint(.standard, isSelected: false, isHovered: isHovered))))
             .help("Pin window (Command+P)")
@@ -313,9 +339,14 @@ struct LiquidGlassLauncherView: View {
             Button {
                 model.exclude(item)
             } label: {
-                Image(systemName: "eye.slash")
-                    .frame(width: 16, height: 16)
-                    .padding(5)
+                buttonIcon(
+                    symbol: "eye.slash",
+                    role: .destructive,
+                    isSelected: isSelected,
+                    isHovered: isHovered,
+                    size: 16,
+                    contentPadding: 5
+                )
             }
             .buttonStyle(.glass(.regular.tint(buttonTint(.destructive, isSelected: isSelected, isHovered: isHovered))))
             .foregroundStyle(.secondary)
@@ -379,9 +410,14 @@ struct LiquidGlassLauncherView: View {
                     model.selectedIndex = index
                     _ = model.handle(command: .open)
                 } label: {
-                    Image(systemName: actionConfiguration.symbol)
-                        .frame(width: 16, height: 16)
-                        .padding(5)
+                    buttonIcon(
+                        symbol: actionConfiguration.symbol,
+                        role: actionConfiguration.tintRole,
+                        isSelected: isSelected,
+                        isHovered: isHovered,
+                        size: 16,
+                        contentPadding: 5
+                    )
                 }
                 .buttonStyle(.glass(.regular.tint(buttonTint(actionConfiguration.tintRole, isSelected: isSelected, isHovered: isHovered))))
                 .foregroundStyle(.secondary)
@@ -566,6 +602,29 @@ struct LiquidGlassLauncherView: View {
         guard isEnabled else { return role.color.opacity(0) }
         let policy = LauncherButtonTintPolicy(isSelected: isSelected, isHovered: isHovered)
         return role.color.opacity(policy.tintOpacity)
+    }
+
+    private func buttonIcon(
+        symbol: String,
+        role: LauncherButtonTintRole,
+        isSelected: Bool,
+        isHovered: Bool,
+        size: CGFloat,
+        contentPadding: CGFloat = 0,
+        isEnabled: Bool = true
+    ) -> some View {
+        let policy = LauncherButtonTintPolicy(isSelected: isSelected, isHovered: isHovered)
+        let washOpacity = isEnabled ? policy.washOpacity : 0
+        let washDiameter = size + (contentPadding * 2) + 2
+
+        return Image(systemName: symbol)
+            .frame(width: size, height: size)
+            .padding(contentPadding)
+            .background {
+                Circle()
+                    .fill(role.color.opacity(washOpacity))
+                    .frame(width: washDiameter, height: washDiameter)
+            }
     }
 
     private func preloadApplicationIcons() {
