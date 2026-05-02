@@ -13,6 +13,7 @@ struct LiquidGlassLauncherView: View {
     @State private var scrollTargetID: ResultRowID?
     @State private var scrollTargetAnchor: UnitPoint?
     @State private var hoveredRowID: ResultRowID?
+    @State private var hoveredHeaderControlID: HeaderGlassEffectID?
 
     private var resultUpdateAnimation: Animation {
         model.animationTiming.animation(duration: 0.22)
@@ -116,17 +117,19 @@ struct LiquidGlassLauncherView: View {
     private var headerControls: some View {
         HStack(spacing: 8) {
             if model.mode == .tools {
+                let isHovered = hoveredHeaderControlID == .clearHistory
                 Button {
                     _ = model.handle(command: .clearHistory)
                 } label: {
                     Image(systemName: "trash")
                         .frame(width: 18, height: 18)
                 }
-                .buttonStyle(.glass)
+                .buttonStyle(.glass(.regular.tint(buttonTint(.destructive, isSelected: false, isHovered: isHovered, isEnabled: model.canClearHistory))))
                 .disabled(!model.canClearHistory)
                 .help("Clear calculation history")
                 .glassEffectID(HeaderGlassEffectID.clearHistory, in: headerGlassNamespace)
                 .glassEffectTransition(.materialize)
+                .onHover { updateHoveredHeaderControl(.clearHistory, isHovering: $0) }
             }
 
             toolsModeControl
@@ -138,6 +141,8 @@ struct LiquidGlassLauncherView: View {
 
     @ViewBuilder
     private var toolsModeControl: some View {
+        let isHovered = hoveredHeaderControlID == .toolsMode
+
         if model.mode == .tools {
             Button {
                 _ = model.handle(command: .toggleToolsMode)
@@ -145,10 +150,11 @@ struct LiquidGlassLauncherView: View {
                 Image(systemName: "wrench.and.screwdriver.fill")
                     .frame(width: 18, height: 18)
             }
-            .buttonStyle(.glassProminent)
+            .buttonStyle(.glass(.regular.tint(buttonTint(.standard, isSelected: true, isHovered: isHovered))))
             .help("Tools (Command+/)")
             .glassEffectID(HeaderGlassEffectID.toolsMode, in: headerGlassNamespace)
             .glassEffectTransition(.matchedGeometry)
+            .onHover { updateHoveredHeaderControl(.toolsMode, isHovering: $0) }
         } else {
             Button {
                 _ = model.handle(command: .toggleToolsMode)
@@ -156,15 +162,18 @@ struct LiquidGlassLauncherView: View {
                 Image(systemName: "wrench.and.screwdriver")
                     .frame(width: 18, height: 18)
             }
-            .buttonStyle(.glass)
+            .buttonStyle(.glass(.regular.tint(buttonTint(.standard, isSelected: false, isHovered: isHovered))))
             .help("Tools (Command+/)")
             .glassEffectID(HeaderGlassEffectID.toolsMode, in: headerGlassNamespace)
             .glassEffectTransition(.matchedGeometry)
+            .onHover { updateHoveredHeaderControl(.toolsMode, isHovering: $0) }
         }
     }
 
     @ViewBuilder
     private var pinControl: some View {
+        let isHovered = hoveredHeaderControlID == .pin
+
         if model.isPinned {
             Button {
                 _ = model.handle(command: .togglePin)
@@ -172,10 +181,11 @@ struct LiquidGlassLauncherView: View {
                 Image(systemName: "pin.fill")
                     .frame(width: 18, height: 18)
             }
-            .buttonStyle(.glassProminent)
+            .buttonStyle(.glass(.regular.tint(buttonTint(.standard, isSelected: true, isHovered: isHovered))))
             .help("Unpin window (Command+P)")
             .glassEffectID(HeaderGlassEffectID.pin, in: headerGlassNamespace)
             .glassEffectTransition(.matchedGeometry)
+            .onHover { updateHoveredHeaderControl(.pin, isHovering: $0) }
         } else {
             Button {
                 _ = model.handle(command: .togglePin)
@@ -183,10 +193,11 @@ struct LiquidGlassLauncherView: View {
                 Image(systemName: "pin")
                     .frame(width: 18, height: 18)
             }
-            .buttonStyle(.glass)
+            .buttonStyle(.glass(.regular.tint(buttonTint(.standard, isSelected: false, isHovered: isHovered))))
             .help("Pin window (Command+P)")
             .glassEffectID(HeaderGlassEffectID.pin, in: headerGlassNamespace)
             .glassEffectTransition(.matchedGeometry)
+            .onHover { updateHoveredHeaderControl(.pin, isHovering: $0) }
         }
     }
 
@@ -247,10 +258,11 @@ struct LiquidGlassLauncherView: View {
                 content()
             }
             .scrollTargetLayout()
+            .padding(.horizontal, 10)
+            .padding(.vertical, 10)
             .frame(maxWidth: .infinity)
             .animation(resultUpdateAnimation, value: resultListIdentity)
         }
-        .contentMargins(.vertical, 10, for: .scrollContent)
         .scrollPosition(id: $scrollTargetID, anchor: scrollTargetAnchor)
         .scrollIndicators(.hidden)
         .scrollIndicatorsFlash(trigger: false)
@@ -305,7 +317,7 @@ struct LiquidGlassLauncherView: View {
                     .frame(width: 16, height: 16)
                     .padding(5)
             }
-            .buttonStyle(.glass)
+            .buttonStyle(.glass(.regular.tint(buttonTint(.destructive, isSelected: isSelected, isHovered: isHovered))))
             .foregroundStyle(.secondary)
             .help("Hide from results")
             .opacity(actionVisibility.isVisible ? 1 : 0)
@@ -371,7 +383,7 @@ struct LiquidGlassLauncherView: View {
                         .frame(width: 16, height: 16)
                         .padding(5)
                 }
-                .buttonStyle(.glass)
+                .buttonStyle(.glass(.regular.tint(buttonTint(actionConfiguration.tintRole, isSelected: isSelected, isHovered: isHovered))))
                 .foregroundStyle(.secondary)
                 .help(actionConfiguration.help)
                 .opacity(actionVisibility.isVisible ? 1 : 0)
@@ -390,6 +402,16 @@ struct LiquidGlassLauncherView: View {
         .id(rowID)
         .onHover { isHovering in
             updateHoveredRow(rowID, isHovering: isHovering)
+        }
+    }
+
+    private func updateHoveredHeaderControl(_ controlID: HeaderGlassEffectID, isHovering: Bool) {
+        withAnimation(headerControlAnimation) {
+            if isHovering {
+                hoveredHeaderControlID = controlID
+            } else if hoveredHeaderControlID == controlID {
+                hoveredHeaderControlID = nil
+            }
         }
     }
 
@@ -527,12 +549,23 @@ struct LiquidGlassLauncherView: View {
         switch item.kind {
         case .calculation, .calculationHistory:
             guard item.copyText != nil else { return nil }
-            return RowActionConfiguration(symbol: "doc.on.doc", help: "Copy result")
+            return RowActionConfiguration(symbol: "doc.on.doc", help: "Copy result", tintRole: .positive)
         case .dictionary:
-            return RowActionConfiguration(symbol: "book", help: "Open in Dictionary")
+            return RowActionConfiguration(symbol: "book", help: "Open in Dictionary", tintRole: .standard)
         case .message:
             return nil
         }
+    }
+
+    private func buttonTint(
+        _ role: LauncherButtonTintRole,
+        isSelected: Bool,
+        isHovered: Bool,
+        isEnabled: Bool = true
+    ) -> Color {
+        guard isEnabled else { return role.color.opacity(0) }
+        let policy = LauncherButtonTintPolicy(isSelected: isSelected, isHovered: isHovered)
+        return role.color.opacity(policy.tintOpacity)
     }
 
     private func preloadApplicationIcons() {
@@ -596,6 +629,9 @@ private enum LauncherVisualStyle {
     static let panelFill = Color(nsColor: .underPageBackgroundColor)
     static let rowFill = Color(nsColor: .windowBackgroundColor)
     static let selectionFill = Color(nsColor: .selectedContentBackgroundColor)
+    static let destructiveTint = Color(nsColor: .systemRed)
+    static let positiveTint = Color(nsColor: .systemGreen)
+    static let standardTint = Color(nsColor: .controlAccentColor)
     static let surfaceRim = Color(nsColor: .separatorColor)
     static let panelRim = Color(nsColor: .separatorColor)
     static let selectionRim = Color(nsColor: .selectedContentBackgroundColor)
@@ -603,9 +639,28 @@ private enum LauncherVisualStyle {
 }
 
 @available(macOS 26.0, *)
+private enum LauncherButtonTintRole {
+    case destructive
+    case positive
+    case standard
+
+    var color: Color {
+        switch self {
+        case .destructive:
+            return LauncherVisualStyle.destructiveTint
+        case .positive:
+            return LauncherVisualStyle.positiveTint
+        case .standard:
+            return LauncherVisualStyle.standardTint
+        }
+    }
+}
+
+@available(macOS 26.0, *)
 private struct RowActionConfiguration {
     let symbol: String
     let help: String
+    let tintRole: LauncherButtonTintRole
 }
 
 @available(macOS 26.0, *)
@@ -615,9 +670,9 @@ private extension SelectionScrollAnchor {
         case .nearest:
             return nil
         case .top:
-            return .top
+            return UnitPoint(x: 0.5, y: 0.08)
         case .bottom:
-            return .bottom
+            return UnitPoint(x: 0.5, y: 0.92)
         }
     }
 }
