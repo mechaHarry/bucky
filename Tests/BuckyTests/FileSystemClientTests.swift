@@ -44,10 +44,32 @@ final class FileSystemClientTests: XCTestCase {
         XCTAssertEqual(entries.map(\.name), ["Folder", "large.txt", "small.txt"])
     }
 
+    func testSortByDateCreatedOrdersDatedEntriesBeforeNilDates() {
+        let entries = [
+            entry(named: "aaa-undated.txt", createdAt: nil),
+            entry(named: "zzz-dated.txt", createdAt: Date(timeIntervalSince1970: 1))
+        ]
+
+        let sorted = FileSystemClient.sorted(entries, by: .dateCreated)
+
+        XCTAssertEqual(sorted.map(\.name), ["zzz-dated.txt", "aaa-undated.txt"])
+    }
+
     func testParentURLStopsAtRoot() {
         let client = FileSystemClient()
 
         XCTAssertEqual(client.parentURL(for: URL(fileURLWithPath: "/Users/test")), URL(fileURLWithPath: "/Users"))
         XCTAssertNil(client.parentURL(for: URL(fileURLWithPath: "/")))
+    }
+
+    private func entry(named name: String, createdAt: Date? = nil, modifiedAt: Date? = nil) -> FileBrowserEntry {
+        FileBrowserEntry(
+            url: temporaryDirectory.appendingPathComponent(name),
+            kind: .file,
+            size: nil,
+            createdAt: createdAt,
+            modifiedAt: modifiedAt,
+            isHidden: name.hasPrefix(".")
+        )
     }
 }

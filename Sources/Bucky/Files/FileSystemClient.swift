@@ -34,7 +34,7 @@ struct FileSystemClient {
             options: []
         )
 
-        return try urls
+        let entries = try urls
             .map { url in
                 let values = try url.resourceValues(forKeys: resourceKeys)
                 return FileBrowserEntry(
@@ -46,9 +46,13 @@ struct FileSystemClient {
                     isHidden: values.isHidden ?? url.lastPathComponent.hasPrefix(".")
                 )
             }
-            .sorted { lhs, rhs in
-                compare(lhs, rhs, sort: sort)
-            }
+        return Self.sorted(entries, by: sort)
+    }
+
+    static func sorted(_ entries: [FileBrowserEntry], by sort: FileBrowserSort) -> [FileBrowserEntry] {
+        entries.sorted { lhs, rhs in
+            compare(lhs, rhs, sort: sort)
+        }
     }
 
     private func kind(for values: URLResourceValues) -> FileBrowserEntry.Kind {
@@ -64,7 +68,7 @@ struct FileSystemClient {
         return .file
     }
 
-    private func compare(_ lhs: FileBrowserEntry, _ rhs: FileBrowserEntry, sort: FileBrowserSort) -> Bool {
+    private static func compare(_ lhs: FileBrowserEntry, _ rhs: FileBrowserEntry, sort: FileBrowserSort) -> Bool {
         if lhs.kind == .directory, rhs.kind != .directory { return true }
         if lhs.kind != .directory, rhs.kind == .directory { return false }
 
@@ -83,10 +87,14 @@ struct FileSystemClient {
         }
     }
 
-    private func date(_ lhs: Date?, isOrderedBefore rhs: Date?, fallbackLeft: String, fallbackRight: String) -> Bool {
+    private static func date(_ lhs: Date?, isOrderedBefore rhs: Date?, fallbackLeft: String, fallbackRight: String) -> Bool {
         switch (lhs, rhs) {
         case let (lhs?, rhs?) where lhs != rhs:
             return lhs > rhs
+        case (_?, nil):
+            return true
+        case (nil, _?):
+            return false
         default:
             return fallbackLeft.localizedStandardCompare(fallbackRight) == .orderedAscending
         }
