@@ -62,6 +62,25 @@ final class FileBrowserModelTests: XCTestCase {
         XCTAssertEqual(model.wobbleReason, .cannotEnterFile)
     }
 
+    func testShiftSpaceAfterDirectoryChangeUsesOnlyCurrentDirectoryEntries() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let childDirectory = home.appendingPathComponent("child", isDirectory: true)
+        let model = makeModel(home: home, entriesByDirectory: [
+            home: entries(["alpha.txt", "beta.txt", "gamma.txt", "child/"], in: home),
+            childDirectory: entries(["only.txt"], in: childDirectory)
+        ])
+
+        model.handle(.down)
+        model.handle(.down)
+        model.handle(.space)
+        model.handle(.down)
+        model.handle(.right)
+        model.handle(.shiftSpace)
+
+        XCTAssertEqual(model.currentDirectory, childDirectory)
+        XCTAssertEqual(model.selectedURLs.map(\.lastPathComponent), ["only.txt"])
+    }
+
     private func makeModel(
         entries: [FileBrowserEntry] = [],
         persisted: FileBrowserPersistedState = .defaultValue,
@@ -72,10 +91,24 @@ final class FileBrowserModelTests: XCTestCase {
         return FileBrowserModel(fileSystem: client, store: store)
     }
 
+    private func makeModel(
+        persisted: FileBrowserPersistedState = .defaultValue,
+        home: URL = URL(fileURLWithPath: "/Users/test"),
+        entriesByDirectory: [URL: [FileBrowserEntry]]
+    ) -> FileBrowserModel {
+        let client = StubFileSystemClient(home: home, entriesByDirectory: entriesByDirectory)
+        let store = InMemoryFileBrowserStore(state: persisted)
+        return FileBrowserModel(fileSystem: client, store: store)
+    }
+
     private func entries(_ names: [String]) -> [FileBrowserEntry] {
+        entries(names, in: URL(fileURLWithPath: "/Users/test"))
+    }
+
+    private func entries(_ names: [String], in directory: URL) -> [FileBrowserEntry] {
         names.map { name in
             FileBrowserEntry(
-                url: URL(fileURLWithPath: "/Users/test").appendingPathComponent(name),
+                url: directory.appendingPathComponent(name),
                 kind: name.hasSuffix("/") ? .directory : .file,
                 size: 1,
                 createdAt: nil,
