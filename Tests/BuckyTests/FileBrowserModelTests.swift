@@ -81,6 +81,91 @@ final class FileBrowserModelTests: XCTestCase {
         XCTAssertEqual(model.selectedURLs.map(\.lastPathComponent), ["only.txt"])
     }
 
+    func testActionAvailabilityChangesForSingleAndMultipleSelections() {
+        let model = makeModel(entries: entries(["one.txt", "two.txt"]))
+
+        model.handle(.space)
+        XCTAssertEqual(model.availableActions, [.open, .rename, .revealInFinder, .copyPath, .copy, .move, .moveToTrash])
+
+        model.handle(.down)
+        model.handle(.shiftSpace)
+        XCTAssertEqual(model.availableActions, [.batchRename, .copyPaths, .copy, .move, .moveToTrash])
+    }
+
+    func testActionOverlayKeyboardSelectionAndReturnStartsFocusedAction() {
+        let model = makeModel(entries: entries(["one.txt"]))
+
+        model.handle(.space)
+        model.handle(.open)
+        model.handle(.down)
+        model.handle(.down)
+        model.handle(.down)
+        model.handle(.open)
+
+        XCTAssertEqual(model.focusState, .transferPending(.copy(model.selectedURLs)))
+    }
+
+    func testCopyMoveStagePayloadAndEscapeCancelsBackToActions() {
+        let model = makeModel(entries: entries(["one.txt"]))
+
+        model.handle(.space)
+        model.startTransfer(.copy)
+        XCTAssertEqual(model.focusState, .transferPending(.copy(model.selectedURLs)))
+
+        model.handle(.close)
+        XCTAssertEqual(model.focusState, .previewActions)
+    }
+
+    func testReturnDuringTransferAsksForDestinationConfirmation() {
+        let model = makeModel(entries: entries(["one.txt"]))
+
+        model.handle(.space)
+        model.startTransfer(.move)
+        model.handle(.open)
+
+        XCTAssertEqual(model.focusState, .confirming(.transfer(.move(model.selectedURLs), destination: model.currentDirectory)))
+    }
+
+    func testMoveToTrashUsesDoubleConfirmState() {
+        let model = makeModel(entries: entries(["one.txt"]))
+
+        model.handle(.space)
+        model.requestTrashConfirmation()
+
+        XCTAssertEqual(model.focusState, .confirming(.trash(model.selectedURLs, step: 1)))
+        model.confirmTrashStep()
+        XCTAssertEqual(model.focusState, .confirming(.trash(model.selectedURLs, step: 2)))
+    }
+
+    func testPinsPersist() {
+        let model = makeModel()
+        let pin = URL(fileURLWithPath: "/Users/test/Projects")
+
+        model.togglePin(pin)
+
+        XCTAssertEqual(model.pinnedDirectories, [pin])
+    }
+
+    func testRightRestoresRememberedTraversalChainAfterMovingLeft() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let child = home.appendingPathComponent("Projects", isDirectory: true)
+        let client = StubFileSystemClient(
+            home: home,
+            entriesByDirectory: [
+                home: [directoryEntry(child)],
+                child: []
+            ]
+        )
+        let store = InMemoryFileBrowserStore(state: .defaultValue)
+        let model = FileBrowserModel(fileSystem: client, store: store)
+
+        model.handle(.right)
+        model.handle(.left)
+        model.handle(.right)
+
+        XCTAssertEqual(model.currentDirectory, child)
+    }
+
     private func makeModel(
         entries: [FileBrowserEntry] = [],
         persisted: FileBrowserPersistedState = .defaultValue,
@@ -116,6 +201,10 @@ final class FileBrowserModelTests: XCTestCase {
                 isHidden: name.hasPrefix(".")
             )
         }
+    }
+
+    private func directoryEntry(_ url: URL) -> FileBrowserEntry {
+        FileBrowserEntry(url: url, kind: .directory, size: nil, createdAt: nil, modifiedAt: nil, isHidden: false)
     }
 }
 
