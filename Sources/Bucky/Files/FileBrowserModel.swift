@@ -36,7 +36,7 @@ final class FileBrowserModel: ObservableObject {
             : [.open, .rename, .revealInFinder, .copyPath, .copy, .move, .moveToTrash]
     }
 
-    private var focusedActions: [FileBrowserAction] {
+    var focusableActions: [FileBrowserAction] {
         availableActions.filter { $0 != .open }
     }
 
@@ -127,7 +127,7 @@ final class FileBrowserModel: ObservableObject {
 
     func performFocusedAction() {
         guard focusState == .previewActions else { return }
-        let actions = focusedActions
+        let actions = focusableActions
         guard !actions.isEmpty else { return }
         let action = actions[max(0, min(actions.count - 1, focusedActionIndex))]
         switch action {
@@ -143,8 +143,8 @@ final class FileBrowserModel: ObservableObject {
     }
 
     func moveFocusedAction(by delta: Int) {
-        guard focusState == .previewActions, !focusedActions.isEmpty else { return }
-        focusedActionIndex = max(0, min(focusedActions.count - 1, focusedActionIndex + delta))
+        guard focusState == .previewActions, !focusableActions.isEmpty else { return }
+        focusedActionIndex = max(0, min(focusableActions.count - 1, focusedActionIndex + delta))
     }
 
     private func reloadEntries() {
@@ -177,7 +177,9 @@ final class FileBrowserModel: ObservableObject {
 
     private func enterSelectedDirectoryOrWobble() {
         if let remembered = recentTraversalChain.first,
-           entries.contains(where: { $0.url.path == remembered.path && $0.kind == .directory }) {
+           let entry = selectedEntry,
+           entry.url.path == remembered.path,
+           entry.kind == .directory {
             recentTraversalChain.removeFirst()
             currentDirectory = remembered
             selectedIndex = 0

@@ -105,6 +105,22 @@ final class FileBrowserModelTests: XCTestCase {
         XCTAssertEqual(model.focusState, .transferPending(.copy(model.selectedURLs)))
     }
 
+    func testFocusedActionIndexMatchesFocusableActionsExecutedByReturn() {
+        let model = makeModel(entries: entries(["one.txt"]))
+
+        model.handle(.space)
+        model.handle(.open)
+        model.handle(.down)
+        model.handle(.down)
+        model.handle(.down)
+
+        XCTAssertEqual(model.focusableActions[model.focusedActionIndex], .copy)
+
+        model.handle(.open)
+
+        XCTAssertEqual(model.focusState, .transferPending(.copy(model.selectedURLs)))
+    }
+
     func testCopyMoveStagePayloadAndEscapeCancelsBackToActions() {
         let model = makeModel(entries: entries(["one.txt"]))
 
@@ -186,6 +202,29 @@ final class FileBrowserModelTests: XCTestCase {
         model.handle(.right)
 
         XCTAssertEqual(model.currentDirectory, child)
+    }
+
+    func testRightAfterMovingAwayFromRememberedChildUsesSelectedRow() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let remembered = home.appendingPathComponent("Projects", isDirectory: true)
+        let other = home.appendingPathComponent("Archive", isDirectory: true)
+        let client = StubFileSystemClient(
+            home: home,
+            entriesByDirectory: [
+                home: [directoryEntry(remembered), directoryEntry(other)],
+                remembered: [],
+                other: []
+            ]
+        )
+        let store = InMemoryFileBrowserStore(state: .defaultValue)
+        let model = FileBrowserModel(fileSystem: client, store: store)
+
+        model.handle(.right)
+        model.handle(.left)
+        model.handle(.down)
+        model.handle(.right)
+
+        XCTAssertEqual(model.currentDirectory, other)
     }
 
     private func makeModel(
