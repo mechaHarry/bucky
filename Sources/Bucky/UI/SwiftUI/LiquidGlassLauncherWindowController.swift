@@ -171,8 +171,8 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             if event.isCommandComma {
                 return self.model.handle(command: .settings) ? nil : event
             }
-            if event.isToolsShortcut {
-                return self.model.handle(command: .toggleToolsMode) ? nil : event
+            if let mode = event.commandNumberMode {
+                return self.model.handle(command: .switchMode(mode)) ? nil : event
             }
             if event.isCommandP {
                 return self.model.handle(command: .togglePin) ? nil : event
@@ -289,7 +289,7 @@ private final class LiquidGlassWindow: NSWindow {
         if event.isCommandComma, commandHandler?(.settings) == true {
             return true
         }
-        if event.isToolsShortcut, commandHandler?(.toggleToolsMode) == true {
+        if let mode = event.commandNumberMode, commandHandler?(.switchMode(mode)) == true {
             return true
         }
         if event.isCommandP, commandHandler?(.togglePin) == true {

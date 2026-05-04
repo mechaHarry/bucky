@@ -10,7 +10,6 @@ enum LauncherCommand {
     case reindex
     case settings
     case switchMode(LauncherMode)
-    case toggleToolsMode
     case clearHistory
     case togglePin
     case space

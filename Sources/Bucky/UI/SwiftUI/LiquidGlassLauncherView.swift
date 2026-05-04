@@ -84,7 +84,7 @@ struct LiquidGlassLauncherView: View {
                 .font(.system(size: 28, weight: .semibold, design: .rounded))
                 .focused($isSearchFocused)
                 .onChange(of: model.query) {
-                    if model.mode == .tools {
+                    if model.mode != .applications {
                         model.queryDidChange()
                     } else {
                         withAnimation(resultUpdateAnimation) {
@@ -121,7 +121,7 @@ struct LiquidGlassLauncherView: View {
 
     private var headerControls: some View {
         HStack(spacing: 8) {
-            if model.mode == .tools {
+            if model.mode == .calculator {
                 Button {
                     _ = model.handle(command: .clearHistory)
                 } label: {
@@ -135,7 +135,7 @@ struct LiquidGlassLauncherView: View {
                 .glassEffectTransition(.materialize)
             }
 
-            toolsModeControl
+            calculatorModeControl
             pinControl
         }
         .animation(headerControlAnimation, value: model.mode)
@@ -143,28 +143,28 @@ struct LiquidGlassLauncherView: View {
     }
 
     @ViewBuilder
-    private var toolsModeControl: some View {
-        if model.mode == .tools {
+    private var calculatorModeControl: some View {
+        if model.mode == .calculator {
             Button {
-                _ = model.handle(command: .toggleToolsMode)
+                _ = model.handle(command: .switchMode(.applications))
             } label: {
                 Image(systemName: "wrench.and.screwdriver.fill")
                     .frame(width: 18, height: 18)
             }
             .launcherHeaderButtonStyle(LauncherHeaderButtonStylePolicy(isActive: true))
-            .help("Tools (Command+/)")
-            .glassEffectID(HeaderGlassEffectID.toolsMode, in: headerGlassNamespace)
+            .help("Applications (Command+1)")
+            .glassEffectID(HeaderGlassEffectID.calculatorMode, in: headerGlassNamespace)
             .glassEffectTransition(.matchedGeometry)
         } else {
             Button {
-                _ = model.handle(command: .toggleToolsMode)
+                _ = model.handle(command: .switchMode(.calculator))
             } label: {
                 Image(systemName: "wrench.and.screwdriver")
                     .frame(width: 18, height: 18)
             }
             .launcherHeaderButtonStyle(LauncherHeaderButtonStylePolicy(isActive: false))
-            .help("Tools (Command+/)")
-            .glassEffectID(HeaderGlassEffectID.toolsMode, in: headerGlassNamespace)
+            .help("Calculator (Command+2)")
+            .glassEffectID(HeaderGlassEffectID.calculatorMode, in: headerGlassNamespace)
             .glassEffectTransition(.matchedGeometry)
         }
     }
@@ -553,7 +553,7 @@ private enum RowGlassEffectID: Hashable, Sendable {
 @available(macOS 26.0, *)
 private enum HeaderGlassEffectID: Hashable, Sendable {
     case clearHistory
-    case toolsMode
+    case calculatorMode
     case pin
 }
 

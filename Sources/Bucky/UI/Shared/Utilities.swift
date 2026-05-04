@@ -186,9 +186,4 @@ extension NSEvent {
             && keyCode == UInt16(kVK_DownArrow)
     }
 
-    var isToolsShortcut: Bool {
-        let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
-        let isSlashKey = keyCode == UInt16(kVK_ANSI_Slash) || charactersIgnoringModifiers == "/"
-        return flags == .command && isSlashKey
-    }
 }

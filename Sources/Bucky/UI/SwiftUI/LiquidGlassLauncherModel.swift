@@ -68,7 +68,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     var canClearHistory: Bool {
-        mode == .tools && !calculationHistoryStore.calculations.isEmpty
+        mode == .calculator && !calculationHistoryStore.calculations.isEmpty
     }
 
     var emptyMessage: String? {
@@ -129,8 +129,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
             openSettingsAction?()
         case .switchMode(let mode):
             show(mode: mode)
-        case .toggleToolsMode:
-            return toggleToolsMode()
         case .clearHistory:
             clearHistory()
         case .togglePin:
@@ -399,7 +397,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         cancelPendingCalculationHistory()
         calculationHistoryStore.add(expression: expression, result: result)
 
-        if refreshResults, mode == .tools {
+        if refreshResults, mode == .calculator {
             applyToolsResults(scheduleHistory: false)
         }
     }
@@ -416,27 +414,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
         query = ""
         storeCurrentQuery()
         applyCurrentMode()
-    }
-
-    private func toggleToolsMode() -> Bool {
-        storeCurrentQuery()
-
-        switch mode {
-        case .applications:
-            mode = .tools
-        case .calculator, .dictionary, .files:
-            mode = .applications
-        }
-        query = storedQuery(for: mode)
-        selectedIndex = 0
-        applyCurrentMode()
-        requestSelectionScroll(anchor: .top)
-
-        if mode == .applications {
-            reindexAction?()
-        }
-
-        return true
     }
 
     private func storeCurrentQuery() {

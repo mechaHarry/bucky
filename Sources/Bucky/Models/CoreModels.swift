@@ -39,10 +39,6 @@ enum LauncherMode: Int, CaseIterable {
 
     static let ordered: [LauncherMode] = [.applications, .calculator, .dictionary, .files]
 
-    static var tools: LauncherMode {
-        .calculator
-    }
-
     init?(commandNumber: Int) {
         self.init(rawValue: commandNumber)
     }

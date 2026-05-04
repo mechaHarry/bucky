@@ -2,9 +2,9 @@ import XCTest
 @testable import Bucky
 
 final class ToolResultsSnapshotPolicyTests: XCTestCase {
-    func testBlankToolsQueryUpdatesImmediately() {
+    func testBlankCalculatorQueryUpdatesImmediately() {
         XCTAssertEqual(
-            ToolResultsSnapshotPolicy.update(for: .tools, query: "   "),
+            ToolResultsSnapshotPolicy.update(for: .calculator, query: "   "),
             .immediate
         )
     }
@@ -46,7 +46,7 @@ final class ToolResultsSnapshotPolicyTests: XCTestCase {
         )
     }
 
-    func testApplicationAndCalculationSnapshotsDoNotUseToolSnapshotAnimation() {
+    func testApplicationAndCalculationSnapshotsDoNotUseDictionarySnapshotAnimation() {
         let calculationItems = [
             ToolItem(
                 title: "4",
@@ -61,7 +61,7 @@ final class ToolResultsSnapshotPolicyTests: XCTestCase {
             .none
         )
         XCTAssertEqual(
-            ToolResultsSnapshotPolicy.animation(for: .tools, items: calculationItems),
+            ToolResultsSnapshotPolicy.animation(for: .calculator, items: calculationItems),
             .none
         )
     }
