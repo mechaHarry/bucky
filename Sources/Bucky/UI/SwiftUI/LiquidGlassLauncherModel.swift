@@ -53,7 +53,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         switch mode {
         case .applications:
             return "Search for Apps"
-        case .tools:
+        case .calculator, .dictionary, .files:
             return "Calculate Numbers and Define Words"
         }
     }
@@ -62,7 +62,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         switch mode {
         case .applications:
             return filteredItems.count
-        case .tools:
+        case .calculator, .dictionary, .files:
             return toolItems.count
         }
     }
@@ -80,7 +80,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
                 }
                 return inputIsBlank ? "No launchable items found" : "No matches"
             }
-        case .tools:
+        case .calculator, .dictionary, .files:
             if toolItems.isEmpty {
                 return inputIsBlank ? "No calculation history" : "No tool results"
             }
@@ -127,12 +127,16 @@ final class LiquidGlassLauncherModel: ObservableObject {
             reindex()
         case .settings:
             openSettingsAction?()
+        case .switchMode(let mode):
+            show(mode: mode)
         case .toggleToolsMode:
             return toggleToolsMode()
         case .clearHistory:
             clearHistory()
         case .togglePin:
             isPinned.toggle()
+        case .left, .right, .space, .shiftSpace, .beginSpaceHold, .endSpaceHold, .alphaNumeric:
+            return false
         }
 
         return true
@@ -205,7 +209,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
                 rebuildVisibleItems()
             }
             applyFilter(preservePreviousOnEmpty: preservePreviousOnEmpty)
-        case .tools:
+        case .calculator, .dictionary, .files:
             calculationHistoryStore.load()
             applyToolsResults()
         }
@@ -420,7 +424,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         switch mode {
         case .applications:
             mode = .tools
-        case .tools:
+        case .calculator, .dictionary, .files:
             mode = .applications
         }
         query = storedQuery(for: mode)
@@ -439,7 +443,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         switch mode {
         case .applications:
             applicationQuery = query
-        case .tools:
+        case .calculator, .dictionary, .files:
             toolsQuery = query
         }
     }
@@ -448,7 +452,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         switch mode {
         case .applications:
             return applicationQuery
-        case .tools:
+        case .calculator, .dictionary, .files:
             return toolsQuery
         }
     }
@@ -493,7 +497,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
                 hideAction?()
             }
             launch(item)
-        case .tools:
+        case .calculator, .dictionary, .files:
             guard selectedIndex >= 0, selectedIndex < toolItems.count else { return }
             activate(toolItems[selectedIndex])
         }

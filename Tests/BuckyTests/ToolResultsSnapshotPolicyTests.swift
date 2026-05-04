@@ -9,16 +9,16 @@ final class ToolResultsSnapshotPolicyTests: XCTestCase {
         )
     }
 
-    func testArithmeticToolsQueryUpdatesImmediately() {
+    func testCalculatorQueriesUpdateImmediately() {
         XCTAssertEqual(
-            ToolResultsSnapshotPolicy.update(for: .tools, query: "2 + 2"),
+            ToolResultsSnapshotPolicy.update(for: .calculator, query: "2 + 2"),
             .immediate
         )
     }
 
-    func testDictionaryToolsQueryUpdatesImmediately() {
+    func testDictionaryQueriesUpdateImmediately() {
         XCTAssertEqual(
-            ToolResultsSnapshotPolicy.update(for: .tools, query: "hello"),
+            ToolResultsSnapshotPolicy.update(for: .dictionary, query: "hello"),
             .immediate
         )
     }
@@ -41,7 +41,7 @@ final class ToolResultsSnapshotPolicyTests: XCTestCase {
         ]
 
         XCTAssertEqual(
-            ToolResultsSnapshotPolicy.animation(for: .tools, items: items),
+            ToolResultsSnapshotPolicy.animation(for: .dictionary, items: items),
             .subtle
         )
     }

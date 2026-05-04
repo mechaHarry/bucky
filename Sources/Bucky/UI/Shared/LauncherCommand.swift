@@ -1,13 +1,21 @@
 enum LauncherCommand {
     case up
     case down
+    case left
+    case right
     case top
     case bottom
     case open
     case close
     case reindex
     case settings
+    case switchMode(LauncherMode)
     case toggleToolsMode
     case clearHistory
     case togglePin
+    case space
+    case shiftSpace
+    case beginSpaceHold
+    case endSpaceHold
+    case alphaNumeric(Character)
 }

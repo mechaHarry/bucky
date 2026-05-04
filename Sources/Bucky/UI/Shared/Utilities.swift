@@ -136,6 +136,27 @@ extension String {
     }
 }
 extension NSEvent {
+    var commandNumberMode: LauncherMode? {
+        let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard flags == .command,
+              let charactersIgnoringModifiers,
+              let number = Int(charactersIgnoringModifiers) else {
+            return nil
+        }
+        return LauncherMode(commandNumber: number)
+    }
+
+    var firstAlphaNumericCharacter: Character? {
+        let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard flags.isEmpty,
+              let charactersIgnoringModifiers,
+              let character = charactersIgnoringModifiers.first,
+              character.isLetter || character.isNumber else {
+            return nil
+        }
+        return character
+    }
+
     var isCommandR: Bool {
         let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
         return flags == .command && charactersIgnoringModifiers?.lowercased() == "r"

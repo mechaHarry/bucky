@@ -225,7 +225,7 @@ struct LiquidGlassLauncherView: View {
                             applicationRow(item: item, index: index)
                         }
                     }
-                case .tools:
+                case .calculator, .dictionary, .files:
                     resultScrollView {
                         ForEach(Array(model.toolItems.enumerated()), id: \.element) { index, item in
                             toolRow(item: item, index: index)
@@ -439,7 +439,7 @@ struct LiquidGlassLauncherView: View {
         case .applications:
             guard index >= 0, index < model.filteredItems.count else { return nil }
             return .application(model.filteredItems[index].url)
-        case .tools:
+        case .calculator, .dictionary, .files:
             guard index >= 0, index < model.toolItems.count else { return nil }
             return .tool(model.toolItems[index])
         }
