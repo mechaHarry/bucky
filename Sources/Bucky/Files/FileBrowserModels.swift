@@ -44,6 +44,20 @@ enum FileBrowserSort: String, Codable, CaseIterable, Hashable {
     case size
 }
 
+struct FileBrowserPersistedState: Codable, Equatable {
+    var pinnedDirectories: [URL]
+    var lastDirectory: URL?
+    var sort: FileBrowserSort
+    var traversalChain: [URL]
+
+    static let defaultValue = FileBrowserPersistedState(
+        pinnedDirectories: [],
+        lastDirectory: nil,
+        sort: .name,
+        traversalChain: []
+    )
+}
+
 struct FileBrowserDirectorySnapshot: Equatable {
     let directory: URL
     let entries: [FileBrowserEntry]
