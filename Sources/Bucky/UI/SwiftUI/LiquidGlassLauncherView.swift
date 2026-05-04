@@ -12,7 +12,6 @@ struct LiquidGlassLauncherView: View {
     @State private var iconPreloadTask: Task<Void, Never>?
     @State private var scrollTargetID: ResultRowID?
     @State private var scrollTargetAnchor: UnitPoint?
-    @State private var hoveredRowID: ResultRowID?
 
     private var resultUpdateAnimation: Animation {
         model.animationTiming.animation(duration: 0.22)
@@ -270,11 +269,8 @@ struct LiquidGlassLauncherView: View {
     private func applicationRow(item: LaunchItem, index: Int) -> some View {
         let rowID = ResultRowID.application(item.url)
         let isSelected = index == model.selectedIndex
-        let isHovered = hoveredRowID == rowID
         let actionVisibility = LauncherRowActionVisibilityPolicy(
-            hasAction: true,
-            isSelected: isSelected,
-            isHovered: isHovered
+            hasAction: true
         )
 
         return HStack(spacing: 14) {
@@ -312,30 +308,23 @@ struct LiquidGlassLauncherView: View {
             .opacity(actionVisibility.isVisible ? 1 : 0)
             .allowsHitTesting(actionVisibility.allowsHitTesting)
             .launcherActionButtonRim(isVisible: actionVisibility.isVisible)
-            .animation(rowSelectionAnimation, value: actionVisibility)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
-            rowPanel(rowID: rowID, isSelected: isSelected, isHovered: isHovered)
+            rowPanel(rowID: rowID, isSelected: isSelected)
         }
         .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .id(rowID)
-        .onHover { isHovering in
-            updateHoveredRow(rowID, isHovering: isHovering)
-        }
     }
 
     private func toolRow(item: ToolItem, index: Int) -> some View {
         let rowID = ResultRowID.tool(item)
         let isSelected = index == model.selectedIndex
-        let isHovered = hoveredRowID == rowID
         let actionConfiguration = toolActionConfiguration(for: item)
         let actionVisibility = LauncherRowActionVisibilityPolicy(
-            hasAction: actionConfiguration != nil,
-            isSelected: isSelected,
-            isHovered: isHovered
+            hasAction: actionConfiguration != nil
         )
 
         return HStack(spacing: 14) {
@@ -378,30 +367,26 @@ struct LiquidGlassLauncherView: View {
                 .opacity(actionVisibility.isVisible ? 1 : 0)
                 .allowsHitTesting(actionVisibility.allowsHitTesting)
                 .launcherActionButtonRim(isVisible: actionVisibility.isVisible)
-                .animation(rowSelectionAnimation, value: actionVisibility)
             }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
-            rowPanel(rowID: rowID, isSelected: isSelected, isHovered: isHovered)
+            rowPanel(rowID: rowID, isSelected: isSelected)
         }
         .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .id(rowID)
-        .onHover { isHovering in
-            updateHoveredRow(rowID, isHovering: isHovering)
-        }
     }
 
     @ViewBuilder
-    private func rowPanel(rowID: ResultRowID, isSelected: Bool, isHovered: Bool) -> some View {
+    private func rowPanel(rowID: ResultRowID, isSelected: Bool) -> some View {
         GlassEffectContainer(spacing: 0) {
             ZStack {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .fill(Color.clear)
                     .glassEffect(
-                        .regular.tint(LauncherVisualStyle.rowFill.opacity(isHovered ? 0.060 : 0.035)).interactive(false),
+                        .regular.tint(LauncherVisualStyle.rowFill.opacity(0.035)).interactive(false),
                         in: RoundedRectangle(cornerRadius: 18, style: .continuous)
                     )
                     .glassEffectID(rowID.glassEffectID, in: rowGlassNamespace)
@@ -425,22 +410,11 @@ struct LiquidGlassLauncherView: View {
             .overlay {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .strokeBorder(
-                        isSelected ? LauncherVisualStyle.selectionRim.opacity(0.34) : LauncherVisualStyle.surfaceRim.opacity(isHovered ? 0.28 : 0.18),
+                        isSelected ? LauncherVisualStyle.selectionRim.opacity(0.34) : LauncherVisualStyle.surfaceRim.opacity(0.18),
                         lineWidth: isSelected ? 1.15 : 1
                     )
             }
             .animation(rowSelectionAnimation, value: isSelected)
-            .animation(rowSelectionAnimation, value: isHovered)
-        }
-    }
-
-    private func updateHoveredRow(_ rowID: ResultRowID, isHovering: Bool) {
-        withAnimation(rowSelectionAnimation) {
-            if isHovering {
-                hoveredRowID = rowID
-            } else if hoveredRowID == rowID {
-                hoveredRowID = nil
-            }
         }
     }
 

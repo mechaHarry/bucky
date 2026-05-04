@@ -2,39 +2,18 @@ import XCTest
 @testable import Bucky
 
 final class LauncherRowActionVisibilityPolicyTests: XCTestCase {
-    func testActionIsHiddenWhenRowIsNeitherSelectedNorHovered() {
+    func testActionableRowsKeepActionsVisibleWithoutPointerState() {
         let policy = LauncherRowActionVisibilityPolicy(
-            hasAction: true,
-            isSelected: false,
-            isHovered: false
+            hasAction: true
         )
 
-        XCTAssertFalse(policy.isVisible)
-        XCTAssertFalse(policy.allowsHitTesting)
+        XCTAssertTrue(policy.isVisible)
+        XCTAssertTrue(policy.allowsHitTesting)
     }
 
-    func testActionIsVisibleForSelectedOrHoveredActionableRows() {
-        XCTAssertTrue(
-            LauncherRowActionVisibilityPolicy(
-                hasAction: true,
-                isSelected: true,
-                isHovered: false
-            ).isVisible
-        )
-        XCTAssertTrue(
-            LauncherRowActionVisibilityPolicy(
-                hasAction: true,
-                isSelected: false,
-                isHovered: true
-            ).isVisible
-        )
-    }
-
-    func testRowsWithoutSecondaryActionStayHiddenEvenWhenSelectedOrHovered() {
+    func testRowsWithoutSecondaryActionStayHidden() {
         let policy = LauncherRowActionVisibilityPolicy(
-            hasAction: false,
-            isSelected: true,
-            isHovered: true
+            hasAction: false
         )
 
         XCTAssertFalse(policy.isVisible)
