@@ -83,6 +83,7 @@ final class FileBrowserModel: ObservableObject {
         recentTraversalChain.insert(currentDirectory, at: 0)
         currentDirectory = parent
         selectedIndex = 0
+        selectionAnchor = nil
         reloadEntries()
     }
 
@@ -93,6 +94,7 @@ final class FileBrowserModel: ObservableObject {
         }
         currentDirectory = entry.url
         selectedIndex = 0
+        selectionAnchor = nil
         reloadEntries()
     }
 
@@ -108,7 +110,7 @@ final class FileBrowserModel: ObservableObject {
 
     private func rangeSelect() {
         guard !entries.isEmpty else { return }
-        let anchor = selectionAnchor ?? selectedIndex
+        let anchor = max(0, min(entries.count - 1, selectionAnchor ?? selectedIndex))
         let bounds = min(anchor, selectedIndex)...max(anchor, selectedIndex)
         let urls = bounds.map { entries[$0].url }
         selectedURLs = selectedURLs + urls.filter { !selectedURLs.contains($0) }
@@ -141,7 +143,7 @@ final class FileBrowserModel: ObservableObject {
 
     private func pruneStaleSelections() {
         let validURLs = Set(entries.map(\.url))
-        selectedURLs.removeAll { !validURLs.contains($0) && $0.deletingLastPathComponent() == currentDirectory }
+        selectedURLs.removeAll { !validURLs.contains($0) }
     }
 
     private func persist() {
