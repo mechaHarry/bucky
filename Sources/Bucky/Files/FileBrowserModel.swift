@@ -10,6 +10,8 @@ final class FileBrowserModel: ObservableObject {
     @Published private(set) var focusState: FileBrowserFocusState = .browse
     @Published private(set) var wobbleReason: FileBrowserWobbleReason?
     @Published private(set) var sort: FileBrowserSort
+    @Published private(set) var pinnedDirectories: [URL] = []
+    @Published private(set) var focusedActionIndex = 0
 
     private let fileSystem: FileSystemClientProtocol
     private let store: FileBrowserPersisting
@@ -21,10 +23,28 @@ final class FileBrowserModel: ObservableObject {
         return entries[selectedIndex]
     }
 
+    var activeSelectionURLs: [URL] {
+        if selectedURLs.isEmpty, let url = selectedEntry?.url {
+            return [url]
+        }
+        return selectedURLs
+    }
+
+    var availableActions: [FileBrowserAction] {
+        activeSelectionURLs.count > 1
+            ? [.batchRename, .copyPaths, .copy, .move, .moveToTrash]
+            : [.open, .rename, .revealInFinder, .copyPath, .copy, .move, .moveToTrash]
+    }
+
+    private var focusedActions: [FileBrowserAction] {
+        availableActions.filter { $0 != .open }
+    }
+
     init(fileSystem: FileSystemClientProtocol = FileSystemClient(), store: FileBrowserPersisting = FileBrowserStore()) {
         self.fileSystem = fileSystem
         self.store = store
         self.sort = store.state.sort
+        self.pinnedDirectories = store.state.pinnedDirectories
         self.recentTraversalChain = store.state.traversalChain
         self.currentDirectory = store.state.lastDirectory ?? fileSystem.homeDirectory()
         reloadEntries()
@@ -33,9 +53,17 @@ final class FileBrowserModel: ObservableObject {
     func handle(_ command: LauncherCommand) {
         switch command {
         case .up:
-            moveSelection(by: -1)
+            if focusState == .previewActions {
+                moveFocusedAction(by: -1)
+            } else {
+                moveSelection(by: -1)
+            }
         case .down:
-            moveSelection(by: 1)
+            if focusState == .previewActions {
+                moveFocusedAction(by: 1)
+            } else {
+                moveSelection(by: 1)
+            }
         case .left:
             moveToParent()
         case .right:
@@ -51,12 +79,72 @@ final class FileBrowserModel: ObservableObject {
         case .endSpaceHold:
             endQuickLook()
         case .open:
-            focusState = .previewActions
+            if focusState == .previewActions {
+                performFocusedAction()
+            } else if case let .transferPending(transfer) = focusState {
+                focusState = .confirming(.transfer(transfer, destination: currentDirectory))
+            } else {
+                focusedActionIndex = 0
+                focusState = .previewActions
+            }
         case .close:
             closeFocusedState()
         default:
             break
         }
+    }
+
+    func startTransfer(_ kind: FileBrowserTransferKind) {
+        let urls = activeSelectionURLs
+        guard !urls.isEmpty else { return }
+        switch kind {
+        case .copy:
+            focusState = .transferPending(.copy(urls))
+        case .move:
+            focusState = .transferPending(.move(urls))
+        }
+    }
+
+    func requestTrashConfirmation() {
+        let urls = activeSelectionURLs
+        guard !urls.isEmpty else { return }
+        focusState = .confirming(.trash(urls, step: 1))
+    }
+
+    func confirmTrashStep() {
+        guard case let .confirming(.trash(urls, step)) = focusState else { return }
+        focusState = .confirming(.trash(urls, step: min(step + 1, 2)))
+    }
+
+    func togglePin(_ url: URL) {
+        if pinnedDirectories.contains(url) {
+            pinnedDirectories.removeAll { $0 == url }
+        } else {
+            pinnedDirectories.append(url)
+        }
+        persist()
+    }
+
+    func performFocusedAction() {
+        guard focusState == .previewActions else { return }
+        let actions = focusedActions
+        guard !actions.isEmpty else { return }
+        let action = actions[max(0, min(actions.count - 1, focusedActionIndex))]
+        switch action {
+        case .copy:
+            startTransfer(.copy)
+        case .move:
+            startTransfer(.move)
+        case .moveToTrash:
+            requestTrashConfirmation()
+        default:
+            focusState = .previewActions
+        }
+    }
+
+    func moveFocusedAction(by delta: Int) {
+        guard focusState == .previewActions, !focusedActions.isEmpty else { return }
+        focusedActionIndex = max(0, min(focusedActions.count - 1, focusedActionIndex + delta))
     }
 
     private func reloadEntries() {
@@ -81,13 +169,23 @@ final class FileBrowserModel: ObservableObject {
             return
         }
         recentTraversalChain.insert(currentDirectory, at: 0)
-        currentDirectory = parent
+        currentDirectory = URL(fileURLWithPath: parent.path)
         selectedIndex = 0
         selectionAnchor = nil
         reloadEntries()
     }
 
     private func enterSelectedDirectoryOrWobble() {
+        if let remembered = recentTraversalChain.first,
+           entries.contains(where: { $0.url.path == remembered.path && $0.kind == .directory }) {
+            recentTraversalChain.removeFirst()
+            currentDirectory = remembered
+            selectedIndex = 0
+            selectionAnchor = nil
+            reloadEntries()
+            return
+        }
+
         guard let entry = selectedEntry, entry.kind == .directory else {
             wobbleReason = .cannotEnterFile
             return
@@ -138,7 +236,12 @@ final class FileBrowserModel: ObservableObject {
     }
 
     private func closeFocusedState() {
-        focusState = .browse
+        switch focusState {
+        case .transferPending:
+            focusState = .previewActions
+        default:
+            focusState = .browse
+        }
     }
 
     private func pruneStaleSelections() {
@@ -148,7 +251,7 @@ final class FileBrowserModel: ObservableObject {
 
     private func persist() {
         store.update(FileBrowserPersistedState(
-            pinnedDirectories: store.state.pinnedDirectories,
+            pinnedDirectories: pinnedDirectories,
             lastDirectory: currentDirectory,
             sort: sort,
             traversalChain: recentTraversalChain

@@ -99,6 +99,11 @@ enum FileBrowserAction: String, CaseIterable, Equatable {
     case moveToTrash
 }
 
+enum FileBrowserTransferKind {
+    case copy
+    case move
+}
+
 enum FileBrowserTransfer: Equatable {
     case copy([URL])
     case move([URL])
