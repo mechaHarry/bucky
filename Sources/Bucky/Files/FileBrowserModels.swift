@@ -62,3 +62,55 @@ struct FileBrowserDirectorySnapshot: Equatable {
     let directory: URL
     let entries: [FileBrowserEntry]
 }
+
+protocol FileSystemClientProtocol {
+    func homeDirectory() -> URL
+    func parentURL(for url: URL) -> URL?
+    func entries(in directory: URL, sort: FileBrowserSort) throws -> [FileBrowserEntry]
+}
+
+extension FileSystemClient: FileSystemClientProtocol {}
+
+protocol FileBrowserPersisting: AnyObject {
+    var state: FileBrowserPersistedState { get }
+    func update(_ nextState: FileBrowserPersistedState)
+}
+
+extension FileBrowserStore: FileBrowserPersisting {}
+
+enum FileBrowserFocusState: Equatable {
+    case browse
+    case previewActions
+    case renaming
+    case transferPending(FileBrowserTransfer)
+    case confirming(FileBrowserConfirmation)
+    case quickLook(URL)
+}
+
+enum FileBrowserAction: String, CaseIterable, Equatable {
+    case open
+    case rename
+    case batchRename
+    case revealInFinder
+    case copyPath
+    case copyPaths
+    case copy
+    case move
+    case moveToTrash
+}
+
+enum FileBrowserTransfer: Equatable {
+    case copy([URL])
+    case move([URL])
+}
+
+enum FileBrowserConfirmation: Equatable {
+    case transfer(FileBrowserTransfer, destination: URL)
+    case trash([URL], step: Int)
+    case conflict(source: URL, destination: URL)
+}
+
+enum FileBrowserWobbleReason: Equatable {
+    case cannotEnterFile
+    case noParentDirectory
+}
