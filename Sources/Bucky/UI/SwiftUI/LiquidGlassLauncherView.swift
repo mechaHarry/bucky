@@ -5,14 +5,12 @@ import SwiftUI
 struct LiquidGlassLauncherView: View {
     @ObservedObject var model: LiquidGlassLauncherModel
     @FocusState private var isSearchFocused: Bool
-    @Namespace private var rowGlassNamespace
     @Namespace private var selectionGlassNamespace
     @Namespace private var headerGlassNamespace
     @State private var handledSelectionScrollRequestID = 0
     @State private var iconPreloadTask: Task<Void, Never>?
     @State private var scrollTargetID: ResultRowID?
     @State private var scrollTargetAnchor: UnitPoint?
-    @State private var hoveredRowID: ResultRowID?
 
     private var resultUpdateAnimation: Animation {
         model.animationTiming.animation(duration: 0.22)
@@ -24,6 +22,10 @@ struct LiquidGlassLauncherView: View {
 
     private var rowSelectionAnimation: Animation {
         model.animationTiming.animation(duration: 0.18)
+    }
+
+    private var toolSnapshotUpdateAnimation: Animation {
+        model.animationTiming.animation(duration: 0.14)
     }
 
     private var headerControlAnimation: Animation {
@@ -82,8 +84,12 @@ struct LiquidGlassLauncherView: View {
                 .font(.system(size: 28, weight: .semibold, design: .rounded))
                 .focused($isSearchFocused)
                 .onChange(of: model.query) {
-                    withAnimation(resultUpdateAnimation) {
+                    if model.mode == .tools {
                         model.queryDidChange()
+                    } else {
+                        withAnimation(resultUpdateAnimation) {
+                            model.queryDidChange()
+                        }
                     }
                 }
                 .onSubmit {
@@ -223,8 +229,13 @@ struct LiquidGlassLauncherView: View {
                     resultScrollView {
                         ForEach(Array(model.toolItems.enumerated()), id: \.element) { index, item in
                             toolRow(item: item, index: index)
+                                .transition(toolResultTransition)
                         }
                     }
+                    .animation(
+                        toolSnapshotAnimation(for: model.toolItems),
+                        value: toolResultsSnapshotIdentity
+                    )
                 }
             }
         }
@@ -250,7 +261,6 @@ struct LiquidGlassLauncherView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 10)
             .frame(maxWidth: .infinity)
-            .animation(resultUpdateAnimation, value: resultListIdentity)
         }
         .scrollPosition(id: $scrollTargetID, anchor: scrollTargetAnchor)
         .scrollIndicators(.hidden)
@@ -270,12 +280,6 @@ struct LiquidGlassLauncherView: View {
     private func applicationRow(item: LaunchItem, index: Int) -> some View {
         let rowID = ResultRowID.application(item.url)
         let isSelected = index == model.selectedIndex
-        let isHovered = hoveredRowID == rowID
-        let actionVisibility = LauncherRowActionVisibilityPolicy(
-            hasAction: true,
-            isSelected: isSelected,
-            isHovered: isHovered
-        )
 
         return HStack(spacing: 14) {
             HStack(spacing: 14) {
@@ -309,34 +313,22 @@ struct LiquidGlassLauncherView: View {
             .buttonStyle(.glass)
             .foregroundStyle(.secondary)
             .help("Hide from results")
-            .opacity(actionVisibility.isVisible ? 1 : 0)
-            .allowsHitTesting(actionVisibility.allowsHitTesting)
-            .launcherActionButtonRim(isVisible: actionVisibility.isVisible)
-            .animation(rowSelectionAnimation, value: actionVisibility)
+            .launcherActionButtonRim()
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
-            rowPanel(rowID: rowID, isSelected: isSelected, isHovered: isHovered)
+            rowPanel(isSelected: isSelected)
         }
         .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .id(rowID)
-        .onHover { isHovering in
-            updateHoveredRow(rowID, isHovering: isHovering)
-        }
     }
 
     private func toolRow(item: ToolItem, index: Int) -> some View {
         let rowID = ResultRowID.tool(item)
         let isSelected = index == model.selectedIndex
-        let isHovered = hoveredRowID == rowID
         let actionConfiguration = toolActionConfiguration(for: item)
-        let actionVisibility = LauncherRowActionVisibilityPolicy(
-            hasAction: actionConfiguration != nil,
-            isSelected: isSelected,
-            isHovered: isHovered
-        )
 
         return HStack(spacing: 14) {
             HStack(spacing: 14) {
@@ -375,37 +367,29 @@ struct LiquidGlassLauncherView: View {
                 .buttonStyle(.glass)
                 .foregroundStyle(.secondary)
                 .help(actionConfiguration.help)
-                .opacity(actionVisibility.isVisible ? 1 : 0)
-                .allowsHitTesting(actionVisibility.allowsHitTesting)
-                .launcherActionButtonRim(isVisible: actionVisibility.isVisible)
-                .animation(rowSelectionAnimation, value: actionVisibility)
+                .launcherActionButtonRim()
             }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
-            rowPanel(rowID: rowID, isSelected: isSelected, isHovered: isHovered)
+            rowPanel(isSelected: isSelected)
         }
         .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .id(rowID)
-        .onHover { isHovering in
-            updateHoveredRow(rowID, isHovering: isHovering)
-        }
     }
 
     @ViewBuilder
-    private func rowPanel(rowID: ResultRowID, isSelected: Bool, isHovered: Bool) -> some View {
+    private func rowPanel(isSelected: Bool) -> some View {
         GlassEffectContainer(spacing: 0) {
             ZStack {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .fill(Color.clear)
                     .glassEffect(
-                        .regular.tint(LauncherVisualStyle.rowFill.opacity(isHovered ? 0.060 : 0.035)).interactive(false),
+                        .regular.tint(LauncherVisualStyle.rowFill.opacity(0.035)).interactive(false),
                         in: RoundedRectangle(cornerRadius: 18, style: .continuous)
                     )
-                    .glassEffectID(rowID.glassEffectID, in: rowGlassNamespace)
-                    .glassEffectTransition(.matchedGeometry)
 
                 if isSelected {
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -425,33 +409,11 @@ struct LiquidGlassLauncherView: View {
             .overlay {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .strokeBorder(
-                        isSelected ? LauncherVisualStyle.selectionRim.opacity(0.34) : LauncherVisualStyle.surfaceRim.opacity(isHovered ? 0.28 : 0.18),
+                        isSelected ? LauncherVisualStyle.selectionRim.opacity(0.34) : LauncherVisualStyle.surfaceRim.opacity(0.18),
                         lineWidth: isSelected ? 1.15 : 1
                     )
             }
             .animation(rowSelectionAnimation, value: isSelected)
-            .animation(rowSelectionAnimation, value: isHovered)
-        }
-    }
-
-    private func updateHoveredRow(_ rowID: ResultRowID, isHovering: Bool) {
-        withAnimation(rowSelectionAnimation) {
-            if isHovering {
-                hoveredRowID = rowID
-            } else if hoveredRowID == rowID {
-                hoveredRowID = nil
-            }
-        }
-    }
-
-    private var resultListIdentity: String {
-        switch model.mode {
-        case .applications:
-            let firstPath = model.filteredItems.first?.url.path ?? "empty"
-            return "apps|\(model.query)|\(model.filteredItems.count)|\(firstPath)"
-        case .tools:
-            let firstItem = model.toolItems.first
-            return "tools|\(model.query)|\(model.toolItems.count)|\(firstItem?.title ?? "empty")|\(firstItem?.subtitle ?? "")"
         }
     }
 
@@ -480,6 +442,26 @@ struct LiquidGlassLauncherView: View {
         case .tools:
             guard index >= 0, index < model.toolItems.count else { return nil }
             return .tool(model.toolItems[index])
+        }
+    }
+
+    private var toolResultTransition: AnyTransition {
+        .opacity.combined(with: .move(edge: .top))
+    }
+
+    private var toolResultsSnapshotIdentity: String {
+        model.toolItems.map { item in
+            "\(item.kind)|\(item.title)|\(item.subtitle)|\(item.copyText ?? "")"
+        }
+        .joined(separator: "\u{1F}")
+    }
+
+    private func toolSnapshotAnimation(for items: [ToolItem]) -> Animation? {
+        switch ToolResultsSnapshotPolicy.animation(for: model.mode, items: items) {
+        case .none:
+            return nil
+        case .subtle:
+            return toolSnapshotUpdateAnimation
         }
     }
 
@@ -561,26 +543,10 @@ struct LiquidGlassLauncherView: View {
 private enum ResultRowID: Hashable {
     case application(URL)
     case tool(ToolItem)
-
-    var glassEffectID: RowGlassEffectID {
-        switch self {
-        case .application(let url):
-            return .application(path: url.path)
-        case .tool(let item):
-            return .tool(
-                kind: item.kind.glassEffectID,
-                title: item.title,
-                subtitle: item.subtitle,
-                copyText: item.copyText ?? ""
-            )
-        }
-    }
 }
 
 @available(macOS 26.0, *)
 private enum RowGlassEffectID: Hashable, Sendable {
-    case application(path: String)
-    case tool(kind: String, title: String, subtitle: String, copyText: String)
     case selection
 }
 
@@ -637,26 +603,10 @@ private extension View {
         }
     }
 
-    func launcherActionButtonRim(isVisible: Bool) -> some View {
+    func launcherActionButtonRim() -> some View {
         self.overlay {
             Circle()
-                .strokeBorder(LauncherVisualStyle.actionRim.opacity(isVisible ? 0.34 : 0), lineWidth: 1)
-        }
-    }
-}
-
-@available(macOS 26.0, *)
-private extension ToolItem.Kind {
-    var glassEffectID: String {
-        switch self {
-        case .calculation:
-            return "calculation"
-        case .calculationHistory:
-            return "calculationHistory"
-        case .dictionary:
-            return "dictionary"
-        case .message:
-            return "message"
+                .strokeBorder(LauncherVisualStyle.actionRim.opacity(0.34), lineWidth: 1)
         }
     }
 }
