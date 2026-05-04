@@ -24,6 +24,10 @@ struct LiquidGlassLauncherView: View {
         model.animationTiming.animation(duration: 0.18)
     }
 
+    private var toolSnapshotUpdateAnimation: Animation {
+        model.animationTiming.animation(duration: 0.14)
+    }
+
     private var headerControlAnimation: Animation {
         model.animationTiming.animation(duration: 0.18)
     }
@@ -225,8 +229,13 @@ struct LiquidGlassLauncherView: View {
                     resultScrollView {
                         ForEach(Array(model.toolItems.enumerated()), id: \.element) { index, item in
                             toolRow(item: item, index: index)
+                                .transition(toolResultTransition)
                         }
                     }
+                    .animation(
+                        toolSnapshotAnimation(for: model.toolItems),
+                        value: toolResultsSnapshotIdentity
+                    )
                 }
             }
         }
@@ -433,6 +442,26 @@ struct LiquidGlassLauncherView: View {
         case .tools:
             guard index >= 0, index < model.toolItems.count else { return nil }
             return .tool(model.toolItems[index])
+        }
+    }
+
+    private var toolResultTransition: AnyTransition {
+        .opacity.combined(with: .move(edge: .top))
+    }
+
+    private var toolResultsSnapshotIdentity: String {
+        model.toolItems.map { item in
+            "\(item.kind)|\(item.title)|\(item.subtitle)|\(item.copyText ?? "")"
+        }
+        .joined(separator: "\u{1F}")
+    }
+
+    private func toolSnapshotAnimation(for items: [ToolItem]) -> Animation? {
+        switch ToolResultsSnapshotPolicy.animation(for: model.mode, items: items) {
+        case .none:
+            return nil
+        case .subtle:
+            return toolSnapshotUpdateAnimation
         }
     }
 

@@ -29,4 +29,40 @@ final class ToolResultsSnapshotPolicyTests: XCTestCase {
             .immediate
         )
     }
+
+    func testDictionaryToolSnapshotsUseSubtleAnimation() {
+        let items = [
+            ToolItem(
+                title: "hello",
+                subtitle: "A greeting",
+                copyText: nil,
+                kind: .dictionary
+            )
+        ]
+
+        XCTAssertEqual(
+            ToolResultsSnapshotPolicy.animation(for: .tools, items: items),
+            .subtle
+        )
+    }
+
+    func testApplicationAndCalculationSnapshotsDoNotUseToolSnapshotAnimation() {
+        let calculationItems = [
+            ToolItem(
+                title: "4",
+                subtitle: "2 + 2 =",
+                copyText: "4",
+                kind: .calculation
+            )
+        ]
+
+        XCTAssertEqual(
+            ToolResultsSnapshotPolicy.animation(for: .applications, items: calculationItems),
+            .none
+        )
+        XCTAssertEqual(
+            ToolResultsSnapshotPolicy.animation(for: .tools, items: calculationItems),
+            .none
+        )
+    }
 }
