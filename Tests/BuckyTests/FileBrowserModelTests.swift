@@ -116,6 +116,17 @@ final class FileBrowserModelTests: XCTestCase {
         XCTAssertEqual(model.focusState, .previewActions)
     }
 
+    func testMoveTransferEscapeCancelsBackToActions() {
+        let model = makeModel(entries: entries(["one.txt"]))
+
+        model.handle(.space)
+        model.startTransfer(.move)
+        XCTAssertEqual(model.focusState, .transferPending(.move(model.selectedURLs)))
+
+        model.handle(.close)
+        XCTAssertEqual(model.focusState, .previewActions)
+    }
+
     func testReturnDuringTransferAsksForDestinationConfirmation() {
         let model = makeModel(entries: entries(["one.txt"]))
 
@@ -135,15 +146,26 @@ final class FileBrowserModelTests: XCTestCase {
         XCTAssertEqual(model.focusState, .confirming(.trash(model.selectedURLs, step: 1)))
         model.confirmTrashStep()
         XCTAssertEqual(model.focusState, .confirming(.trash(model.selectedURLs, step: 2)))
+        model.confirmTrashStep()
+        XCTAssertEqual(model.focusState, .confirming(.trash(model.selectedURLs, step: 2)))
     }
 
     func testPinsPersist() {
-        let model = makeModel()
+        let home = URL(fileURLWithPath: "/Users/test")
+        let client = StubFileSystemClient(home: home, entriesByDirectory: [home: []])
+        let store = InMemoryFileBrowserStore(state: .defaultValue)
+        let model = FileBrowserModel(fileSystem: client, store: store)
         let pin = URL(fileURLWithPath: "/Users/test/Projects")
 
         model.togglePin(pin)
 
         XCTAssertEqual(model.pinnedDirectories, [pin])
+        XCTAssertEqual(store.state.pinnedDirectories, [pin])
+
+        model.togglePin(pin)
+
+        XCTAssertEqual(model.pinnedDirectories, [])
+        XCTAssertEqual(store.state.pinnedDirectories, [])
     }
 
     func testRightRestoresRememberedTraversalChainAfterMovingLeft() {
