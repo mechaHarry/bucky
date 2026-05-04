@@ -50,12 +50,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     var placeholder: String {
-        switch mode {
-        case .applications:
-            return "Search for Apps"
-        case .calculator, .dictionary, .files:
-            return "Calculate Numbers and Define Words"
-        }
+        mode.placeholder
     }
 
     var resultCount: Int {
