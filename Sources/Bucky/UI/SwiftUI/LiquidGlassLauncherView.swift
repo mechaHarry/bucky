@@ -5,7 +5,6 @@ import SwiftUI
 struct LiquidGlassLauncherView: View {
     @ObservedObject var model: LiquidGlassLauncherModel
     @FocusState private var isSearchFocused: Bool
-    @Namespace private var rowGlassNamespace
     @Namespace private var selectionGlassNamespace
     @Namespace private var headerGlassNamespace
     @State private var handledSelectionScrollRequestID = 0
@@ -81,8 +80,12 @@ struct LiquidGlassLauncherView: View {
                 .font(.system(size: 28, weight: .semibold, design: .rounded))
                 .focused($isSearchFocused)
                 .onChange(of: model.query) {
-                    withAnimation(resultUpdateAnimation) {
+                    if model.mode == .tools {
                         model.queryDidChange()
+                    } else {
+                        withAnimation(resultUpdateAnimation) {
+                            model.queryDidChange()
+                        }
                     }
                 }
                 .onSubmit {
@@ -249,7 +252,6 @@ struct LiquidGlassLauncherView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 10)
             .frame(maxWidth: .infinity)
-            .animation(resultUpdateAnimation, value: resultListIdentity)
         }
         .scrollPosition(id: $scrollTargetID, anchor: scrollTargetAnchor)
         .scrollIndicators(.hidden)
@@ -269,9 +271,6 @@ struct LiquidGlassLauncherView: View {
     private func applicationRow(item: LaunchItem, index: Int) -> some View {
         let rowID = ResultRowID.application(item.url)
         let isSelected = index == model.selectedIndex
-        let actionVisibility = LauncherRowActionVisibilityPolicy(
-            hasAction: true
-        )
 
         return HStack(spacing: 14) {
             HStack(spacing: 14) {
@@ -305,15 +304,13 @@ struct LiquidGlassLauncherView: View {
             .buttonStyle(.glass)
             .foregroundStyle(.secondary)
             .help("Hide from results")
-            .opacity(actionVisibility.isVisible ? 1 : 0)
-            .allowsHitTesting(actionVisibility.allowsHitTesting)
-            .launcherActionButtonRim(isVisible: actionVisibility.isVisible)
+            .launcherActionButtonRim()
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
-            rowPanel(rowID: rowID, isSelected: isSelected)
+            rowPanel(isSelected: isSelected)
         }
         .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .id(rowID)
@@ -323,9 +320,6 @@ struct LiquidGlassLauncherView: View {
         let rowID = ResultRowID.tool(item)
         let isSelected = index == model.selectedIndex
         let actionConfiguration = toolActionConfiguration(for: item)
-        let actionVisibility = LauncherRowActionVisibilityPolicy(
-            hasAction: actionConfiguration != nil
-        )
 
         return HStack(spacing: 14) {
             HStack(spacing: 14) {
@@ -364,23 +358,21 @@ struct LiquidGlassLauncherView: View {
                 .buttonStyle(.glass)
                 .foregroundStyle(.secondary)
                 .help(actionConfiguration.help)
-                .opacity(actionVisibility.isVisible ? 1 : 0)
-                .allowsHitTesting(actionVisibility.allowsHitTesting)
-                .launcherActionButtonRim(isVisible: actionVisibility.isVisible)
+                .launcherActionButtonRim()
             }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
-            rowPanel(rowID: rowID, isSelected: isSelected)
+            rowPanel(isSelected: isSelected)
         }
         .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .id(rowID)
     }
 
     @ViewBuilder
-    private func rowPanel(rowID: ResultRowID, isSelected: Bool) -> some View {
+    private func rowPanel(isSelected: Bool) -> some View {
         GlassEffectContainer(spacing: 0) {
             ZStack {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -389,8 +381,6 @@ struct LiquidGlassLauncherView: View {
                         .regular.tint(LauncherVisualStyle.rowFill.opacity(0.035)).interactive(false),
                         in: RoundedRectangle(cornerRadius: 18, style: .continuous)
                     )
-                    .glassEffectID(rowID.glassEffectID, in: rowGlassNamespace)
-                    .glassEffectTransition(.matchedGeometry)
 
                 if isSelected {
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -415,17 +405,6 @@ struct LiquidGlassLauncherView: View {
                     )
             }
             .animation(rowSelectionAnimation, value: isSelected)
-        }
-    }
-
-    private var resultListIdentity: String {
-        switch model.mode {
-        case .applications:
-            let firstPath = model.filteredItems.first?.url.path ?? "empty"
-            return "apps|\(model.query)|\(model.filteredItems.count)|\(firstPath)"
-        case .tools:
-            let firstItem = model.toolItems.first
-            return "tools|\(model.query)|\(model.toolItems.count)|\(firstItem?.title ?? "empty")|\(firstItem?.subtitle ?? "")"
         }
     }
 
@@ -535,26 +514,10 @@ struct LiquidGlassLauncherView: View {
 private enum ResultRowID: Hashable {
     case application(URL)
     case tool(ToolItem)
-
-    var glassEffectID: RowGlassEffectID {
-        switch self {
-        case .application(let url):
-            return .application(path: url.path)
-        case .tool(let item):
-            return .tool(
-                kind: item.kind.glassEffectID,
-                title: item.title,
-                subtitle: item.subtitle,
-                copyText: item.copyText ?? ""
-            )
-        }
-    }
 }
 
 @available(macOS 26.0, *)
 private enum RowGlassEffectID: Hashable, Sendable {
-    case application(path: String)
-    case tool(kind: String, title: String, subtitle: String, copyText: String)
     case selection
 }
 
@@ -611,26 +574,10 @@ private extension View {
         }
     }
 
-    func launcherActionButtonRim(isVisible: Bool) -> some View {
+    func launcherActionButtonRim() -> some View {
         self.overlay {
             Circle()
-                .strokeBorder(LauncherVisualStyle.actionRim.opacity(isVisible ? 0.34 : 0), lineWidth: 1)
-        }
-    }
-}
-
-@available(macOS 26.0, *)
-private extension ToolItem.Kind {
-    var glassEffectID: String {
-        switch self {
-        case .calculation:
-            return "calculation"
-        case .calculationHistory:
-            return "calculationHistory"
-        case .dictionary:
-            return "dictionary"
-        case .message:
-            return "message"
+                .strokeBorder(LauncherVisualStyle.actionRim.opacity(0.34), lineWidth: 1)
         }
     }
 }

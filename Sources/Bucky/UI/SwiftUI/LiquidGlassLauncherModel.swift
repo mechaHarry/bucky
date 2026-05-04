@@ -290,11 +290,20 @@ final class LiquidGlassLauncherModel: ObservableObject {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         cancelPendingCalculationHistory()
 
+        switch ToolResultsSnapshotPolicy.update(for: mode, query: query) {
+        case .immediate:
+            applyToolResultsSnapshot(
+                makeToolItems(for: trimmedQuery, scheduleHistory: scheduleHistory)
+            )
+        }
+    }
+
+    private func makeToolItems(for trimmedQuery: String, scheduleHistory: Bool) -> [ToolItem] {
         if trimmedQuery.isEmpty {
-            toolItems = calculationHistoryItems()
+            return calculationHistoryItems()
         } else if ArithmeticEvaluator.isArithmeticInput(trimmedQuery) {
             if let result = ArithmeticEvaluator.evaluate(trimmedQuery) {
-                toolItems = [
+                let items = [
                     ToolItem(
                         title: result,
                         subtitle: "\(trimmedQuery) =",
@@ -306,8 +315,9 @@ final class LiquidGlassLauncherModel: ObservableObject {
                 if scheduleHistory, ArithmeticEvaluator.shouldStoreInHistory(trimmedQuery) {
                     scheduleCalculationHistory(expression: trimmedQuery, result: result)
                 }
+                return items
             } else {
-                toolItems = [
+                return [
                     ToolItem(
                         title: "Complete the calculation",
                         subtitle: trimmedQuery,
@@ -319,7 +329,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         } else {
             let dictionaryResults = DictionaryLookup.results(for: trimmedQuery)
             if dictionaryResults.isEmpty {
-                toolItems = [
+                return [
                     ToolItem(
                         title: "No dictionary matches",
                         subtitle: trimmedQuery,
@@ -328,7 +338,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
                     )
                 ]
             } else {
-                toolItems = dictionaryResults.map { result in
+                return dictionaryResults.map { result in
                     ToolItem(
                         title: result.term,
                         subtitle: singleLine(result.definition),
@@ -338,7 +348,10 @@ final class LiquidGlassLauncherModel: ObservableObject {
                 }
             }
         }
+    }
 
+    private func applyToolResultsSnapshot(_ nextItems: [ToolItem]) {
+        toolItems = nextItems
         clampSelection()
     }
 
