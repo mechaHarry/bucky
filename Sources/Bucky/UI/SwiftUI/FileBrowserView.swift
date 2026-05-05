@@ -455,20 +455,28 @@ struct FileBrowserView: View {
         DispatchQueue.main.async {
             if animated {
                 withAnimation(.easeInOut(duration: 0.20)) {
-                    proxy.scrollTo(url, anchor: anchor.unitPoint)
+                    scrollTo(url, anchor: anchor, in: proxy)
                 }
             } else {
                 var transaction = Transaction()
                 transaction.disablesAnimations = true
                 withTransaction(transaction) {
-                    proxy.scrollTo(url, anchor: anchor.unitPoint)
+                    scrollTo(url, anchor: anchor, in: proxy)
                 }
                 DispatchQueue.main.async {
                     withTransaction(transaction) {
-                        proxy.scrollTo(url, anchor: anchor.unitPoint)
+                        scrollTo(url, anchor: anchor, in: proxy)
                     }
                 }
             }
+        }
+    }
+
+    private func scrollTo(_ url: URL, anchor: FileBrowserSelectionScrollAnchor, in proxy: ScrollViewProxy) {
+        if let unitPoint = anchor.unitPoint {
+            proxy.scrollTo(url, anchor: unitPoint)
+        } else {
+            proxy.scrollTo(url)
         }
     }
 
@@ -509,10 +517,10 @@ private struct FileBrowserPaneWobbleEffect: GeometryEffect {
 
 @available(macOS 26.0, *)
 private extension FileBrowserSelectionScrollAnchor {
-    var unitPoint: UnitPoint {
+    var unitPoint: UnitPoint? {
         switch self {
         case .nearest:
-            return .top
+            return nil
         case .top:
             return .top
         case .bottom:

@@ -189,19 +189,19 @@ final class FileBrowserModelTests: XCTestCase {
         model.handle(.down)
         let downEvent = model.selectionScrollEvent
         XCTAssertEqual(downEvent?.url.lastPathComponent, "b.txt")
-        XCTAssertEqual(downEvent?.anchor, .bottom)
+        XCTAssertEqual(downEvent?.anchor, .nearest)
 
         model.handle(.up)
         let topEvent = model.selectionScrollEvent
         XCTAssertEqual(topEvent?.url.lastPathComponent, "a.txt")
-        XCTAssertEqual(topEvent?.anchor, .top)
+        XCTAssertEqual(topEvent?.anchor, .nearest)
         XCTAssertGreaterThan(topEvent?.id ?? 0, downEvent?.id ?? 0)
 
         model.handle(.up)
         let clampedTopEvent = model.selectionScrollEvent
         XCTAssertEqual(model.selectedEntry?.name, "a.txt")
         XCTAssertEqual(clampedTopEvent?.url.lastPathComponent, "a.txt")
-        XCTAssertEqual(clampedTopEvent?.anchor, .top)
+        XCTAssertEqual(clampedTopEvent?.anchor, .nearest)
         XCTAssertGreaterThan(clampedTopEvent?.id ?? 0, topEvent?.id ?? 0)
     }
 
