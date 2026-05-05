@@ -43,45 +43,12 @@ struct ModeSwitcherView: View {
     private func activePill(for mode: LauncherMode) -> some View {
         switch mode {
         case .applications, .calculator, .dictionary:
-            HStack(spacing: 12) {
-                Image(systemName: symbol(for: mode))
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(
-                        width: ModeSwitcherLayoutPolicy.activeTextPillIconWidth,
-                        height: ModeSwitcherLayoutPolicy.activeTextPillIconHeight,
-                        alignment: .center
-                    )
-
-                TextField(mode.placeholder, text: $model.query)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 22, weight: .semibold, design: .rounded))
-                    .frame(height: ModeSwitcherLayoutPolicy.activeTextPillInputHeight, alignment: .center)
-                    .offset(y: ModeSwitcherLayoutPolicy.activeTextPillInputVerticalOffset)
-                    .focused($isSearchFocused)
-                    .onChange(of: model.query) {
-                        model.queryDidChange()
-                    }
-                    .onSubmit {
-                        _ = model.handle(command: .open)
-                    }
-
-                if model.isIndexing && mode == .applications {
-                    ProgressView()
-                        .controlSize(.small)
-                        .glassEffectTransition(.materialize)
-                }
-            }
-            .padding(.leading, 16)
-            .padding(.trailing, 18)
-            .frame(
-                maxWidth: .infinity,
-                minHeight: ModeSwitcherLayoutPolicy.activePillHeight,
-                maxHeight: ModeSwitcherLayoutPolicy.activePillHeight,
-                alignment: .center
+            TextInputModePill(
+                model: model,
+                mode: mode,
+                symbol: symbol(for: mode),
+                isSearchFocused: $isSearchFocused
             )
-            .contentShape(Capsule())
-            .glassEffect(.regular.interactive(), in: Capsule())
         case .files:
             GeometryReader { proxy in
                 let pathWidth = ModeSwitcherLayoutPolicy.filesPathTextWidth(
@@ -164,10 +131,12 @@ struct ModeSwitcherView: View {
 
 struct ModeSwitcherLayoutPolicy {
     static let activePillHeight: CGFloat = 48
+    static let activeTextPillSpacing: CGFloat = 12
+    static let activeTextPillControlHeight: CGFloat = 30
     static let activeTextPillIconWidth: CGFloat = 22
-    static let activeTextPillIconHeight: CGFloat = 28
-    static let activeTextPillInputHeight: CGFloat = 28
-    static let activeTextPillInputVerticalOffset: CGFloat = 2.5
+    static let activeTextPillIconHeight: CGFloat = activeTextPillControlHeight
+    static let activeTextPillInputHeight: CGFloat = activeTextPillControlHeight
+    static let activeTextPillInputVerticalOffset: CGFloat = 0
     static let filesPillLeadingPadding: CGFloat = 16
     static let filesPillTrailingPadding: CGFloat = 12
     static let filesContentSpacing: CGFloat = 12
@@ -187,6 +156,56 @@ struct ModeSwitcherLayoutPolicy {
     static func filesPathTextWidth(in pillWidth: CGFloat, path: String) -> CGFloat {
         let fixedWidth = filesPathIconWidth + filesPathIconSpacing
         return max(0, filesPathButtonWidth(in: pillWidth) - fixedWidth)
+    }
+}
+
+@available(macOS 26.0, *)
+private struct TextInputModePill: View {
+    @ObservedObject var model: LiquidGlassLauncherModel
+    let mode: LauncherMode
+    let symbol: String
+    @FocusState.Binding var isSearchFocused: Bool
+
+    var body: some View {
+        HStack(spacing: ModeSwitcherLayoutPolicy.activeTextPillSpacing) {
+            Image(systemName: symbol)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(
+                    width: ModeSwitcherLayoutPolicy.activeTextPillIconWidth,
+                    height: ModeSwitcherLayoutPolicy.activeTextPillIconHeight,
+                    alignment: .center
+                )
+
+            TextField(mode.placeholder, text: $model.query)
+                .textFieldStyle(.plain)
+                .font(.system(size: 22, weight: .semibold, design: .rounded))
+                .frame(height: ModeSwitcherLayoutPolicy.activeTextPillInputHeight, alignment: .center)
+                .offset(y: ModeSwitcherLayoutPolicy.activeTextPillInputVerticalOffset)
+                .focused($isSearchFocused)
+                .onChange(of: model.query) {
+                    model.queryDidChange()
+                }
+                .onSubmit {
+                    _ = model.handle(command: .open)
+                }
+
+            if model.isIndexing && mode == .applications {
+                ProgressView()
+                    .controlSize(.small)
+                    .glassEffectTransition(.materialize)
+            }
+        }
+        .padding(.leading, 16)
+        .padding(.trailing, 18)
+        .frame(
+            maxWidth: .infinity,
+            minHeight: ModeSwitcherLayoutPolicy.activePillHeight,
+            maxHeight: ModeSwitcherLayoutPolicy.activePillHeight,
+            alignment: .center
+        )
+        .contentShape(Capsule())
+        .glassEffect(.regular.interactive(), in: Capsule())
     }
 }
 

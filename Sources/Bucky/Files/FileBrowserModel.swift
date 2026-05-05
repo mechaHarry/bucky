@@ -169,8 +169,9 @@ final class FileBrowserModel: ObservableObject {
 
     func setSort(_ nextSort: FileBrowserSort) {
         guard sort != nextSort else { return }
+        let preferredSelection = selectedEntry?.url ?? rememberedSelection(in: currentDirectory)
         sort = nextSort
-        reloadEntries()
+        reloadEntries(selecting: preferredSelection)
     }
 
     func setRenameText(_ text: String) {
@@ -421,6 +422,7 @@ final class FileBrowserModel: ObservableObject {
         entries = loadedEntries
         snapshotEntryCache[cacheKey(for: currentDirectory)] = entries
         selectEntry(matching: preferredSelection)
+        rememberCurrentDirectorySelection()
         statusMessage = status
         pruneStaleSelections()
         rebuildDirectorySnapshots(force: true)
@@ -482,6 +484,7 @@ final class FileBrowserModel: ObservableObject {
         guard !entries.isEmpty else { return }
         selectedIndex = max(0, min(entries.count - 1, index))
         rebuildDirectorySnapshots()
+        rememberCurrentDirectorySelection()
         publishSelectionScrollEvent(anchor: anchor)
     }
 
@@ -551,9 +554,16 @@ final class FileBrowserModel: ObservableObject {
         let needle = String(character).lowercased()
         let start = min(selectedIndex + 1, entries.count)
         let orderedIndexes = Array(start..<entries.count) + Array(0..<start)
-        if let match = orderedIndexes.first(where: { entries[$0].name.lowercased().hasPrefix(needle) }) {
+        if let match = orderedIndexes.first(where: { entryMatchesFirstCharacter(entries[$0], needle: needle) }) {
             moveSelection(to: match)
         }
+    }
+
+    private func entryMatchesFirstCharacter(_ entry: FileBrowserEntry, needle: String) -> Bool {
+        guard let firstSearchableCharacter = entry.name.first(where: { $0.isLetter || $0.isNumber }) else {
+            return false
+        }
+        return String(firstSearchableCharacter).lowercased() == needle
     }
 
     private func selectEntry(matching preferredSelection: URL?) {
