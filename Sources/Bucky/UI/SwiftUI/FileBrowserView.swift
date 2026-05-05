@@ -1,5 +1,4 @@
 import AppKit
-import QuickLookThumbnailing
 import SwiftUI
 
 @available(macOS 26.0, *)
@@ -27,7 +26,7 @@ struct FileBrowserView: View {
             }
 
             if case let .quickLook(preview) = model.focusState {
-                QuickLookPreviewSurface(preview: preview, entry: model.entry(for: preview.url))
+                QuickLookPreviewSurface(model: model, preview: preview, entry: model.entry(for: preview.url))
                     .transition(.scale(scale: 0.96).combined(with: .opacity))
             }
 
@@ -603,6 +602,7 @@ private struct ConflictResolutionRow: View {
 
 @available(macOS 26.0, *)
 private struct QuickLookPreviewSurface: View {
+    @ObservedObject var model: FileBrowserModel
     let preview: FileBrowserPreview
     let entry: FileBrowserEntry?
     @State private var nativePreviewFailed = false
@@ -617,7 +617,7 @@ private struct QuickLookPreviewSurface: View {
 
     private var nativePreview: some View {
         VStack(spacing: 14) {
-            NativeQuickLookThumbnailView(url: preview.url, didFail: $nativePreviewFailed)
+            NativeQuickLookThumbnailView(url: preview.url, model: model, didFail: $nativePreviewFailed)
                 .frame(width: 360, height: 210)
 
             Text(preview.url.lastPathComponent)
@@ -699,6 +699,7 @@ private struct QuickLookPreviewSurface: View {
 @available(macOS 26.0, *)
 private struct NativeQuickLookThumbnailView: NSViewRepresentable {
     let url: URL
+    @ObservedObject var model: FileBrowserModel
     @Binding var didFail: Bool
 
     func makeNSView(context: Context) -> NSImageView {
@@ -711,7 +712,7 @@ private struct NativeQuickLookThumbnailView: NSViewRepresentable {
     }
 
     func updateNSView(_ imageView: NSImageView, context: Context) {
-        context.coordinator.loadThumbnail(for: url, into: imageView, didFail: $didFail)
+        context.coordinator.loadThumbnail(for: url, model: model, into: imageView, didFail: $didFail)
     }
 
     func makeCoordinator() -> Coordinator {
@@ -721,28 +722,25 @@ private struct NativeQuickLookThumbnailView: NSViewRepresentable {
     final class Coordinator {
         private var representedURL: URL?
 
-        func loadThumbnail(for url: URL, into imageView: NSImageView, didFail: Binding<Bool>) {
+        @MainActor
+        func loadThumbnail(
+            for url: URL,
+            model: FileBrowserModel,
+            into imageView: NSImageView,
+            didFail: Binding<Bool>
+        ) {
             guard representedURL != url else { return }
             representedURL = url
             imageView.image = nil
             didFail.wrappedValue = false
 
             let scale = NSScreen.main?.backingScaleFactor ?? 2
-            let request = QLThumbnailGenerator.Request(
-                fileAt: url,
-                size: CGSize(width: 720, height: 420),
-                scale: scale,
-                representationTypes: .all
-            )
-
-            QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { thumbnail, _ in
-                DispatchQueue.main.async {
-                    guard self.representedURL == url else { return }
-                    if let thumbnail {
-                        imageView.image = thumbnail.nsImage
-                    } else {
-                        didFail.wrappedValue = true
-                    }
+            model.loadPreviewThumbnail(for: url, size: CGSize(width: 720, height: 420), scale: scale) { image in
+                guard self.representedURL == url else { return }
+                if let image {
+                    imageView.image = image
+                } else {
+                    didFail.wrappedValue = true
                 }
             }
         }

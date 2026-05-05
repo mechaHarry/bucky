@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 struct FileBrowserEntry: Identifiable, Hashable {
@@ -104,6 +105,12 @@ protocol FileBrowserNativeServicing {
     func batchRename(_ urls: [URL], baseName: String) throws -> [URL]
     func conflictingDestinations(for urls: [URL], in destinationDirectory: URL) -> [FileBrowserConflict]
     func previewMode(for url: URL) -> FileBrowserPreviewMode
+    func loadPreviewThumbnail(
+        for url: URL,
+        size: CGSize,
+        scale: CGFloat,
+        completion: @escaping (NSImage?) -> Void
+    )
 }
 
 enum FileBrowserFocusState: Equatable {

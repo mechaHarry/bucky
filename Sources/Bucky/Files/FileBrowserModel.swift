@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import Foundation
 
@@ -179,6 +180,15 @@ final class FileBrowserModel: ObservableObject {
             .lazy
             .flatMap(\.entries)
             .first { $0.url.standardizedFileURL == standardizedURL }
+    }
+
+    func loadPreviewThumbnail(
+        for url: URL,
+        size: CGSize,
+        scale: CGFloat,
+        completion: @escaping (NSImage?) -> Void
+    ) {
+        fileServices.loadPreviewThumbnail(for: url, size: size, scale: scale, completion: completion)
     }
 
     func performFocusedAction() {

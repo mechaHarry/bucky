@@ -1,4 +1,5 @@
 import XCTest
+import AppKit
 @testable import Bucky
 
 @MainActor
@@ -371,6 +372,41 @@ final class FileBrowserModelTests: XCTestCase {
             url: fallbackModel.selectedEntry!.url,
             mode: .metadataFallback
         )))
+    }
+
+    func testQuickLookThumbnailLoadingUsesNativeServiceForSuccessAndFailure() {
+        let service = RecordingFileBrowserServices()
+        let thumbnail = NSImage(size: NSSize(width: 12, height: 12))
+        service.thumbnailResult = thumbnail
+        let model = makeModel(entries: entries(["image.png"]), fileServices: service)
+        let url = model.selectedEntry!.url
+        var successImage: NSImage?
+
+        model.loadPreviewThumbnail(for: url, size: CGSize(width: 64, height: 32), scale: 2) { image in
+            successImage = image
+        }
+
+        XCTAssertIdentical(successImage, thumbnail)
+        XCTAssertEqual(service.thumbnailRequests, [
+            RecordingFileBrowserServices.ThumbnailRequest(
+                url: url,
+                size: CGSize(width: 64, height: 32),
+                scale: 2
+            )
+        ])
+
+        service.thumbnailResult = nil
+        var failureImage: NSImage? = thumbnail
+        model.loadPreviewThumbnail(for: url, size: CGSize(width: 128, height: 64), scale: 1) { image in
+            failureImage = image
+        }
+
+        XCTAssertNil(failureImage)
+        XCTAssertEqual(service.thumbnailRequests.last, RecordingFileBrowserServices.ThumbnailRequest(
+            url: url,
+            size: CGSize(width: 128, height: 64),
+            scale: 1
+        ))
     }
 
     func testConflictRowsDefaultToKeepBothAndExecuteFocusedOption() {
