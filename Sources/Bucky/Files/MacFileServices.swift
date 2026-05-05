@@ -7,6 +7,17 @@ enum FileBrowserConflictResolution {
     case cancel
 }
 
+enum MacFileServicesError: LocalizedError {
+    case cannotReplaceItemWithItself(URL)
+
+    var errorDescription: String? {
+        switch self {
+        case let .cannotReplaceItemWithItself(url):
+            return "Cannot replace an item with itself: \(url.path)"
+        }
+    }
+}
+
 struct MacFileServices {
     private let fileManager: FileManager
 
@@ -36,8 +47,11 @@ struct MacFileServices {
         for source in urls {
             let destination = resolvedDestination(for: source, in: destinationDirectory, conflict: conflict)
             guard let destination else { return }
-            try replaceIfNeeded(destination)
-            try fileManager.copyItem(at: source, to: destination)
+            if fileManager.fileExists(atPath: destination.path) {
+                try copyReplacingItem(at: destination, with: source)
+            } else {
+                try fileManager.copyItem(at: source, to: destination)
+            }
         }
     }
 
@@ -45,8 +59,11 @@ struct MacFileServices {
         for source in urls {
             let destination = resolvedDestination(for: source, in: destinationDirectory, conflict: conflict)
             guard let destination else { return }
-            try replaceIfNeeded(destination)
-            try fileManager.moveItem(at: source, to: destination)
+            if fileManager.fileExists(atPath: destination.path) {
+                try moveReplacingItem(at: destination, with: source)
+            } else {
+                try fileManager.moveItem(at: source, to: destination)
+            }
         }
     }
 
@@ -91,9 +108,38 @@ struct MacFileServices {
         }
     }
 
-    private func replaceIfNeeded(_ url: URL) throws {
-        if fileManager.fileExists(atPath: url.path) {
-            try fileManager.removeItem(at: url)
+    private func copyReplacingItem(at destination: URL, with source: URL) throws {
+        try validateReplacement(source: source, destination: destination)
+
+        let temporaryURL = replacementTemporaryURL(for: destination)
+        do {
+            try fileManager.copyItem(at: source, to: temporaryURL)
+            _ = try fileManager.replaceItemAt(
+                destination,
+                withItemAt: temporaryURL,
+                backupItemName: nil,
+                options: []
+            )
+        } catch {
+            try? fileManager.removeItem(at: temporaryURL)
+            throw error
         }
+    }
+
+    private func moveReplacingItem(at destination: URL, with source: URL) throws {
+        try copyReplacingItem(at: destination, with: source)
+        try fileManager.removeItem(at: source)
+    }
+
+    private func validateReplacement(source: URL, destination: URL) throws {
+        if source.standardizedFileURL == destination.standardizedFileURL {
+            throw MacFileServicesError.cannotReplaceItemWithItself(source)
+        }
+    }
+
+    private func replacementTemporaryURL(for destination: URL) -> URL {
+        destination
+            .deletingLastPathComponent()
+            .appendingPathComponent(".\(destination.lastPathComponent).replacement-\(UUID().uuidString)")
     }
 }

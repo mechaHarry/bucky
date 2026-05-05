@@ -34,6 +34,14 @@ final class MacFileServicesTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: destination.appendingPathComponent("source.txt").path))
     }
 
+    func testCopyReplaceIntoSourceParentPreservesSource() throws {
+        let source = temporaryDirectory.appendingPathComponent("same.txt")
+        try "original".write(to: source, atomically: true, encoding: .utf8)
+
+        XCTAssertThrowsError(try MacFileServices(fileManager: .default).copy([source], to: temporaryDirectory, conflict: .replace))
+        XCTAssertEqual(try String(contentsOf: source, encoding: .utf8), "original")
+    }
+
     func testMoveFilesMovesIntoDestinationDirectory() throws {
         let source = temporaryDirectory.appendingPathComponent("move.txt")
         let destination = temporaryDirectory.appendingPathComponent("Destination", isDirectory: true)
@@ -44,5 +52,13 @@ final class MacFileServicesTests: XCTestCase {
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: source.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: destination.appendingPathComponent("move.txt").path))
+    }
+
+    func testMoveReplaceIntoSourceParentPreservesSource() throws {
+        let source = temporaryDirectory.appendingPathComponent("same-move.txt")
+        try "original".write(to: source, atomically: true, encoding: .utf8)
+
+        XCTAssertThrowsError(try MacFileServices(fileManager: .default).move([source], to: temporaryDirectory, conflict: .replace))
+        XCTAssertEqual(try String(contentsOf: source, encoding: .utf8), "original")
     }
 }
