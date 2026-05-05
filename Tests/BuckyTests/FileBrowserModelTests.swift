@@ -183,6 +183,25 @@ final class FileBrowserModelTests: XCTestCase {
         XCTAssertEqual(model.selectedEntry?.name, "b.txt")
     }
 
+    func testRepeatedSelectionCommandsPublishScrollEventsEvenWhenClamped() {
+        let model = makeModel(entries: entries(["a.txt", "b.txt", "c.txt"]))
+
+        model.handle(.down)
+        let downEvent = model.selectionScrollEvent
+        XCTAssertEqual(downEvent?.url.lastPathComponent, "b.txt")
+
+        model.handle(.up)
+        let topEvent = model.selectionScrollEvent
+        XCTAssertEqual(topEvent?.url.lastPathComponent, "a.txt")
+        XCTAssertGreaterThan(topEvent?.id ?? 0, downEvent?.id ?? 0)
+
+        model.handle(.up)
+        let clampedTopEvent = model.selectionScrollEvent
+        XCTAssertEqual(model.selectedEntry?.name, "a.txt")
+        XCTAssertEqual(clampedTopEvent?.url.lastPathComponent, "a.txt")
+        XCTAssertGreaterThan(clampedTopEvent?.id ?? 0, topEvent?.id ?? 0)
+    }
+
     func testFirstCharacterCyclingMovesBetweenMatchingRows() {
         let model = makeModel(entries: entries(["alpha.txt", "beta.txt", "build.log", "gamma.txt"]))
 

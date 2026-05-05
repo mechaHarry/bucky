@@ -190,8 +190,8 @@ struct FileBrowserView: View {
                 .onChange(of: displayedEntries.map(\.url)) { _, _ in
                     scrollSelectedEntry(in: proxy)
                 }
-                .onChange(of: model.selectedEntry?.url) { _, _ in
-                    scrollSelectedEntry(in: proxy)
+                .onChange(of: model.selectionScrollEvent?.id) { _, _ in
+                    scrollSelectionEvent(in: proxy)
                 }
             }
 
@@ -429,10 +429,32 @@ struct FileBrowserView: View {
 
     private func scrollSelectedEntry(in proxy: ScrollViewProxy) {
         guard let url = model.selectedEntry?.url else { return }
+        scrollEntry(url, in: proxy, animated: true)
+    }
+
+    private func scrollSelectionEvent(in proxy: ScrollViewProxy) {
+        guard let url = model.selectionScrollEvent?.url else { return }
+        scrollEntry(url, in: proxy, animated: false)
+    }
+
+    private func scrollEntry(_ url: URL, in proxy: ScrollViewProxy, animated: Bool) {
         guard displayedEntries.contains(where: { $0.url == url }) else { return }
         DispatchQueue.main.async {
-            withAnimation(.easeInOut(duration: 0.20)) {
-                proxy.scrollTo(url, anchor: .center)
+            if animated {
+                withAnimation(.easeInOut(duration: 0.20)) {
+                    proxy.scrollTo(url, anchor: .center)
+                }
+            } else {
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    proxy.scrollTo(url, anchor: .center)
+                }
+                DispatchQueue.main.async {
+                    withTransaction(transaction) {
+                        proxy.scrollTo(url, anchor: .center)
+                    }
+                }
             }
         }
     }

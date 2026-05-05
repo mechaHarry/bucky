@@ -194,3 +194,8 @@ struct FileBrowserNavigationTransition: Equatable {
     let id: Int
     let direction: FileBrowserNavigationDirection
 }
+
+struct FileBrowserSelectionScrollEvent: Equatable {
+    let id: Int
+    let url: URL
+}
