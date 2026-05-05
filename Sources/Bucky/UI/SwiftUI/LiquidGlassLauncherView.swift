@@ -40,16 +40,16 @@ struct LiquidGlassLauncherView: View {
             }
         }
         .onAppear {
-            isSearchFocused = true
+            isSearchFocused = model.mode != .files
             preloadApplicationIcons()
         }
         .onChange(of: model.mode) {
-            isSearchFocused = true
+            isSearchFocused = model.mode != .files
             preloadApplicationIcons()
         }
         .onChange(of: model.isPresented) { _, isPresented in
             if isPresented {
-                isSearchFocused = true
+                isSearchFocused = model.mode != .files
                 preloadApplicationIcons()
             } else {
                 iconPreloadTask?.cancel()
@@ -73,50 +73,9 @@ struct LiquidGlassLauncherView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 12) {
-            Image(systemName: model.mode == .applications ? "square.grid.2x2" : "function")
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .frame(width: 34, height: 34)
-
-            TextField(model.placeholder, text: $model.query)
-                .textFieldStyle(.plain)
-                .font(.system(size: 28, weight: .semibold, design: .rounded))
-                .focused($isSearchFocused)
-                .onChange(of: model.query) {
-                    if model.mode != .applications {
-                        model.queryDidChange()
-                    } else {
-                        withAnimation(resultUpdateAnimation) {
-                            model.queryDidChange()
-                        }
-                    }
-                }
-                .onSubmit {
-                    _ = model.handle(command: .open)
-                }
-
-            if model.isIndexing && model.mode == .applications {
-                ProgressView()
-                    .controlSize(.small)
-                    .glassEffectTransition(.materialize)
-            }
-
-            headerControls
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background {
-            GlassEffectContainer(spacing: 0) {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(Color.clear)
-                    .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-            }
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .strokeBorder(LauncherVisualStyle.surfaceRim.opacity(0.24), lineWidth: 1)
-        }
+        ModeSwitcherView(model: model, isSearchFocused: $isSearchFocused)
+            .padding(.horizontal, 2)
+            .padding(.vertical, 2)
     }
 
     private var headerControls: some View {
@@ -210,7 +169,10 @@ struct LiquidGlassLauncherView: View {
 
     @ViewBuilder
     private var resultContent: some View {
-        if let emptyMessage = model.emptyMessage {
+        if model.mode == .files {
+            FileBrowserView(model: model.fileBrowserModel)
+                .transition(.opacity)
+        } else if let emptyMessage = model.emptyMessage {
             Text(emptyMessage)
                 .font(.system(size: 17, weight: .medium))
                 .foregroundStyle(.secondary)
@@ -237,11 +199,7 @@ struct LiquidGlassLauncherView: View {
                         value: toolResultsSnapshotIdentity
                     )
                 case .files:
-                    resultScrollView {
-                        ForEach(Array(model.fileBrowserModel.entries.enumerated()), id: \.element.url) { index, entry in
-                            fileRow(entry: entry, index: index)
-                        }
-                    }
+                    FileBrowserView(model: model.fileBrowserModel)
                 }
             }
         }
