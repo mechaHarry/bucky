@@ -26,7 +26,7 @@ struct FileBrowserView: View {
             }
 
             if case let .quickLook(url) = model.focusState {
-                QuickLookPreviewSurface(url: url)
+                QuickLookPreviewSurface(url: url, entry: model.entry(for: url))
                     .transition(.scale(scale: 0.96).combined(with: .opacity))
             }
         }
@@ -353,15 +353,24 @@ private struct ActionRow: View {
 @available(macOS 26.0, *)
 private struct QuickLookPreviewSurface: View {
     let url: URL
+    let entry: FileBrowserEntry?
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 14) {
             FileIconView(url: url)
                 .frame(width: 96, height: 96)
 
             Text(url.lastPathComponent)
                 .font(.headline)
                 .lineLimit(1)
+
+            Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 7) {
+                metadataRow("Kind", entry?.kind.displayName ?? "Unknown")
+                metadataRow("Size", formattedSize)
+                metadataRow("Created", formattedDate(entry?.createdAt))
+                metadataRow("Modified", formattedDate(entry?.modifiedAt))
+            }
+            .font(.caption)
 
             FadeMarqueeText(text: url.path, font: .caption)
                 .foregroundStyle(.secondary)
@@ -376,6 +385,32 @@ private struct QuickLookPreviewSurface: View {
         }
         .shadow(color: .black.opacity(0.28), radius: 34, x: 0, y: 18)
     }
+
+    private var formattedSize: String {
+        guard let size = entry?.size else { return "Unknown" }
+        return ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
+    }
+
+    private func formattedDate(_ date: Date?) -> String {
+        guard let date else { return "Unknown" }
+        return Self.dateFormatter.string(from: date)
+    }
+
+    private func metadataRow(_ label: String, _ value: String) -> some View {
+        GridRow {
+            Text(label)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .lineLimit(1)
+        }
+    }
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
 }
 
 @available(macOS 26.0, *)
@@ -442,6 +477,23 @@ private extension FileBrowserAction {
             return "arrow.right.square"
         case .moveToTrash:
             return "trash"
+        }
+    }
+}
+
+private extension FileBrowserEntry.Kind {
+    var displayName: String {
+        switch self {
+        case .file:
+            return "File"
+        case .directory:
+            return "Directory"
+        case .package:
+            return "Package"
+        case .symbolicLink:
+            return "Alias"
+        case .other:
+            return "Other"
         }
     }
 }
