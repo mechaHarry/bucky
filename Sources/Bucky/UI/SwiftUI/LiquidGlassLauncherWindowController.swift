@@ -1,4 +1,5 @@
 import AppKit
+import Carbon
 import SwiftUI
 
 @available(macOS 26.0, *)
@@ -165,14 +166,14 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
                 return event
             }
 
+            if let mode = event.commandNumberMode {
+                return self.model.handle(command: .switchMode(mode)) ? nil : event
+            }
             if event.isCommandR {
                 return self.model.handle(command: .reindex) ? nil : event
             }
             if event.isCommandComma {
                 return self.model.handle(command: .settings) ? nil : event
-            }
-            if let mode = event.commandNumberMode {
-                return self.model.handle(command: .switchMode(mode)) ? nil : event
             }
             if event.isCommandP {
                 return self.model.handle(command: .togglePin) ? nil : event
@@ -185,15 +186,27 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             }
 
             switch event.keyCode {
-            case 126:
+            case UInt16(kVK_UpArrow):
                 return self.model.handle(command: .up) ? nil : event
-            case 125:
+            case UInt16(kVK_DownArrow):
                 return self.model.handle(command: .down) ? nil : event
-            case 36, 76:
+            case UInt16(kVK_LeftArrow):
+                return self.model.handle(command: .left) ? nil : event
+            case UInt16(kVK_RightArrow):
+                return self.model.handle(command: .right) ? nil : event
+            case UInt16(kVK_Space):
+                if event.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.shift) {
+                    return self.model.handle(command: .shiftSpace) ? nil : event
+                }
+                return self.model.handle(command: .space) ? nil : event
+            case UInt16(kVK_Return), UInt16(kVK_ANSI_KeypadEnter):
                 return self.model.handle(command: .open) ? nil : event
-            case 53:
+            case UInt16(kVK_Escape):
                 return self.model.handle(command: .close) ? nil : event
             default:
+                if let character = event.firstAlphaNumericCharacter {
+                    return self.model.handle(command: .alphaNumeric(character)) ? nil : event
+                }
                 return event
             }
         }

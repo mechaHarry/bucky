@@ -7,6 +7,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     @Published var query = ""
     @Published var filteredItems: [LaunchItem] = []
     @Published var toolItems: [ToolItem] = []
+    @Published var fileBrowserModel: FileBrowserModel
     @Published var selectedIndex = 0
     @Published var selectionScrollRequest: SelectionScrollRequest?
     @Published var isIndexing = false
@@ -29,7 +30,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private var visibleItems: [LaunchItem] = []
     private var filterCache = ApplicationFilterCache()
     private var applicationQuery = ""
-    private var toolsQuery = ""
+    private var calculatorQuery = ""
+    private var dictionaryQuery = ""
     private var needsReindexAfterCurrent = false
     private var pendingCalculationHistoryTimer: Timer?
     private var pendingCalculationHistoryExpression: String?
@@ -40,12 +42,16 @@ final class LiquidGlassLauncherModel: ObservableObject {
         settingsStore: SettingsStore,
         inclusionStore: InclusionStore,
         exclusionStore: ExclusionStore,
-        calculationHistoryStore: CalculationHistoryStore
+        calculationHistoryStore: CalculationHistoryStore,
+        fileBrowserModel: FileBrowserModel? = nil
     ) {
         self.settingsStore = settingsStore
         self.inclusionStore = inclusionStore
         self.exclusionStore = exclusionStore
         self.calculationHistoryStore = calculationHistoryStore
+        self.fileBrowserModel = fileBrowserModel ?? MainActor.assumeIsolated {
+            FileBrowserModel()
+        }
         animationTiming = settingsStore.settings.animationTiming
     }
 
@@ -57,8 +63,12 @@ final class LiquidGlassLauncherModel: ObservableObject {
         switch mode {
         case .applications:
             return filteredItems.count
-        case .calculator, .dictionary, .files:
+        case .calculator, .dictionary:
             return toolItems.count
+        case .files:
+            return MainActor.assumeIsolated {
+                fileBrowserModel.entries.count
+            }
         }
     }
 
@@ -75,9 +85,17 @@ final class LiquidGlassLauncherModel: ObservableObject {
                 }
                 return inputIsBlank ? "No launchable items found" : "No matches"
             }
-        case .calculator, .dictionary, .files:
+        case .calculator:
             if toolItems.isEmpty {
                 return inputIsBlank ? "No calculation history" : "No tool results"
+            }
+        case .dictionary:
+            if toolItems.isEmpty, !inputIsBlank {
+                return "No dictionary matches"
+            }
+        case .files:
+            if MainActor.assumeIsolated({ fileBrowserModel.entries.isEmpty }) {
+                return "No files"
             }
         }
 
@@ -90,7 +108,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
 
     func show(mode: LauncherMode) {
         applicationQuery = ""
-        toolsQuery = ""
+        calculatorQuery = ""
+        dictionaryQuery = ""
         self.mode = mode
         query = storedQuery(for: mode)
         selectedIndex = 0
@@ -107,14 +126,23 @@ final class LiquidGlassLauncherModel: ObservableObject {
     func handle(command: LauncherCommand) -> Bool {
         switch command {
         case .up:
+            if mode == .files {
+                return handleFileBrowserCommand(command)
+            }
             moveSelection(by: -1)
         case .down:
+            if mode == .files {
+                return handleFileBrowserCommand(command)
+            }
             moveSelection(by: 1)
         case .top:
             moveSelection(to: 0, anchor: .top)
         case .bottom:
             moveSelection(to: resultCount - 1, anchor: .bottom)
         case .open:
+            if mode == .files {
+                return handleFileBrowserCommand(command)
+            }
             activateSelected()
         case .close:
             clearInputOrHide()
@@ -122,14 +150,15 @@ final class LiquidGlassLauncherModel: ObservableObject {
             reindex()
         case .settings:
             openSettingsAction?()
-        case .switchMode(let mode):
-            show(mode: mode)
+        case let .switchMode(nextMode):
+            return switchMode(nextMode)
         case .clearHistory:
             clearHistory()
         case .togglePin:
             isPinned.toggle()
         case .left, .right, .space, .shiftSpace, .beginSpaceHold, .endSpaceHold, .alphaNumeric:
-            return false
+            guard mode == .files else { return false }
+            return handleFileBrowserCommand(command)
         }
 
         return true
@@ -202,9 +231,15 @@ final class LiquidGlassLauncherModel: ObservableObject {
                 rebuildVisibleItems()
             }
             applyFilter(preservePreviousOnEmpty: preservePreviousOnEmpty)
-        case .calculator, .dictionary, .files:
+        case .calculator, .dictionary:
             calculationHistoryStore.load()
             applyToolsResults()
+        case .files:
+            cancelPendingCalculationHistory()
+            toolItems = []
+            selectedIndex = MainActor.assumeIsolated {
+                fileBrowserModel.selectedIndex
+            }
         }
     }
 
@@ -296,9 +331,25 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     private func makeToolItems(for trimmedQuery: String, scheduleHistory: Bool) -> [ToolItem] {
-        if trimmedQuery.isEmpty {
-            return calculationHistoryItems()
-        } else if ArithmeticEvaluator.isArithmeticInput(trimmedQuery) {
+        switch mode {
+        case .applications, .files:
+            return []
+        case .calculator:
+            if trimmedQuery.isEmpty {
+                return calculationHistoryItems()
+            }
+
+            guard ArithmeticEvaluator.isArithmeticInput(trimmedQuery) else {
+                return [
+                    ToolItem(
+                        title: "Enter a calculation",
+                        subtitle: trimmedQuery,
+                        copyText: nil,
+                        kind: .message
+                    )
+                ]
+            }
+
             if let result = ArithmeticEvaluator.evaluate(trimmedQuery) {
                 let items = [
                     ToolItem(
@@ -323,7 +374,11 @@ final class LiquidGlassLauncherModel: ObservableObject {
                     )
                 ] + calculationHistoryItems()
             }
-        } else {
+        case .dictionary:
+            guard !trimmedQuery.isEmpty else {
+                return []
+            }
+
             let dictionaryResults = DictionaryLookup.results(for: trimmedQuery)
             if dictionaryResults.isEmpty {
                 return [
@@ -415,8 +470,12 @@ final class LiquidGlassLauncherModel: ObservableObject {
         switch mode {
         case .applications:
             applicationQuery = query
-        case .calculator, .dictionary, .files:
-            toolsQuery = query
+        case .calculator:
+            calculatorQuery = query
+        case .dictionary:
+            dictionaryQuery = query
+        case .files:
+            break
         }
     }
 
@@ -424,9 +483,35 @@ final class LiquidGlassLauncherModel: ObservableObject {
         switch mode {
         case .applications:
             return applicationQuery
-        case .calculator, .dictionary, .files:
-            return toolsQuery
+        case .calculator:
+            return calculatorQuery
+        case .dictionary:
+            return dictionaryQuery
+        case .files:
+            return ""
         }
+    }
+
+    private func switchMode(_ nextMode: LauncherMode) -> Bool {
+        storeCurrentQuery()
+        mode = nextMode
+        query = storedQuery(for: nextMode)
+        selectedIndex = 0
+        applyCurrentMode()
+        requestSelectionScroll(anchor: .top)
+        if nextMode == .applications {
+            reindexAction?()
+        }
+        return true
+    }
+
+    private func handleFileBrowserCommand(_ command: LauncherCommand) -> Bool {
+        MainActor.assumeIsolated {
+            fileBrowserModel.handle(command)
+            selectedIndex = fileBrowserModel.selectedIndex
+        }
+        requestSelectionScroll(anchor: .nearest)
+        return true
     }
 
     private func moveSelection(by delta: Int) {
@@ -469,9 +554,13 @@ final class LiquidGlassLauncherModel: ObservableObject {
                 hideAction?()
             }
             launch(item)
-        case .calculator, .dictionary, .files:
+        case .calculator, .dictionary:
             guard selectedIndex >= 0, selectedIndex < toolItems.count else { return }
             activate(toolItems[selectedIndex])
+        case .files:
+            MainActor.assumeIsolated {
+                fileBrowserModel.handle(.open)
+            }
         }
     }
 

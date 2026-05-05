@@ -25,4 +25,48 @@ final class LauncherModeRoutingTests: XCTestCase {
         XCTAssertEqual(LauncherMode.dictionary.placeholder, "Search Dictionary Here")
         XCTAssertEqual(LauncherMode.files.placeholder, "Browse Files")
     }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testSwitchingModesStoresIndependentQueries() {
+        let model = LiquidGlassLauncherModel(
+            settingsStore: SettingsStore(),
+            inclusionStore: InclusionStore(),
+            exclusionStore: ExclusionStore(),
+            calculationHistoryStore: CalculationHistoryStore(),
+            fileBrowserModel: FileBrowserModel(
+                fileSystem: StubFileSystemClient(home: URL(fileURLWithPath: "/Users/test"), entriesByDirectory: [:]),
+                store: InMemoryFileBrowserStore(state: .defaultValue)
+            )
+        )
+
+        model.show(mode: .applications)
+        model.query = "ray"
+        _ = model.handle(command: .switchMode(.calculator))
+        model.query = "2+2"
+        _ = model.handle(command: .switchMode(.dictionary))
+        model.query = "hello"
+        _ = model.handle(command: .switchMode(.applications))
+
+        XCTAssertEqual(model.query, "ray")
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testBlankDictionaryModeDoesNotUseCalculatorHistoryMessage() {
+        let model = LiquidGlassLauncherModel(
+            settingsStore: SettingsStore(),
+            inclusionStore: InclusionStore(),
+            exclusionStore: ExclusionStore(),
+            calculationHistoryStore: CalculationHistoryStore(),
+            fileBrowserModel: FileBrowserModel(
+                fileSystem: StubFileSystemClient(home: URL(fileURLWithPath: "/Users/test"), entriesByDirectory: [:]),
+                store: InMemoryFileBrowserStore(state: .defaultValue)
+            )
+        )
+
+        model.show(mode: .dictionary)
+
+        XCTAssertNil(model.emptyMessage)
+    }
 }
