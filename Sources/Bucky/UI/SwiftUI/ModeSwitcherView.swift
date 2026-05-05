@@ -72,33 +72,45 @@ struct ModeSwitcherView: View {
             .contentShape(Capsule())
             .glassEffect(.regular.interactive(), in: Capsule())
         case .files:
-            HStack(spacing: 12) {
-                Button {
-                    try? MacFileServices().copyPathsToPasteboard([displayedFileURL])
-                } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: symbol(for: mode))
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 22)
+            GeometryReader { proxy in
+                let pathWidth = ModeSwitcherLayoutPolicy.filesPathTextWidth(
+                    in: proxy.size.width,
+                    path: displayedFileURL.path
+                )
 
-                        FadeMarqueeText(
-                            text: displayedFileURL.path,
-                            font: .system(size: 16, weight: .semibold)
-                        )
+                HStack(spacing: ModeSwitcherLayoutPolicy.filesContentSpacing) {
+                    Button {
+                        try? MacFileServices().copyPathsToPasteboard([displayedFileURL])
+                    } label: {
+                        HStack(spacing: ModeSwitcherLayoutPolicy.filesPathIconSpacing) {
+                            Image(systemName: symbol(for: mode))
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                                .frame(width: ModeSwitcherLayoutPolicy.filesPathIconWidth)
+
+                            FadeMarqueeText(
+                                text: displayedFileURL.path,
+                                font: .system(size: 16, weight: .semibold)
+                            )
+                            .frame(width: pathWidth, height: ModeSwitcherLayoutPolicy.filesPathTextHeight, alignment: .leading)
+                            .clipped()
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                     }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .frame(maxWidth: .infinity)
-                .help("Copy path")
+                    .buttonStyle(.plain)
+                    .frame(width: ModeSwitcherLayoutPolicy.filesPathButtonWidth(in: proxy.size.width), alignment: .leading)
+                    .clipped()
+                    .help("Copy path")
 
-                sortMenu
+                    sortMenu
+                }
+                .padding(.leading, ModeSwitcherLayoutPolicy.filesPillLeadingPadding)
+                .padding(.trailing, ModeSwitcherLayoutPolicy.filesPillTrailingPadding)
+                .frame(width: proxy.size.width, height: ModeSwitcherLayoutPolicy.activePillHeight, alignment: .leading)
+                .glassEffect(.regular.interactive(), in: Capsule())
             }
-            .padding(.leading, 16)
-            .padding(.trailing, 12)
-            .frame(maxWidth: .infinity, minHeight: 48)
-            .glassEffect(.regular.interactive(), in: Capsule())
+            .frame(minWidth: 0, maxWidth: .infinity, minHeight: ModeSwitcherLayoutPolicy.activePillHeight, maxHeight: ModeSwitcherLayoutPolicy.activePillHeight)
         }
     }
 
@@ -136,6 +148,30 @@ struct ModeSwitcherView: View {
         case .files:
             return "folder"
         }
+    }
+}
+
+struct ModeSwitcherLayoutPolicy {
+    static let activePillHeight: CGFloat = 48
+    static let filesPillLeadingPadding: CGFloat = 16
+    static let filesPillTrailingPadding: CGFloat = 12
+    static let filesContentSpacing: CGFloat = 12
+    static let filesPathIconSpacing: CGFloat = 10
+    static let filesPathIconWidth: CGFloat = 22
+    static let filesPathTextHeight: CGFloat = 22
+    static let filesSortMenuWidth: CGFloat = 128
+
+    static func filesPathButtonWidth(in pillWidth: CGFloat) -> CGFloat {
+        let fixedWidth = filesPillLeadingPadding
+            + filesPillTrailingPadding
+            + filesContentSpacing
+            + filesSortMenuWidth
+        return max(0, pillWidth - fixedWidth)
+    }
+
+    static func filesPathTextWidth(in pillWidth: CGFloat, path: String) -> CGFloat {
+        let fixedWidth = filesPathIconWidth + filesPathIconSpacing
+        return max(0, filesPathButtonWidth(in: pillWidth) - fixedWidth)
     }
 }
 
