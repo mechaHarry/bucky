@@ -23,10 +23,22 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
     func testTextPillIconAndInputShareStableVerticalMetrics() {
         XCTAssertEqual(
             ModeSwitcherLayoutPolicy.activeTextPillIconHeight,
-            ModeSwitcherLayoutPolicy.activeTextPillInputHeight
+            ModeSwitcherLayoutPolicy.activeTextPillControlHeight
         )
-        XCTAssertLessThan(ModeSwitcherLayoutPolicy.activeTextPillInputHeight, ModeSwitcherLayoutPolicy.activePillHeight)
-        XCTAssertGreaterThan(ModeSwitcherLayoutPolicy.activeTextPillInputVerticalOffset, 0)
-        XCTAssertLessThanOrEqual(ModeSwitcherLayoutPolicy.activeTextPillInputVerticalOffset, 3)
+        XCTAssertEqual(
+            ModeSwitcherLayoutPolicy.activeTextPillInputHeight,
+            ModeSwitcherLayoutPolicy.activeTextPillControlHeight
+        )
+        XCTAssertEqual(ModeSwitcherLayoutPolicy.activeTextPillInputVerticalOffset, 0)
+        XCTAssertLessThan(ModeSwitcherLayoutPolicy.activeTextPillControlHeight, ModeSwitcherLayoutPolicy.activePillHeight)
+    }
+
+    func testTextInputModesUseSharedTextPillLayout() {
+        XCTAssertEqual(LauncherMode.ordered.filter(\.acceptsTextInput), [
+            .applications,
+            .calculator,
+            .dictionary
+        ])
+        XCTAssertEqual(ModeSwitcherLayoutPolicy.activeTextPillSpacing, 12)
     }
 }

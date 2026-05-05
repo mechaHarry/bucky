@@ -226,6 +226,22 @@ final class FileBrowserModelTests: XCTestCase {
         XCTAssertEqual(model.selectedEntry?.name, "build.log")
     }
 
+    func testFirstCharacterCyclingIgnoresCaseAndLeadingSymbols() {
+        let model = makeModel(entries: entries(["alpha.txt", "_Sample", "Sample", "Sample"]))
+
+        model.handle(.alphaNumeric("c"))
+        XCTAssertEqual(model.selectedEntry?.name, "_Sample")
+
+        model.handle(.alphaNumeric("c"))
+        XCTAssertEqual(model.selectedEntry?.name, "Sample")
+
+        model.handle(.alphaNumeric("c"))
+        XCTAssertEqual(model.selectedEntry?.name, "Sample")
+
+        model.handle(.alphaNumeric("c"))
+        XCTAssertEqual(model.selectedEntry?.name, "_Sample")
+    }
+
     func testAlphaNumericInputIsIgnoredWhileRenaming() {
         let model = makeModel(entries: entries(["alpha.txt", "beta.txt", "gamma.txt"]))
 
@@ -960,6 +976,28 @@ final class FileBrowserModelTests: XCTestCase {
         XCTAssertEqual(model.sort, .size)
         XCTAssertEqual(store.state.sort, .size)
         XCTAssertEqual(client.entryRequests.filter { $0.directory == home }.map(\.sort), [.name, .size])
+    }
+
+    func testSortReloadKeepsLastLookedFileWhenEntryOrderChanges() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let stream = ManualDirectoryStream()
+        let model = FileBrowserModel(
+            fileSystem: StubFileSystemClient(home: home, entriesByDirectory: [:]),
+            store: InMemoryFileBrowserStore(state: .defaultValue),
+            directoryStream: stream
+        )
+
+        let alpha = home.appendingPathComponent("alpha.txt")
+        let beta = home.appendingPathComponent("beta.txt")
+        stream.completeRequest(at: 0, with: .success([fileEntry(alpha), fileEntry(beta)]))
+
+        model.handle(.down)
+        XCTAssertEqual(model.selectedEntry?.url, beta)
+
+        model.setSort(.size)
+        stream.completeRequest(at: 1, with: .success([fileEntry(beta), fileEntry(alpha)]))
+
+        XCTAssertEqual(model.selectedEntry?.url, beta)
     }
 
     func testDirectorySnapshotsTrackCurrentVisibleDirectoryOnly() {
