@@ -184,3 +184,13 @@ struct FileBrowserWobbleEvent: Equatable {
     let id: Int
     let reason: FileBrowserWobbleReason
 }
+
+enum FileBrowserNavigationDirection: Equatable {
+    case deeper
+    case parent
+}
+
+struct FileBrowserNavigationTransition: Equatable {
+    let id: Int
+    let direction: FileBrowserNavigationDirection
+}
