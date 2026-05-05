@@ -137,7 +137,9 @@ struct FileBrowserView: View {
                     .foregroundStyle(.tertiary)
             }
 
-            if snapshot.entries.isEmpty {
+            if snapshot.directory == model.currentDirectory, model.isLoadingEntries {
+                placeholder("Loading files")
+            } else if snapshot.entries.isEmpty {
                 placeholder(snapshot.directory == model.currentDirectory ? "No readable files" : "No preview data")
             } else {
                 ScrollView(.vertical, showsIndicators: false) {

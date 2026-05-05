@@ -1,9 +1,9 @@
 {
-  "baselineMedianMilliseconds" : 416.492083,
+  "baselineMedianMilliseconds" : 361.138917,
   "benchmarkName" : "launcher-filter",
-  "capturedAt" : "2026-05-05T01:40:15Z",
+  "capturedAt" : "2026-05-02T00:18:35Z",
   "comfortThresholdPercent" : 5,
-  "gitCommit" : "0231384",
+  "gitCommit" : "a6ab630",
   "regressionThresholdPercent" : 15,
   "sampleCount" : 9,
   "workloadItemCount" : 1200,

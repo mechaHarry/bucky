@@ -7,7 +7,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     @Published var query = ""
     @Published var filteredItems: [LaunchItem] = []
     @Published var toolItems: [ToolItem] = []
-    @Published var fileBrowserModel: FileBrowserModel
+    @Published private var activatedFileBrowserModel: FileBrowserModel?
     @Published var selectedIndex = 0
     @Published var selectionScrollRequest: SelectionScrollRequest?
     @Published var isIndexing = false
@@ -27,6 +27,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private let inclusionStore: InclusionStore
     private let exclusionStore: ExclusionStore
     private let calculationHistoryStore: CalculationHistoryStore
+    private let fileBrowserModelFactory: () -> FileBrowserModel
     private var allItems: [LaunchItem] = []
     private var visibleItems: [LaunchItem] = []
     private var filterCache = ApplicationFilterCache()
@@ -44,16 +45,24 @@ final class LiquidGlassLauncherModel: ObservableObject {
         inclusionStore: InclusionStore,
         exclusionStore: ExclusionStore,
         calculationHistoryStore: CalculationHistoryStore,
-        fileBrowserModel: FileBrowserModel? = nil
+        fileBrowserModel: FileBrowserModel? = nil,
+        fileBrowserModelFactory: @escaping () -> FileBrowserModel = {
+            MainActor.assumeIsolated {
+                FileBrowserModel()
+            }
+        }
     ) {
         self.settingsStore = settingsStore
         self.inclusionStore = inclusionStore
         self.exclusionStore = exclusionStore
         self.calculationHistoryStore = calculationHistoryStore
-        self.fileBrowserModel = fileBrowserModel ?? MainActor.assumeIsolated {
-            FileBrowserModel()
-        }
+        self.activatedFileBrowserModel = fileBrowserModel
+        self.fileBrowserModelFactory = fileBrowserModelFactory
         animationTiming = settingsStore.settings.animationTiming
+    }
+
+    var fileBrowserModel: FileBrowserModel {
+        activateFileBrowserModel()
     }
 
     var placeholder: String {
@@ -231,6 +240,16 @@ final class LiquidGlassLauncherModel: ObservableObject {
         pendingCalculationHistoryTimer = nil
         pendingCalculationHistoryExpression = nil
         pendingCalculationHistoryResult = nil
+    }
+
+    private func activateFileBrowserModel() -> FileBrowserModel {
+        if let activatedFileBrowserModel {
+            return activatedFileBrowserModel
+        }
+
+        let model = fileBrowserModelFactory()
+        activatedFileBrowserModel = model
+        return model
     }
 
     private func applyCurrentMode(preservePreviousOnEmpty: Bool = false) {
