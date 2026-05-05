@@ -132,9 +132,13 @@ struct MacFileServices {
     }
 
     private func validateReplacement(source: URL, destination: URL) throws {
-        if source.standardizedFileURL == destination.standardizedFileURL {
+        if canonicalFileURL(source) == canonicalFileURL(destination) {
             throw MacFileServicesError.cannotReplaceItemWithItself(source)
         }
+    }
+
+    private func canonicalFileURL(_ url: URL) -> URL {
+        url.resolvingSymlinksInPath().standardizedFileURL
     }
 
     private func replacementTemporaryURL(for destination: URL) -> URL {

@@ -42,6 +42,19 @@ final class MacFileServicesTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: source, encoding: .utf8), "original")
     }
 
+    func testCopyReplaceThroughSymlinkIntoRealParentPreservesSource() throws {
+        let realDirectory = temporaryDirectory.appendingPathComponent("Real", isDirectory: true)
+        let symlinkDirectory = temporaryDirectory.appendingPathComponent("Linked", isDirectory: true)
+        try FileManager.default.createDirectory(at: realDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: symlinkDirectory, withDestinationURL: realDirectory)
+        let realSource = realDirectory.appendingPathComponent("same.txt")
+        let symlinkSource = symlinkDirectory.appendingPathComponent("same.txt")
+        try "original".write(to: realSource, atomically: true, encoding: .utf8)
+
+        XCTAssertThrowsError(try MacFileServices(fileManager: .default).copy([symlinkSource], to: realDirectory, conflict: .replace))
+        XCTAssertEqual(try String(contentsOf: realSource, encoding: .utf8), "original")
+    }
+
     func testMoveFilesMovesIntoDestinationDirectory() throws {
         let source = temporaryDirectory.appendingPathComponent("move.txt")
         let destination = temporaryDirectory.appendingPathComponent("Destination", isDirectory: true)
@@ -60,5 +73,18 @@ final class MacFileServicesTests: XCTestCase {
 
         XCTAssertThrowsError(try MacFileServices(fileManager: .default).move([source], to: temporaryDirectory, conflict: .replace))
         XCTAssertEqual(try String(contentsOf: source, encoding: .utf8), "original")
+    }
+
+    func testMoveReplaceThroughSymlinkIntoRealParentPreservesSource() throws {
+        let realDirectory = temporaryDirectory.appendingPathComponent("Real", isDirectory: true)
+        let symlinkDirectory = temporaryDirectory.appendingPathComponent("Linked", isDirectory: true)
+        try FileManager.default.createDirectory(at: realDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: symlinkDirectory, withDestinationURL: realDirectory)
+        let realSource = realDirectory.appendingPathComponent("same-move.txt")
+        let symlinkSource = symlinkDirectory.appendingPathComponent("same-move.txt")
+        try "original".write(to: realSource, atomically: true, encoding: .utf8)
+
+        XCTAssertThrowsError(try MacFileServices(fileManager: .default).move([symlinkSource], to: realDirectory, conflict: .replace))
+        XCTAssertEqual(try String(contentsOf: realSource, encoding: .utf8), "original")
     }
 }
