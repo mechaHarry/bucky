@@ -473,7 +473,7 @@ final class FileBrowserModel: ObservableObject {
 
     private func moveSelection(by delta: Int) {
         guard !entries.isEmpty else { return }
-        moveSelection(to: selectedIndex + delta, anchor: delta < 0 ? .top : .bottom)
+        moveSelection(to: selectedIndex + delta, anchor: .nearest)
     }
 
     private func moveSelection(to index: Int, anchor: FileBrowserSelectionScrollAnchor = .nearest) {

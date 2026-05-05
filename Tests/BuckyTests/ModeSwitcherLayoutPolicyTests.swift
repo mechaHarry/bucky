@@ -19,4 +19,12 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
     func testFilesPathWidthNeverGoesNegative() {
         XCTAssertEqual(ModeSwitcherLayoutPolicy.filesPathTextWidth(in: 120, path: "/very/long/path"), 0)
     }
+
+    func testTextPillIconAndInputShareStableVerticalMetrics() {
+        XCTAssertEqual(
+            ModeSwitcherLayoutPolicy.activeTextPillIconHeight,
+            ModeSwitcherLayoutPolicy.activeTextPillInputHeight
+        )
+        XCTAssertLessThan(ModeSwitcherLayoutPolicy.activeTextPillInputHeight, ModeSwitcherLayoutPolicy.activePillHeight)
+    }
 }
