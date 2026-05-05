@@ -78,7 +78,7 @@ struct FileBrowserView: View {
                 ForEach(model.pinnedDirectories, id: \.self) { url in
                     HStack(spacing: 8) {
                         FadeMarqueeText(text: url.lastPathComponent, font: .system(size: 13, weight: .medium))
-                        FileIconView(url: url)
+                        FileIconView(url: url, model: model)
                             .frame(width: 18, height: 18)
                     }
                     .padding(.horizontal, 8)
@@ -138,7 +138,8 @@ struct FileBrowserView: View {
                             FileBrowserRow(
                                 entry: entry,
                                 isSelected: isSelected(entry, at: index, in: snapshot),
-                                isMarked: model.selectedURLs.contains(entry.url)
+                                isMarked: model.selectedURLs.contains(entry.url),
+                                model: model
                             )
                         }
                     }
@@ -330,6 +331,7 @@ private struct FileBrowserRow: View {
     let entry: FileBrowserEntry
     let isSelected: Bool
     let isMarked: Bool
+    @ObservedObject var model: FileBrowserModel
 
     var body: some View {
         HStack(spacing: 10) {
@@ -344,7 +346,7 @@ private struct FileBrowserRow: View {
                     .foregroundStyle(Color.accentColor)
             }
 
-            FileIconView(url: entry.url)
+            FileIconView(url: entry.url, model: model)
                 .frame(width: 23, height: 23)
         }
         .padding(.horizontal, 9)
@@ -640,7 +642,7 @@ private struct QuickLookPreviewSurface: View {
 
     private var metadataFallback: some View {
         VStack(spacing: 14) {
-            FileIconView(url: preview.url)
+            FileIconView(url: preview.url, model: model)
                 .frame(width: 96, height: 96)
 
             Text(preview.url.lastPathComponent)
@@ -750,6 +752,7 @@ private struct NativeQuickLookThumbnailView: NSViewRepresentable {
 @available(macOS 26.0, *)
 private struct FileIconView: View {
     let url: URL
+    @ObservedObject var model: FileBrowserModel
     @State private var icon: NSImage?
 
     var body: some View {
@@ -766,7 +769,7 @@ private struct FileIconView: View {
             }
         }
         .task(id: url) {
-            icon = MacFileServices().icon(for: url)
+            icon = model.icon(for: url)
         }
     }
 }

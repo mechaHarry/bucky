@@ -98,6 +98,7 @@ protocol FileBrowserNativeServicing {
     func open(_ url: URL) throws
     func revealInFinder(_ urls: [URL]) throws
     func copyPathsToPasteboard(_ urls: [URL]) throws
+    func icon(for url: URL) -> NSImage
     func copy(_ urls: [URL], to destinationDirectory: URL, conflict: FileBrowserConflictResolution) throws
     func move(_ urls: [URL], to destinationDirectory: URL, conflict: FileBrowserConflictResolution) throws
     func trash(_ urls: [URL]) throws

@@ -64,6 +64,14 @@ struct MacFileServices: FileBrowserNativeServicing {
 
     func move(_ urls: [URL], to destinationDirectory: URL, conflict: FileBrowserConflictResolution) throws {
         for source in urls {
+            let originalDestination = destinationDirectory.appendingPathComponent(source.lastPathComponent)
+            if canonicalFileURL(source) == canonicalFileURL(originalDestination) {
+                if conflict == .replace {
+                    throw MacFileServicesError.cannotReplaceItemWithItself(source)
+                }
+                continue
+            }
+
             let destination = resolvedDestination(for: source, in: destinationDirectory, conflict: conflict)
             guard let destination else { return }
             if fileManager.fileExists(atPath: destination.path) {
@@ -100,6 +108,15 @@ struct MacFileServices: FileBrowserNativeServicing {
         let uniqueTargets = Set(targets.map { canonicalFileURL($0) })
         guard uniqueTargets.count == targets.count else {
             throw MacFileServicesError.invalidName(baseName)
+        }
+
+        let canonicalSources = Set(urls.map { canonicalFileURL($0) })
+        for (source, target) in zip(urls, targets) {
+            let canonicalSource = canonicalFileURL(source)
+            let canonicalTarget = canonicalFileURL(target)
+            if canonicalSource != canonicalTarget, canonicalSources.contains(canonicalTarget) {
+                throw MacFileServicesError.targetAlreadyExists(target)
+            }
         }
 
         for target in targets {

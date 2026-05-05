@@ -191,6 +191,10 @@ final class FileBrowserModel: ObservableObject {
         fileServices.loadPreviewThumbnail(for: url, size: size, scale: scale, completion: completion)
     }
 
+    func icon(for url: URL) -> NSImage {
+        fileServices.icon(for: url)
+    }
+
     func performFocusedAction() {
         guard focusState == .previewActions else { return }
         let actions = focusableActions
