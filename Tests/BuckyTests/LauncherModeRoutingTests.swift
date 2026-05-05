@@ -131,6 +131,25 @@ final class LauncherModeRoutingTests: XCTestCase {
 
     @MainActor
     @available(macOS 26.0, *)
+    func testDirectModeSwitchCanCancelActiveFileSpaceHold() {
+        let model = makeFileLauncherModel(entries: ["alpha.txt"])
+        model.modeWillSwitchAction = { oldMode, nextMode in
+            if oldMode == .files, nextMode != .files {
+                _ = model.handle(command: .endSpaceHold)
+            }
+        }
+
+        model.show(mode: .files)
+        _ = model.handle(command: .beginSpaceHold)
+        XCTAssertEqual(model.fileBrowserModel.focusState, .quickLook(model.fileBrowserModel.selectedEntry!.url))
+
+        _ = model.handle(command: .switchMode(.calculator))
+
+        XCTAssertEqual(model.fileBrowserModel.focusState, .browse)
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
     private func makeFileLauncherModel(entries names: [String]) -> LiquidGlassLauncherModel {
         let home = URL(fileURLWithPath: "/Users/test")
         let entries = names.map { name in

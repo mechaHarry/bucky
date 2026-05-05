@@ -21,6 +21,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     var openSettingsAction: (() -> Void)?
     var reindexAction: (() -> Void)?
     var pinnedChangedAction: ((Bool) -> Void)?
+    var modeWillSwitchAction: ((LauncherMode, LauncherMode) -> Void)?
 
     private let settingsStore: SettingsStore
     private let inclusionStore: InclusionStore
@@ -502,6 +503,9 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     private func switchMode(_ nextMode: LauncherMode) -> Bool {
+        if mode != nextMode {
+            modeWillSwitchAction?(mode, nextMode)
+        }
         storeCurrentQuery()
         mode = nextMode
         query = storedQuery(for: nextMode)

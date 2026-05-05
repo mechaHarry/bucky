@@ -43,6 +43,11 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         model.pinnedChangedAction = { [weak self] isPinned in
             self?.setPinned(isPinned)
         }
+        model.modeWillSwitchAction = { [weak self] oldMode, nextMode in
+            if oldMode == .files, nextMode != .files {
+                self?.cancelSpaceHoldState(deliverEndHold: true)
+            }
+        }
         buildWindow()
         installLocalKeyMonitor()
         reindex()
@@ -225,9 +230,6 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     }
 
     private func handleLauncherCommand(_ command: LauncherCommand) -> Bool {
-        if case let .switchMode(nextMode) = command, model.mode == .files, nextMode != .files {
-            cancelSpaceHoldState(deliverEndHold: true)
-        }
         return model.handle(command: command)
     }
 
