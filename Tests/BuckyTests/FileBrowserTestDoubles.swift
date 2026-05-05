@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 @testable import Bucky
 
@@ -59,6 +60,12 @@ enum TestFileBrowserServiceError: LocalizedError {
 }
 
 final class RecordingFileBrowserServices: FileBrowserNativeServicing {
+    struct ThumbnailRequest: Equatable {
+        let url: URL
+        let size: CGSize
+        let scale: CGFloat
+    }
+
     enum Event: Equatable {
         case open(URL)
         case revealInFinder([URL])
@@ -74,11 +81,15 @@ final class RecordingFileBrowserServices: FileBrowserNativeServicing {
     var conflicts: [FileBrowserConflict] = []
     var error: Error?
     var previewMode: FileBrowserPreviewMode = .metadataFallback
+    var thumbnailResult: NSImage?
+    private(set) var thumbnailRequests: [ThumbnailRequest] = []
 
     func reset() {
         events = []
         conflicts = []
         error = nil
+        thumbnailResult = nil
+        thumbnailRequests = []
     }
 
     func open(_ url: URL) throws {
@@ -131,5 +142,15 @@ final class RecordingFileBrowserServices: FileBrowserNativeServicing {
 
     func previewMode(for url: URL) -> FileBrowserPreviewMode {
         previewMode
+    }
+
+    func loadPreviewThumbnail(
+        for url: URL,
+        size: CGSize,
+        scale: CGFloat,
+        completion: @escaping (NSImage?) -> Void
+    ) {
+        thumbnailRequests.append(ThumbnailRequest(url: url, size: size, scale: scale))
+        completion(thumbnailResult)
     }
 }

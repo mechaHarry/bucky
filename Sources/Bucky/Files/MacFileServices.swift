@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import QuickLookThumbnailing
 import UniformTypeIdentifiers
 
 enum MacFileServicesError: LocalizedError {
@@ -144,6 +145,26 @@ struct MacFileServices: FileBrowserNativeServicing {
         }
 
         return .metadataFallback
+    }
+
+    func loadPreviewThumbnail(
+        for url: URL,
+        size: CGSize,
+        scale: CGFloat,
+        completion: @escaping (NSImage?) -> Void
+    ) {
+        let request = QLThumbnailGenerator.Request(
+            fileAt: url,
+            size: size,
+            scale: scale,
+            representationTypes: .all
+        )
+
+        QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { thumbnail, _ in
+            DispatchQueue.main.async {
+                completion(thumbnail?.nsImage)
+            }
+        }
     }
 
     func keepBothURL(for destination: URL) -> URL {
