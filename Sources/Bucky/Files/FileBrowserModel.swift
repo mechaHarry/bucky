@@ -64,6 +64,10 @@ final class FileBrowserModel: ObservableObject {
             } else {
                 moveSelection(by: 1)
             }
+        case .top:
+            moveSelection(to: 0)
+        case .bottom:
+            moveSelection(to: entries.count - 1)
         case .left:
             moveToParent()
         case .right:
@@ -160,7 +164,12 @@ final class FileBrowserModel: ObservableObject {
 
     private func moveSelection(by delta: Int) {
         guard !entries.isEmpty else { return }
-        selectedIndex = max(0, min(entries.count - 1, selectedIndex + delta))
+        moveSelection(to: selectedIndex + delta)
+    }
+
+    private func moveSelection(to index: Int) {
+        guard !entries.isEmpty else { return }
+        selectedIndex = max(0, min(entries.count - 1, index))
     }
 
     private func moveToParent() {
