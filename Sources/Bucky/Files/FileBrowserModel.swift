@@ -94,9 +94,9 @@ final class FileBrowserModel: ObservableObject {
                 moveSelection(by: 1)
             }
         case .top:
-            moveSelection(to: 0)
+            moveSelection(to: 0, anchor: .top)
         case .bottom:
-            moveSelection(to: entries.count - 1)
+            moveSelection(to: entries.count - 1, anchor: .bottom)
         case .left:
             moveToParent()
         case .right:
@@ -422,6 +422,7 @@ final class FileBrowserModel: ObservableObject {
         statusMessage = status
         pruneStaleSelections()
         rebuildDirectorySnapshots(force: true)
+        publishSelectionScrollEvent(anchor: .top)
         persist()
     }
 
@@ -472,14 +473,14 @@ final class FileBrowserModel: ObservableObject {
 
     private func moveSelection(by delta: Int) {
         guard !entries.isEmpty else { return }
-        moveSelection(to: selectedIndex + delta)
+        moveSelection(to: selectedIndex + delta, anchor: delta < 0 ? .top : .bottom)
     }
 
-    private func moveSelection(to index: Int) {
+    private func moveSelection(to index: Int, anchor: FileBrowserSelectionScrollAnchor = .nearest) {
         guard !entries.isEmpty else { return }
         selectedIndex = max(0, min(entries.count - 1, index))
         rebuildDirectorySnapshots()
-        publishSelectionScrollEvent()
+        publishSelectionScrollEvent(anchor: anchor)
     }
 
     private func moveToParent() {
@@ -569,10 +570,10 @@ final class FileBrowserModel: ObservableObject {
         navigationTransition = FileBrowserNavigationTransition(id: nextNavigationTransitionID, direction: direction)
     }
 
-    private func publishSelectionScrollEvent() {
+    private func publishSelectionScrollEvent(anchor: FileBrowserSelectionScrollAnchor) {
         guard let url = selectedEntry?.url else { return }
         nextSelectionScrollID += 1
-        selectionScrollEvent = FileBrowserSelectionScrollEvent(id: nextSelectionScrollID, url: url)
+        selectionScrollEvent = FileBrowserSelectionScrollEvent(id: nextSelectionScrollID, url: url, anchor: anchor)
     }
 
     private func beginQuickLook() {

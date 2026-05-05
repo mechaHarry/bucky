@@ -40,18 +40,19 @@ struct LiquidGlassLauncherView: View {
             }
         }
         .onAppear {
-            isSearchFocused = model.mode != .files
+            synchronizeSearchFocus()
             preloadApplicationIcons()
         }
         .onChange(of: model.mode) {
-            isSearchFocused = model.mode != .files
+            synchronizeSearchFocus()
             preloadApplicationIcons()
         }
         .onChange(of: model.isPresented) { _, isPresented in
             if isPresented {
-                isSearchFocused = model.mode != .files
+                synchronizeSearchFocus()
                 preloadApplicationIcons()
             } else {
+                isSearchFocused = false
                 iconPreloadTask?.cancel()
                 iconPreloadTask = nil
             }
@@ -70,6 +71,17 @@ struct LiquidGlassLauncherView: View {
         .padding(10)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(windowBackdrop)
+    }
+
+    private func synchronizeSearchFocus() {
+        let shouldFocus = model.isPresented && model.mode.acceptsTextInput
+        isSearchFocused = false
+        guard shouldFocus else { return }
+
+        DispatchQueue.main.async {
+            guard model.isPresented, model.mode.acceptsTextInput else { return }
+            isSearchFocused = true
+        }
     }
 
     private var header: some View {

@@ -55,4 +55,8 @@ enum LauncherMode: Int, CaseIterable {
             return "Browse Files"
         }
     }
+
+    var acceptsTextInput: Bool {
+        self != .files
+    }
 }

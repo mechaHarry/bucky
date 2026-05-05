@@ -53,7 +53,7 @@ struct FileBrowserView: View {
         }
         .onChange(of: model.wobbleEvent?.id) { _, id in
             guard id != nil else { return }
-            withAnimation(.easeOut(duration: 0.24)) {
+            withAnimation(.smooth(duration: 0.20)) {
                 wobblePhase += 1
             }
         }
@@ -365,12 +365,16 @@ struct FileBrowserView: View {
     }
 
     private func rowAnimation(for index: Int) -> Animation {
-        .interactiveSpring(response: 0.58, dampingFraction: 0.82, blendDuration: 0.16)
-            .delay(Double(min(index, 18)) * 0.018)
+        .interactiveSpring(
+            response: FileBrowserMotionPolicy.rowSpringResponse,
+            dampingFraction: FileBrowserMotionPolicy.rowSpringDampingFraction,
+            blendDuration: FileBrowserMotionPolicy.rowSpringBlendDuration
+        )
+        .delay(Double(min(index, 18)) * FileBrowserMotionPolicy.rowStaggerDelaySeconds)
     }
 
     private var rowSwapOutgoingDelayNanoseconds: UInt64 {
-        680_000_000
+        FileBrowserMotionPolicy.rowSwapOutgoingDelayNanoseconds
     }
 
     private func beginNavigationRowSwap(_ transition: FileBrowserNavigationTransition) {
@@ -379,7 +383,7 @@ struct FileBrowserView: View {
         activeNavigationDirection = transition.direction
         rowSwapStartedAt = Date()
         pendingDisplayedEntries = []
-        withAnimation(.easeInOut(duration: 0.30)) {
+        withAnimation(.easeInOut(duration: FileBrowserMotionPolicy.rowSwapOutgoingAnimationSeconds)) {
             displayedEntries = []
         }
     }
@@ -398,10 +402,14 @@ struct FileBrowserView: View {
         rowSwapTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: incomingDelay)
             guard !Task.isCancelled, activeNavigationTransitionID == transitionID else { return }
-            withAnimation(.interactiveSpring(response: 0.58, dampingFraction: 0.82, blendDuration: 0.16)) {
+            withAnimation(.interactiveSpring(
+                response: FileBrowserMotionPolicy.rowSpringResponse,
+                dampingFraction: FileBrowserMotionPolicy.rowSpringDampingFraction,
+                blendDuration: FileBrowserMotionPolicy.rowSpringBlendDuration
+            )) {
                 displayedEntries = incomingEntries
             }
-            try? await Task.sleep(nanoseconds: 20_000_000)
+            try? await Task.sleep(nanoseconds: FileBrowserMotionPolicy.rowSwapIncomingSettleDelayNanoseconds)
             guard !Task.isCancelled, activeNavigationTransitionID == transitionID else { return }
             pendingDisplayedEntries = []
             activeNavigationTransitionID = nil
@@ -429,30 +437,35 @@ struct FileBrowserView: View {
 
     private func scrollSelectedEntry(in proxy: ScrollViewProxy) {
         guard let url = model.selectedEntry?.url else { return }
-        scrollEntry(url, in: proxy, animated: true)
+        scrollEntry(url, anchor: .top, in: proxy, animated: true)
     }
 
     private func scrollSelectionEvent(in proxy: ScrollViewProxy) {
-        guard let url = model.selectionScrollEvent?.url else { return }
-        scrollEntry(url, in: proxy, animated: false)
+        guard let event = model.selectionScrollEvent else { return }
+        scrollEntry(event.url, anchor: event.anchor, in: proxy, animated: false)
     }
 
-    private func scrollEntry(_ url: URL, in proxy: ScrollViewProxy, animated: Bool) {
+    private func scrollEntry(
+        _ url: URL,
+        anchor: FileBrowserSelectionScrollAnchor,
+        in proxy: ScrollViewProxy,
+        animated: Bool
+    ) {
         guard displayedEntries.contains(where: { $0.url == url }) else { return }
         DispatchQueue.main.async {
             if animated {
                 withAnimation(.easeInOut(duration: 0.20)) {
-                    proxy.scrollTo(url, anchor: .center)
+                    proxy.scrollTo(url, anchor: anchor.unitPoint)
                 }
             } else {
                 var transaction = Transaction()
                 transaction.disablesAnimations = true
                 withTransaction(transaction) {
-                    proxy.scrollTo(url, anchor: .center)
+                    proxy.scrollTo(url, anchor: anchor.unitPoint)
                 }
                 DispatchQueue.main.async {
                     withTransaction(transaction) {
-                        proxy.scrollTo(url, anchor: .center)
+                        proxy.scrollTo(url, anchor: anchor.unitPoint)
                     }
                 }
             }
@@ -488,8 +501,23 @@ private struct FileBrowserPaneWobbleEffect: GeometryEffect {
     }
 
     func effectValue(size: CGSize) -> ProjectionTransform {
-        let offset = sin(phase * .pi * 4) * 5
+        let offset = sin(phase * .pi * 2 * FileBrowserMotionPolicy.wobbleOscillations)
+            * FileBrowserMotionPolicy.wobbleAmplitude
         return ProjectionTransform(CGAffineTransform(translationX: offset, y: 0))
+    }
+}
+
+@available(macOS 26.0, *)
+private extension FileBrowserSelectionScrollAnchor {
+    var unitPoint: UnitPoint {
+        switch self {
+        case .nearest:
+            return .top
+        case .top:
+            return .top
+        case .bottom:
+            return .bottom
+        }
     }
 }
 

@@ -27,6 +27,13 @@ final class LauncherModeRoutingTests: XCTestCase {
         XCTAssertEqual(LauncherMode.files.placeholder, "Browse Files")
     }
 
+    func testTextInputFocusModesExcludeFiles() {
+        XCTAssertTrue(LauncherMode.applications.acceptsTextInput)
+        XCTAssertTrue(LauncherMode.calculator.acceptsTextInput)
+        XCTAssertTrue(LauncherMode.dictionary.acceptsTextInput)
+        XCTAssertFalse(LauncherMode.files.acceptsTextInput)
+    }
+
     func testFilesRenameFocusDoesNotRouteAlphaNumericKeysAwayFromTextField() {
         XCTAssertTrue(LauncherKeyRoutingPolicy.shouldRouteAlphaNumeric(
             mode: .files,
