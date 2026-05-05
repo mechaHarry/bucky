@@ -49,7 +49,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     }
 
     deinit {
-        pendingSpaceHoldTimer?.invalidate()
+        cancelSpaceHoldState(deliverEndHold: true)
         if let localKeyMonitor {
             NSEvent.removeMonitor(localKeyMonitor)
         }
@@ -110,7 +110,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         }
 
         beginVisibilityTransition(.hiding)
-        cancelPendingSpaceHold()
+        cancelSpaceHoldState(deliverEndHold: true)
         model.cancelPendingCalculationHistory()
 
         let transitionID = visibilityTransitionID
@@ -146,8 +146,8 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         window.isMovableByWindowBackground = true
         window.minSize = NSSize(width: 520, height: 340)
         window.delegate = self
-        window.commandHandler = { [weak model] command in
-            model?.handle(command: command) ?? false
+        window.commandHandler = { [weak self] command in
+            self?.handleLauncherCommand(command) ?? false
         }
 
         let hostingView = NSHostingView(rootView: LiquidGlassLauncherView(model: model))
@@ -179,49 +179,56 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             }
 
             if let mode = event.commandNumberMode {
-                return self.model.handle(command: .switchMode(mode)) ? nil : event
+                return self.handleLauncherCommand(.switchMode(mode)) ? nil : event
             }
             if event.isCommandR {
-                return self.model.handle(command: .reindex) ? nil : event
+                return self.handleLauncherCommand(.reindex) ? nil : event
             }
             if event.isCommandComma {
-                return self.model.handle(command: .settings) ? nil : event
+                return self.handleLauncherCommand(.settings) ? nil : event
             }
             if event.isCommandP {
-                return self.model.handle(command: .togglePin) ? nil : event
+                return self.handleLauncherCommand(.togglePin) ? nil : event
             }
             if event.isCommandUpArrow {
-                return self.model.handle(command: .top) ? nil : event
+                return self.handleLauncherCommand(.top) ? nil : event
             }
             if event.isCommandDownArrow {
-                return self.model.handle(command: .bottom) ? nil : event
+                return self.handleLauncherCommand(.bottom) ? nil : event
             }
 
             switch event.keyCode {
             case UInt16(kVK_UpArrow):
-                return self.model.handle(command: .up) ? nil : event
+                return self.handleLauncherCommand(.up) ? nil : event
             case UInt16(kVK_DownArrow):
-                return self.model.handle(command: .down) ? nil : event
+                return self.handleLauncherCommand(.down) ? nil : event
             case UInt16(kVK_LeftArrow):
-                return self.model.handle(command: .left) ? nil : event
+                return self.handleLauncherCommand(.left) ? nil : event
             case UInt16(kVK_RightArrow):
-                return self.model.handle(command: .right) ? nil : event
+                return self.handleLauncherCommand(.right) ? nil : event
             case UInt16(kVK_Space):
                 if event.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.shift) {
-                    return self.model.handle(command: .shiftSpace) ? nil : event
+                    return self.handleLauncherCommand(.shiftSpace) ? nil : event
                 }
-                return self.model.handle(command: .space) ? nil : event
+                return self.handleLauncherCommand(.space) ? nil : event
             case UInt16(kVK_Return), UInt16(kVK_ANSI_KeypadEnter):
-                return self.model.handle(command: .open) ? nil : event
+                return self.handleLauncherCommand(.open) ? nil : event
             case UInt16(kVK_Escape):
-                return self.model.handle(command: .close) ? nil : event
+                return self.handleLauncherCommand(.close) ? nil : event
             default:
                 if let character = event.firstAlphaNumericCharacter {
-                    return self.model.handle(command: .alphaNumeric(character)) ? nil : event
+                    return self.handleLauncherCommand(.alphaNumeric(character)) ? nil : event
                 }
                 return event
             }
         }
+    }
+
+    private func handleLauncherCommand(_ command: LauncherCommand) -> Bool {
+        if case let .switchMode(nextMode) = command, model.mode == .files, nextMode != .files {
+            cancelSpaceHoldState(deliverEndHold: true)
+        }
+        return model.handle(command: command)
     }
 
     private func handleFileSpaceEvent(_ event: NSEvent) -> NSEvent? {
@@ -257,15 +264,15 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             return nil
         case .sendSpace:
             cancelPendingSpaceHold()
-            return model.handle(command: .space) ? nil : event
+            return handleLauncherCommand(.space) ? nil : event
         case .sendShiftSpace:
             cancelPendingSpaceHold()
-            return model.handle(command: .shiftSpace) ? nil : event
+            return handleLauncherCommand(.shiftSpace) ? nil : event
         case .sendBeginHold:
-            return model.handle(command: .beginSpaceHold) ? nil : event
+            return handleLauncherCommand(.beginSpaceHold) ? nil : event
         case .sendEndHold:
             cancelPendingSpaceHold()
-            return model.handle(command: .endSpaceHold) ? nil : event
+            return handleLauncherCommand(.endSpaceHold) ? nil : event
         }
     }
 
@@ -287,6 +294,13 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     private func cancelPendingSpaceHold() {
         pendingSpaceHoldTimer?.invalidate()
         pendingSpaceHoldTimer = nil
+    }
+
+    private func cancelSpaceHoldState(deliverEndHold: Bool) {
+        cancelPendingSpaceHold()
+        let decision = spaceKeyRouter.cancel()
+        guard deliverEndHold, decision == .sendEndHold else { return }
+        _ = model.handle(command: .endSpaceHold)
     }
 
     private func positionWindow() {
@@ -420,6 +434,13 @@ struct LauncherSpaceKeyRouter {
         isHolding = true
         return .sendBeginHold
     }
+
+    mutating func cancel() -> LauncherSpaceKeyDecision {
+        let wasHolding = isHolding
+        isPendingHold = false
+        isHolding = false
+        return wasHolding ? .sendEndHold : .pass
+    }
 }
 
 @available(macOS 26.0, *)
@@ -438,13 +459,13 @@ private final class LiquidGlassWindow: NSWindow {
     override var canBecomeMain: Bool { true }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if let mode = event.commandNumberMode, commandHandler?(.switchMode(mode)) == true {
+            return true
+        }
         if event.isCommandR, commandHandler?(.reindex) == true {
             return true
         }
         if event.isCommandComma, commandHandler?(.settings) == true {
-            return true
-        }
-        if let mode = event.commandNumberMode, commandHandler?(.switchMode(mode)) == true {
             return true
         }
         if event.isCommandP, commandHandler?(.togglePin) == true {
