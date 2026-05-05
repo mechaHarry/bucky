@@ -87,4 +87,62 @@ final class MacFileServicesTests: XCTestCase {
         XCTAssertThrowsError(try MacFileServices(fileManager: .default).move([symlinkSource], to: realDirectory, conflict: .replace))
         XCTAssertEqual(try String(contentsOf: realSource, encoding: .utf8), "original")
     }
+
+    func testConflictingDestinationsReportsExistingDestinationWithoutSelfConflict() throws {
+        let source = temporaryDirectory.appendingPathComponent("source.txt")
+        let destination = temporaryDirectory.appendingPathComponent("Destination", isDirectory: true)
+        try "new".write(to: source, atomically: true, encoding: .utf8)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        try "old".write(to: destination.appendingPathComponent("source.txt"), atomically: true, encoding: .utf8)
+
+        let conflicts = MacFileServices(fileManager: .default).conflictingDestinations(for: [source], in: destination)
+
+        XCTAssertEqual(conflicts, [
+            FileBrowserConflict(source: source, destination: destination.appendingPathComponent("source.txt"))
+        ])
+        XCTAssertEqual(MacFileServices(fileManager: .default).conflictingDestinations(for: [source], in: temporaryDirectory), [])
+    }
+
+    func testRenameMovesItemWithoutOverwritingExistingFile() throws {
+        let source = temporaryDirectory.appendingPathComponent("old.txt")
+        let existing = temporaryDirectory.appendingPathComponent("existing.txt")
+        try "value".write(to: source, atomically: true, encoding: .utf8)
+        try "existing".write(to: existing, atomically: true, encoding: .utf8)
+        let services = MacFileServices(fileManager: .default)
+
+        let renamed = try services.rename(source, to: "new.txt")
+
+        XCTAssertEqual(renamed.lastPathComponent, "new.txt")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: source.path))
+        XCTAssertEqual(try String(contentsOf: renamed, encoding: .utf8), "value")
+        XCTAssertThrowsError(try services.rename(renamed, to: "existing.txt"))
+        XCTAssertEqual(try String(contentsOf: existing, encoding: .utf8), "existing")
+    }
+
+    func testBatchRenameAddsNumberedSuffixesAndPreservesExtensions() throws {
+        let first = temporaryDirectory.appendingPathComponent("one.txt")
+        let second = temporaryDirectory.appendingPathComponent("two.md")
+        try "one".write(to: first, atomically: true, encoding: .utf8)
+        try "two".write(to: second, atomically: true, encoding: .utf8)
+
+        let renamed = try MacFileServices(fileManager: .default).batchRename([first, second], baseName: "Screenshot")
+
+        XCTAssertEqual(renamed.map(\.lastPathComponent), ["Screenshot 1.txt", "Screenshot 2.md"])
+        XCTAssertEqual(try String(contentsOf: renamed[0], encoding: .utf8), "one")
+        XCTAssertEqual(try String(contentsOf: renamed[1], encoding: .utf8), "two")
+    }
+
+    func testBatchRenameRejectsExistingTargetBeforeMovingAnyFile() throws {
+        let first = temporaryDirectory.appendingPathComponent("one.txt")
+        let second = temporaryDirectory.appendingPathComponent("two.txt")
+        let existing = temporaryDirectory.appendingPathComponent("Screenshot 1.txt")
+        try "one".write(to: first, atomically: true, encoding: .utf8)
+        try "two".write(to: second, atomically: true, encoding: .utf8)
+        try "existing".write(to: existing, atomically: true, encoding: .utf8)
+
+        XCTAssertThrowsError(try MacFileServices(fileManager: .default).batchRename([first, second], baseName: "Screenshot"))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: first.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: second.path))
+        XCTAssertEqual(try String(contentsOf: existing, encoding: .utf8), "existing")
+    }
 }

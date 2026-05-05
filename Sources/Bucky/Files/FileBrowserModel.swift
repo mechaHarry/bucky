@@ -12,11 +12,15 @@ final class FileBrowserModel: ObservableObject {
     @Published private(set) var sort: FileBrowserSort
     @Published private(set) var pinnedDirectories: [URL] = []
     @Published private(set) var focusedActionIndex = 0
+    @Published private(set) var focusedConflictResolution: FileBrowserConflictResolution = .keepBoth
     @Published private(set) var directorySnapshots: [FileBrowserDirectorySnapshot] = []
     @Published private(set) var pendingActionIntent: FileBrowserActionIntent?
+    @Published private(set) var renameState: FileBrowserRenameState?
+    @Published private(set) var statusMessage: String?
 
     private let fileSystem: FileSystemClientProtocol
     private let store: FileBrowserPersisting
+    private let fileServices: FileBrowserNativeServicing
     private var selectionAnchor: Int?
     private var recentTraversalChain: [URL]
     private var snapshotEntryCache: [DirectorySnapshotCacheKey: [FileBrowserEntry]] = [:]
@@ -43,9 +47,14 @@ final class FileBrowserModel: ObservableObject {
         availableActions
     }
 
-    init(fileSystem: FileSystemClientProtocol = FileSystemClient(), store: FileBrowserPersisting = FileBrowserStore()) {
+    init(
+        fileSystem: FileSystemClientProtocol = FileSystemClient(),
+        store: FileBrowserPersisting = FileBrowserStore(),
+        fileServices: FileBrowserNativeServicing = MacFileServices()
+    ) {
         self.fileSystem = fileSystem
         self.store = store
+        self.fileServices = fileServices
         self.sort = store.state.sort
         self.pinnedDirectories = store.state.pinnedDirectories
         self.recentTraversalChain = store.state.traversalChain
@@ -58,12 +67,16 @@ final class FileBrowserModel: ObservableObject {
         case .up:
             if focusState == .previewActions {
                 moveFocusedAction(by: -1)
+            } else if isConflictConfirmation {
+                moveConflictResolution(by: -1)
             } else {
                 moveSelection(by: -1)
             }
         case .down:
             if focusState == .previewActions {
                 moveFocusedAction(by: 1)
+            } else if isConflictConfirmation {
+                moveConflictResolution(by: 1)
             } else {
                 moveSelection(by: 1)
             }
@@ -90,6 +103,10 @@ final class FileBrowserModel: ObservableObject {
                 performFocusedAction()
             } else if case let .transferPending(transfer) = focusState {
                 focusState = .confirming(.transfer(transfer, destination: currentDirectory))
+            } else if focusState == .renaming {
+                confirmRename()
+            } else if case let .confirming(confirmation) = focusState {
+                confirm(confirmation)
             } else {
                 focusedActionIndex = 0
                 focusState = .previewActions
@@ -140,6 +157,20 @@ final class FileBrowserModel: ObservableObject {
         reloadEntries()
     }
 
+    func setRenameText(_ text: String) {
+        guard var renameState else { return }
+        renameState.proposedName = text
+        self.renameState = renameState
+    }
+
+    func openPinnedDirectory(_ url: URL) {
+        currentDirectory = url
+        selectedIndex = 0
+        selectionAnchor = nil
+        focusState = .browse
+        reloadEntries()
+    }
+
     func entry(for url: URL) -> FileBrowserEntry? {
         let standardizedURL = url.standardizedFileURL
         return directorySnapshots
@@ -154,21 +185,29 @@ final class FileBrowserModel: ObservableObject {
         guard !actions.isEmpty else { return }
         let action = actions[max(0, min(actions.count - 1, focusedActionIndex))]
         pendingActionIntent = nil
+        statusMessage = nil
         switch action {
         case .open:
             if let url = activeSelectionURLs.first {
-                pendingActionIntent = .open(url)
+                performServiceAction(recoveringTo: .previewActions) {
+                    try fileServices.open(url)
+                    focusState = .browse
+                }
             }
-            focusState = .previewActions
         case .rename, .batchRename:
-            pendingActionIntent = .rename(activeSelectionURLs)
-            focusState = .renaming
+            beginRename(action == .batchRename ? .batch : .single)
         case .revealInFinder:
-            pendingActionIntent = .revealInFinder(activeSelectionURLs)
-            focusState = .previewActions
+            let urls = activeSelectionURLs
+            performServiceAction(recoveringTo: .previewActions) {
+                try fileServices.revealInFinder(urls)
+                focusState = .browse
+            }
         case .copyPath, .copyPaths:
-            pendingActionIntent = .copyPaths(activeSelectionURLs)
-            focusState = .previewActions
+            let urls = activeSelectionURLs
+            performServiceAction(recoveringTo: .previewActions) {
+                try fileServices.copyPathsToPasteboard(urls)
+                focusState = .browse
+            }
         case .copy:
             startTransfer(.copy)
         case .move:
@@ -181,6 +220,123 @@ final class FileBrowserModel: ObservableObject {
     func moveFocusedAction(by delta: Int) {
         guard focusState == .previewActions, !focusableActions.isEmpty else { return }
         focusedActionIndex = max(0, min(focusableActions.count - 1, focusedActionIndex + delta))
+    }
+
+    private var isConflictConfirmation: Bool {
+        if case .confirming(.conflict) = focusState {
+            return true
+        }
+        return false
+    }
+
+    private func beginRename(_ mode: FileBrowserRenameMode) {
+        let urls = activeSelectionURLs
+        guard !urls.isEmpty else { return }
+        let proposedName: String
+        switch mode {
+        case .single:
+            proposedName = urls[0].lastPathComponent
+        case .batch:
+            proposedName = "Untitled"
+        }
+        renameState = FileBrowserRenameState(mode: mode, urls: urls, proposedName: proposedName)
+        focusState = .renaming
+    }
+
+    private func confirmRename() {
+        guard let renameState else { return }
+        performServiceAction(recoveringTo: .renaming) {
+            switch renameState.mode {
+            case .single:
+                _ = try fileServices.rename(renameState.urls[0], to: renameState.proposedName)
+            case .batch:
+                _ = try fileServices.batchRename(renameState.urls, baseName: renameState.proposedName)
+            }
+            self.renameState = nil
+            selectedURLs = []
+            focusState = .browse
+            reloadEntries()
+        }
+    }
+
+    private func confirm(_ confirmation: FileBrowserConfirmation) {
+        statusMessage = nil
+        switch confirmation {
+        case let .transfer(transfer, destination):
+            confirmTransfer(transfer, destination: destination, conflict: .keepBoth, checkingConflicts: true)
+        case let .conflict(transfer, destination, _):
+            if focusedConflictResolution == .cancel {
+                focusState = .browse
+            } else {
+                confirmTransfer(transfer, destination: destination, conflict: focusedConflictResolution, checkingConflicts: false)
+            }
+        case let .trash(urls, step):
+            if step < 2 {
+                focusState = .confirming(.trash(urls, step: 2))
+            } else {
+                performServiceAction(recoveringTo: .confirming(confirmation)) {
+                    try fileServices.trash(urls)
+                    selectedURLs = []
+                    focusState = .browse
+                    reloadEntries()
+                }
+            }
+        }
+    }
+
+    private func confirmTransfer(
+        _ transfer: FileBrowserTransfer,
+        destination: URL,
+        conflict: FileBrowserConflictResolution,
+        checkingConflicts: Bool
+    ) {
+        let urls = urls(in: transfer)
+        if checkingConflicts {
+            let conflicts = fileServices.conflictingDestinations(for: urls, in: destination)
+            if !conflicts.isEmpty {
+                focusedConflictResolution = .keepBoth
+                focusState = .confirming(.conflict(transfer, destination: destination, conflicts: conflicts))
+                return
+            }
+        }
+
+        performServiceAction(recoveringTo: .confirming(.transfer(transfer, destination: destination))) {
+            switch transfer {
+            case let .copy(urls):
+                try fileServices.copy(urls, to: destination, conflict: conflict)
+            case let .move(urls):
+                try fileServices.move(urls, to: destination, conflict: conflict)
+            }
+            selectedURLs = []
+            focusState = .browse
+            reloadEntries()
+        }
+    }
+
+    private func moveConflictResolution(by delta: Int) {
+        let options = FileBrowserConflictResolution.allCases
+        guard let index = options.firstIndex(of: focusedConflictResolution) else {
+            focusedConflictResolution = .keepBoth
+            return
+        }
+        let nextIndex = max(0, min(options.count - 1, index + delta))
+        focusedConflictResolution = options[nextIndex]
+    }
+
+    private func urls(in transfer: FileBrowserTransfer) -> [URL] {
+        switch transfer {
+        case let .copy(urls), let .move(urls):
+            return urls
+        }
+    }
+
+    private func performServiceAction(recoveringTo focusState: FileBrowserFocusState, _ action: () throws -> Void) {
+        do {
+            try action()
+        } catch {
+            statusMessage = error.localizedDescription
+            self.focusState = focusState
+        }
     }
 
     private func reloadEntries() {
@@ -329,7 +485,18 @@ final class FileBrowserModel: ObservableObject {
 
     private func closeFocusedState() {
         switch focusState {
+        case .quickLook:
+            focusState = .browse
+        case .renaming:
+            renameState = nil
+            focusState = .previewActions
         case .transferPending:
+            focusState = .previewActions
+        case let .confirming(.transfer(transfer, _)):
+            focusState = .transferPending(transfer)
+        case let .confirming(.conflict(transfer, _, _)):
+            focusState = .transferPending(transfer)
+        case .confirming(.trash):
             focusState = .previewActions
         default:
             focusState = .browse
@@ -338,7 +505,10 @@ final class FileBrowserModel: ObservableObject {
 
     private func pruneStaleSelections() {
         let validURLs = Set(entries.map(\.url))
-        selectedURLs.removeAll { !validURLs.contains($0) }
+        let currentPath = currentDirectory.standardizedFileURL.path
+        selectedURLs.removeAll {
+            !validURLs.contains($0) && $0.deletingLastPathComponent().standardizedFileURL.path == currentPath
+        }
     }
 
     private func persist() {
@@ -350,6 +520,19 @@ final class FileBrowserModel: ObservableObject {
         ))
     }
 }
+
+#if DEBUG
+extension FileBrowserModel {
+    func replaceEntriesForTesting(_ nextEntries: [FileBrowserEntry]) {
+        entries = nextEntries
+        pruneStaleSelections()
+    }
+
+    func addSelectedURLForTesting(_ url: URL) {
+        selectedURLs.append(url)
+    }
+}
+#endif
 
 private struct DirectorySnapshotCacheKey: Hashable {
     let directory: URL
