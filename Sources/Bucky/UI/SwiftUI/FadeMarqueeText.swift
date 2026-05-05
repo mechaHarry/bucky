@@ -5,27 +5,37 @@ struct FadeMarqueeText: View {
     let text: String
     var font: Font = .body
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var containerWidth: CGFloat = 0
     @State private var contentWidth: CGFloat = 0
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { timeline in
-            let overflow = max(0, contentWidth - containerWidth)
-            let offset = overflow > 1 ? -overflow * oscillation(at: timeline.date) : 0
+        let overflow = max(0, contentWidth - containerWidth)
 
-            Text(text)
-                .font(font)
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-                .offset(x: offset)
-                .readContentWidth($contentWidth)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .clipped()
-                .mask {
-                    fadeMask(offset: offset, overflow: overflow)
+        Group {
+            if overflow > 1, !reduceMotion {
+                TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+                    marqueeText(offset: -overflow * oscillation(at: timeline.date), overflow: overflow)
                 }
+            } else {
+                marqueeText(offset: 0, overflow: overflow)
+            }
         }
         .readContainerWidth($containerWidth)
+    }
+
+    private func marqueeText(offset: CGFloat, overflow: CGFloat) -> some View {
+        Text(text)
+            .font(font)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+            .offset(x: offset)
+            .readContentWidth($contentWidth)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .clipped()
+            .mask {
+                fadeMask(offset: offset, overflow: overflow)
+            }
     }
 
     private func oscillation(at date: Date) -> CGFloat {

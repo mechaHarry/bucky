@@ -13,11 +13,13 @@ final class FileBrowserModel: ObservableObject {
     @Published private(set) var pinnedDirectories: [URL] = []
     @Published private(set) var focusedActionIndex = 0
     @Published private(set) var directorySnapshots: [FileBrowserDirectorySnapshot] = []
+    @Published private(set) var pendingActionIntent: FileBrowserActionIntent?
 
     private let fileSystem: FileSystemClientProtocol
     private let store: FileBrowserPersisting
     private var selectionAnchor: Int?
     private var recentTraversalChain: [URL]
+    private var snapshotEntryCache: [DirectorySnapshotCacheKey: [FileBrowserEntry]] = [:]
 
     var selectedEntry: FileBrowserEntry? {
         guard selectedIndex >= 0, selectedIndex < entries.count else { return nil }
@@ -102,6 +104,7 @@ final class FileBrowserModel: ObservableObject {
     func startTransfer(_ kind: FileBrowserTransferKind) {
         let urls = activeSelectionURLs
         guard !urls.isEmpty else { return }
+        pendingActionIntent = nil
         switch kind {
         case .copy:
             focusState = .transferPending(.copy(urls))
@@ -113,6 +116,7 @@ final class FileBrowserModel: ObservableObject {
     func requestTrashConfirmation() {
         let urls = activeSelectionURLs
         guard !urls.isEmpty else { return }
+        pendingActionIntent = nil
         focusState = .confirming(.trash(urls, step: 1))
     }
 
@@ -149,15 +153,28 @@ final class FileBrowserModel: ObservableObject {
         let actions = focusableActions
         guard !actions.isEmpty else { return }
         let action = actions[max(0, min(actions.count - 1, focusedActionIndex))]
+        pendingActionIntent = nil
         switch action {
+        case .open:
+            if let url = activeSelectionURLs.first {
+                pendingActionIntent = .open(url)
+            }
+            focusState = .previewActions
+        case .rename, .batchRename:
+            pendingActionIntent = .rename(activeSelectionURLs)
+            focusState = .renaming
+        case .revealInFinder:
+            pendingActionIntent = .revealInFinder(activeSelectionURLs)
+            focusState = .previewActions
+        case .copyPath, .copyPaths:
+            pendingActionIntent = .copyPaths(activeSelectionURLs)
+            focusState = .previewActions
         case .copy:
             startTransfer(.copy)
         case .move:
             startTransfer(.move)
         case .moveToTrash:
             requestTrashConfirmation()
-        default:
-            focusState = .previewActions
         }
     }
 
@@ -167,11 +184,13 @@ final class FileBrowserModel: ObservableObject {
     }
 
     private func reloadEntries() {
+        snapshotEntryCache.removeAll()
         do {
             entries = try fileSystem.entries(in: currentDirectory, sort: sort)
+            snapshotEntryCache[cacheKey(for: currentDirectory)] = entries
             selectedIndex = entries.isEmpty ? 0 : min(selectedIndex, entries.count - 1)
             pruneStaleSelections()
-            rebuildDirectorySnapshots()
+            rebuildDirectorySnapshots(force: true)
             persist()
         } catch {
             entries = []
@@ -179,22 +198,48 @@ final class FileBrowserModel: ObservableObject {
         }
     }
 
-    private func rebuildDirectorySnapshots() {
-        var snapshots: [FileBrowserDirectorySnapshot] = []
+    private func rebuildDirectorySnapshots(force: Bool = false) {
+        let directories = snapshotDirectories()
+        guard force || directories != directorySnapshots.map(\.directory) else { return }
 
-        if let parent = fileSystem.parentURL(for: currentDirectory),
-           let parentEntries = try? fileSystem.entries(in: parent, sort: sort) {
-            snapshots.append(FileBrowserDirectorySnapshot(directory: parent, entries: parentEntries))
+        directorySnapshots = directories.map { directory in
+            FileBrowserDirectorySnapshot(directory: directory, entries: snapshotEntries(in: directory))
+        }
+    }
+
+    private func snapshotDirectories() -> [URL] {
+        var directories: [URL] = []
+
+        if let parent = fileSystem.parentURL(for: currentDirectory) {
+            directories.append(parent)
         }
 
-        snapshots.append(FileBrowserDirectorySnapshot(directory: currentDirectory, entries: entries))
+        directories.append(currentDirectory)
 
-        if let selectedEntry, selectedEntry.kind == .directory,
-           let childEntries = try? fileSystem.entries(in: selectedEntry.url, sort: sort) {
-            snapshots.append(FileBrowserDirectorySnapshot(directory: selectedEntry.url, entries: childEntries))
+        if let selectedEntry, selectedEntry.kind == .directory {
+            directories.append(selectedEntry.url)
         }
 
-        directorySnapshots = snapshots
+        return directories
+    }
+
+    private func snapshotEntries(in directory: URL) -> [FileBrowserEntry] {
+        if directory == currentDirectory {
+            return entries
+        }
+
+        let key = cacheKey(for: directory)
+        if let cached = snapshotEntryCache[key] {
+            return cached
+        }
+
+        let loaded = (try? fileSystem.entries(in: directory, sort: sort)) ?? []
+        snapshotEntryCache[key] = loaded
+        return loaded
+    }
+
+    private func cacheKey(for directory: URL) -> DirectorySnapshotCacheKey {
+        DirectorySnapshotCacheKey(directory: directory.standardizedFileURL, sort: sort)
     }
 
     private func moveSelection(by delta: Int) {
@@ -267,7 +312,7 @@ final class FileBrowserModel: ObservableObject {
         let start = min(selectedIndex + 1, entries.count)
         let orderedIndexes = Array(start..<entries.count) + Array(0..<start)
         if let match = orderedIndexes.first(where: { entries[$0].name.lowercased().hasPrefix(needle) }) {
-            selectedIndex = match
+            moveSelection(to: match)
         }
     }
 
@@ -304,4 +349,9 @@ final class FileBrowserModel: ObservableObject {
             traversalChain: recentTraversalChain
         ))
     }
+}
+
+private struct DirectorySnapshotCacheKey: Hashable {
+    let directory: URL
+    let sort: FileBrowserSort
 }
