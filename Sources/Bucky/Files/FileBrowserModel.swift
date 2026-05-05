@@ -19,14 +19,18 @@ final class FileBrowserModel: ObservableObject {
     @Published private(set) var pendingActionIntent: FileBrowserActionIntent?
     @Published private(set) var renameState: FileBrowserRenameState?
     @Published private(set) var statusMessage: String?
+    @Published private(set) var isLoadingEntries = false
 
     private let fileSystem: FileSystemClientProtocol
     private let store: FileBrowserPersisting
+    private let directoryStream: FileBrowserDirectoryStreaming
     private let fileServices: FileBrowserNativeServicing
     private var selectionAnchor: Int?
     private var recentTraversalChain: [URL]
     private var nextWobbleID = 0
+    private var directoryLoadGeneration = 0
     private var snapshotEntryCache: [DirectorySnapshotCacheKey: [FileBrowserEntry]] = [:]
+    private var pendingSnapshotRequests: Set<DirectorySnapshotCacheKey> = []
 
     var selectedEntry: FileBrowserEntry? {
         guard selectedIndex >= 0, selectedIndex < entries.count else { return nil }
@@ -53,10 +57,12 @@ final class FileBrowserModel: ObservableObject {
     init(
         fileSystem: FileSystemClientProtocol = FileSystemClient(),
         store: FileBrowserPersisting = FileBrowserStore(),
+        directoryStream: FileBrowserDirectoryStreaming? = nil,
         fileServices: FileBrowserNativeServicing = MacFileServices()
     ) {
         self.fileSystem = fileSystem
         self.store = store
+        self.directoryStream = directoryStream ?? FileBrowserDirectoryStream(fileSystem: fileSystem)
         self.fileServices = fileServices
         self.sort = store.state.sort
         self.pinnedDirectories = store.state.pinnedDirectories
@@ -357,36 +363,47 @@ final class FileBrowserModel: ObservableObject {
         }
     }
 
-    private func reloadEntries(selecting preferredSelection: URL? = nil, fallbackToHomeOnFailure: Bool = false) {
+    private func reloadEntries(
+        selecting preferredSelection: URL? = nil,
+        fallbackToHomeOnFailure: Bool = false,
+        statusAfterLoad: String? = nil
+    ) {
         snapshotEntryCache.removeAll()
-        do {
-            applyLoadedEntries(try fileSystem.entries(in: currentDirectory, sort: sort), selecting: preferredSelection)
-        } catch {
-            if fallbackToHomeOnFailure {
-                let fallback = fileSystem.homeDirectory()
-                if fallback.standardizedFileURL.path != currentDirectory.standardizedFileURL.path {
-                    currentDirectory = fallback
-                    selectedIndex = 0
-                    selectionAnchor = nil
-                    do {
-                        applyLoadedEntries(
-                            try fileSystem.entries(in: currentDirectory, sort: sort),
-                            selecting: nil,
-                            status: error.localizedDescription
-                        )
-                    } catch {
-                        entries = []
-                        directorySnapshots = [FileBrowserDirectorySnapshot(directory: currentDirectory, entries: [])]
-                        statusMessage = error.localizedDescription
-                        persist()
-                    }
-                    return
-                }
+        pendingSnapshotRequests.removeAll()
+        directoryLoadGeneration += 1
+        let generation = directoryLoadGeneration
+        let requestedDirectory = currentDirectory
+        isLoadingEntries = true
+        entries = []
+        directorySnapshots = [FileBrowserDirectorySnapshot(directory: requestedDirectory, entries: [])]
+
+        directoryStream.loadEntries(in: requestedDirectory, sort: sort) { [weak self] result in
+            guard let self, generation == self.directoryLoadGeneration else { return }
+
+            switch result {
+            case let .success(loadedEntries):
+                self.applyLoadedEntries(loadedEntries, selecting: preferredSelection, status: statusAfterLoad)
+            case let .failure(error):
+                self.applyDirectoryLoadFailure(error, fallbackToHomeOnFailure: fallbackToHomeOnFailure)
             }
-            entries = []
-            directorySnapshots = [FileBrowserDirectorySnapshot(directory: currentDirectory, entries: [])]
-            statusMessage = error.localizedDescription
         }
+    }
+
+    private func applyDirectoryLoadFailure(_ error: Error, fallbackToHomeOnFailure: Bool) {
+        if fallbackToHomeOnFailure {
+            let fallback = fileSystem.homeDirectory()
+            if fallback.standardizedFileURL.path != currentDirectory.standardizedFileURL.path {
+                currentDirectory = fallback
+                selectedIndex = 0
+                selectionAnchor = nil
+                reloadEntries(fallbackToHomeOnFailure: false, statusAfterLoad: error.localizedDescription)
+                return
+            }
+        }
+        isLoadingEntries = false
+        entries = []
+        directorySnapshots = [FileBrowserDirectorySnapshot(directory: currentDirectory, entries: [])]
+        statusMessage = error.localizedDescription
     }
 
     private func applyLoadedEntries(
@@ -394,6 +411,7 @@ final class FileBrowserModel: ObservableObject {
         selecting preferredSelection: URL?,
         status: String? = nil
     ) {
+        isLoadingEntries = false
         entries = loadedEntries
         snapshotEntryCache[cacheKey(for: currentDirectory)] = entries
         selectEntry(matching: preferredSelection)
@@ -438,9 +456,22 @@ final class FileBrowserModel: ObservableObject {
             return cached
         }
 
-        let loaded = (try? fileSystem.entries(in: directory, sort: sort)) ?? []
-        snapshotEntryCache[key] = loaded
-        return loaded
+        guard !pendingSnapshotRequests.contains(key) else { return [] }
+
+        pendingSnapshotRequests.insert(key)
+        let generation = directoryLoadGeneration
+        var hasReturned = false
+        directoryStream.loadEntries(in: directory, sort: sort) { [weak self] result in
+            guard let self, generation == self.directoryLoadGeneration else { return }
+            let loaded = (try? result.get()) ?? []
+            self.snapshotEntryCache[key] = loaded
+            self.pendingSnapshotRequests.remove(key)
+            if hasReturned {
+                self.rebuildDirectorySnapshots(force: true)
+            }
+        }
+        hasReturned = true
+        return snapshotEntryCache[key] ?? []
     }
 
     private func cacheKey(for directory: URL) -> DirectorySnapshotCacheKey {

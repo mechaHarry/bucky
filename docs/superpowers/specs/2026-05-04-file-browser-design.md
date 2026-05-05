@@ -33,12 +33,13 @@ The implementation should use a native subsystem instead of folding file behavio
 - `LauncherMode`: defines ordered modes: Apps, Calculator, Dictionary, Files.
 - `ModeSwitcherView`: renders the top Liquid Glass mode row. Active mode expands into the pill; inactive modes are circular icon orbs.
 - `FileBrowserModel`: owns current directory, directory stack, selected rows, multi-depth selections, sorting, pins, hidden-file visibility, preview/action state, copy/move pending state, and traversal memory.
+- `FileBrowserDirectoryStream`: sits between `FileBrowserModel` and filesystem enumeration so SwiftUI observes stable loading, empty, and loaded snapshots instead of direct filesystem churn.
 - `FileSystemClient`: reads directories, resolves metadata, sorts entries, and exposes parent/child relationships.
 - `FileBrowserStore`: persists pins, last active directory, sort mode, and remembered traversal chain under Bucky app support.
 - `FileBrowserView`: renders pinned directories, gliding directory columns, rows, marquee labels, action overlay, rename overlay, transfer confirmation, conflict popup, and Quick Look peek.
 - `MacFileServices`: wraps AppKit/Foundation integrations: `NSWorkspace` icons, Open, Reveal in Finder, pasteboard path copy, Trash, and preview support.
 
-The model and file clients should be testable without SwiftUI. SwiftUI should render state and forward key commands rather than own file rules.
+The model and file clients should be testable without SwiftUI. SwiftUI should render state and forward key commands rather than own file rules. Main views activate their own code only when selected: Apps is the default mode, and app filtering must not instantiate `FileBrowserModel` or touch file I/O until Files is selected or Files UI explicitly requests the file model.
 
 ## Mode Switcher
 
@@ -135,7 +136,7 @@ All file operations go through `MacFileServices` or `FileSystemClient`; views do
 - Move to Trash: use `FileManager.trashItem`, never permanent deletion.
 - Rename/Batch Rename: validate target names and apply through Foundation file APIs.
 
-Operations should avoid shell execution. They should operate on resolved URLs, report recoverable errors, prune stale selections after directory refresh, and avoid following symlink cycles while building path context.
+Operations should avoid shell execution. They should operate on resolved URLs, report recoverable errors, prune stale selections after directory refresh, and avoid following symlink cycles while building path context. Directory population goes through the stream layer with request generation checks so stale older reads cannot overwrite a newer directory selection.
 
 ## Quick Look-Style Preview
 

@@ -71,6 +71,45 @@ final class LauncherModeRoutingTests: XCTestCase {
 
     @MainActor
     @available(macOS 26.0, *)
+    func testFileBrowserModelActivatesOnlyWhenFilesModeIsShown() {
+        var activationCount = 0
+        let model = LiquidGlassLauncherModel(
+            settingsStore: SettingsStore(),
+            inclusionStore: InclusionStore(),
+            exclusionStore: ExclusionStore(),
+            calculationHistoryStore: CalculationHistoryStore(),
+            fileBrowserModelFactory: {
+                activationCount += 1
+                return FileBrowserModel(
+                    fileSystem: StubFileSystemClient(home: URL(fileURLWithPath: "/Users/test"), entriesByDirectory: [:]),
+                    store: InMemoryFileBrowserStore(state: .defaultValue),
+                    directoryStream: ImmediateDirectoryStream()
+                )
+            }
+        )
+
+        model.show(mode: .applications)
+        XCTAssertEqual(activationCount, 0)
+
+        _ = model.handle(command: .switchMode(.calculator))
+        XCTAssertEqual(activationCount, 0)
+
+        _ = model.handle(command: .switchMode(.dictionary))
+        XCTAssertEqual(activationCount, 0)
+
+        _ = model.handle(command: .switchMode(.applications))
+        XCTAssertEqual(activationCount, 0)
+
+        _ = model.handle(command: .switchMode(.files))
+        XCTAssertEqual(activationCount, 1)
+
+        _ = model.handle(command: .switchMode(.applications))
+        _ = model.handle(command: .switchMode(.files))
+        XCTAssertEqual(activationCount, 1)
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
     func testSwitchingModesStoresIndependentQueries() {
         let model = LiquidGlassLauncherModel(
             settingsStore: SettingsStore(),
@@ -79,7 +118,8 @@ final class LauncherModeRoutingTests: XCTestCase {
             calculationHistoryStore: CalculationHistoryStore(),
             fileBrowserModel: FileBrowserModel(
                 fileSystem: StubFileSystemClient(home: URL(fileURLWithPath: "/Users/test"), entriesByDirectory: [:]),
-                store: InMemoryFileBrowserStore(state: .defaultValue)
+                store: InMemoryFileBrowserStore(state: .defaultValue),
+                directoryStream: ImmediateDirectoryStream()
             )
         )
 
@@ -108,7 +148,8 @@ final class LauncherModeRoutingTests: XCTestCase {
             calculationHistoryStore: CalculationHistoryStore(),
             fileBrowserModel: FileBrowserModel(
                 fileSystem: StubFileSystemClient(home: URL(fileURLWithPath: "/Users/test"), entriesByDirectory: [:]),
-                store: InMemoryFileBrowserStore(state: .defaultValue)
+                store: InMemoryFileBrowserStore(state: .defaultValue),
+                directoryStream: ImmediateDirectoryStream()
             )
         )
 
@@ -208,14 +249,16 @@ final class LauncherModeRoutingTests: XCTestCase {
                 isHidden: false
             )
         }
+        let client = StubFileSystemClient(home: home, entriesByDirectory: [home: entries])
         return LiquidGlassLauncherModel(
             settingsStore: SettingsStore(),
             inclusionStore: InclusionStore(),
             exclusionStore: ExclusionStore(),
             calculationHistoryStore: CalculationHistoryStore(),
             fileBrowserModel: FileBrowserModel(
-                fileSystem: StubFileSystemClient(home: home, entriesByDirectory: [home: entries]),
-                store: InMemoryFileBrowserStore(state: .defaultValue)
+                fileSystem: client,
+                store: InMemoryFileBrowserStore(state: .defaultValue),
+                directoryStream: ImmediateDirectoryStream(fileSystem: client)
             )
         )
     }

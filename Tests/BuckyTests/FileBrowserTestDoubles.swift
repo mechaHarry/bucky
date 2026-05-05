@@ -81,6 +81,46 @@ final class ThrowingFileSystemClient: FileSystemClientProtocol {
     }
 }
 
+@MainActor
+final class ManualDirectoryStream: FileBrowserDirectoryStreaming {
+    private(set) var requests: [(directory: URL, sort: FileBrowserSort)] = []
+    private var completions: [(Result<[FileBrowserEntry], Error>) -> Void] = []
+
+    func loadEntries(
+        in directory: URL,
+        sort: FileBrowserSort,
+        completion: @escaping (Result<[FileBrowserEntry], Error>) -> Void
+    ) {
+        requests.append((directory, sort))
+        completions.append(completion)
+    }
+
+    func completeRequest(at index: Int, with result: Result<[FileBrowserEntry], Error>) {
+        completions[index](result)
+    }
+}
+
+@MainActor
+struct ImmediateDirectoryStream: FileBrowserDirectoryStreaming {
+    var fileSystem: FileSystemClientProtocol?
+
+    init(fileSystem: FileSystemClientProtocol? = nil) {
+        self.fileSystem = fileSystem
+    }
+
+    func loadEntries(
+        in directory: URL,
+        sort: FileBrowserSort,
+        completion: @escaping (Result<[FileBrowserEntry], Error>) -> Void
+    ) {
+        do {
+            completion(.success(try fileSystem?.entries(in: directory, sort: sort) ?? []))
+        } catch {
+            completion(.failure(error))
+        }
+    }
+}
+
 private extension Dictionary where Key == URL, Value == [FileBrowserEntry] {
     func matching(_ directory: URL) -> [FileBrowserEntry]? {
         first { $0.key.standardizedFileURL.path == directory.standardizedFileURL.path }?.value

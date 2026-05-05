@@ -39,13 +39,116 @@ final class FileBrowserModelTests: XCTestCase {
             traversalChain: []
         ))
 
-        let model = FileBrowserModel(fileSystem: client, store: store)
+        let model = FileBrowserModel(
+            fileSystem: client,
+            store: store,
+            directoryStream: ImmediateDirectoryStream(fileSystem: client)
+        )
 
         XCTAssertEqual(model.currentDirectory, home)
         XCTAssertEqual(model.entries.map(\.name), ["home.txt"])
         XCTAssertEqual(model.statusMessage, "failed")
         XCTAssertEqual(store.state.lastDirectory, home)
         XCTAssertEqual(Array(client.entryRequests.map(\.directory).prefix(2)), [missing, home])
+    }
+
+    func testCurrentDirectoryLoadsThroughStreamWithLoadingPlaceholderState() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let stream = ManualDirectoryStream()
+        let model = FileBrowserModel(
+            fileSystem: StubFileSystemClient(home: home, entriesByDirectory: [:]),
+            store: InMemoryFileBrowserStore(state: .defaultValue),
+            directoryStream: stream
+        )
+
+        XCTAssertTrue(model.isLoadingEntries)
+        XCTAssertEqual(model.entries, [])
+        XCTAssertEqual(model.directorySnapshots, [
+            FileBrowserDirectorySnapshot(directory: home, entries: [])
+        ])
+        XCTAssertEqual(stream.requests.map(requestDescription), ["\(home.path)|name"])
+
+        stream.completeRequest(at: 0, with: .success(entries(["home.txt"], in: home)))
+
+        XCTAssertFalse(model.isLoadingEntries)
+        XCTAssertEqual(model.entries.map(\.name), ["home.txt"])
+        XCTAssertEqual(model.directorySnapshots, [
+            FileBrowserDirectorySnapshot(directory: home.deletingLastPathComponent(), entries: []),
+            FileBrowserDirectorySnapshot(directory: home, entries: entries(["home.txt"], in: home))
+        ])
+    }
+
+    func testStaleOlderStreamResultsCannotOverwriteNewerDirectoryRequest() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let oldDirectory = home.appendingPathComponent("Old", isDirectory: true)
+        let newDirectory = home.appendingPathComponent("New", isDirectory: true)
+        let stream = ManualDirectoryStream()
+        let model = FileBrowserModel(
+            fileSystem: StubFileSystemClient(home: home, entriesByDirectory: [:]),
+            store: InMemoryFileBrowserStore(state: .defaultValue),
+            directoryStream: stream
+        )
+
+        stream.completeRequest(at: 0, with: .success([
+            directoryEntry(oldDirectory),
+            directoryEntry(newDirectory)
+        ]))
+
+        model.openPinnedDirectory(oldDirectory)
+        let oldRequestIndex = stream.requests.count - 1
+        XCTAssertEqual(model.currentDirectory, oldDirectory)
+        XCTAssertTrue(model.isLoadingEntries)
+
+        model.openPinnedDirectory(newDirectory)
+        let newRequestIndex = stream.requests.count - 1
+        XCTAssertEqual(model.currentDirectory, newDirectory)
+        XCTAssertTrue(model.isLoadingEntries)
+
+        stream.completeRequest(at: oldRequestIndex, with: .success(entries(["stale.txt"], in: oldDirectory)))
+        XCTAssertEqual(model.currentDirectory, newDirectory)
+        XCTAssertEqual(model.entries, [])
+        XCTAssertTrue(model.isLoadingEntries)
+
+        stream.completeRequest(at: newRequestIndex, with: .success(entries(["fresh.txt"], in: newDirectory)))
+        XCTAssertEqual(model.currentDirectory, newDirectory)
+        XCTAssertEqual(model.entries.map(\.name), ["fresh.txt"])
+        XCTAssertFalse(model.isLoadingEntries)
+    }
+
+    func testUnreadablePersistedDirectoryFallsBackToHomeThroughStream() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let missing = home.appendingPathComponent("Missing", isDirectory: true)
+        let stream = ManualDirectoryStream()
+        let store = InMemoryFileBrowserStore(state: FileBrowserPersistedState(
+            pinnedDirectories: [],
+            lastDirectory: missing,
+            sort: .name,
+            traversalChain: []
+        ))
+        let model = FileBrowserModel(
+            fileSystem: StubFileSystemClient(home: home, entriesByDirectory: [:]),
+            store: store,
+            directoryStream: stream
+        )
+
+        XCTAssertEqual(model.currentDirectory, missing)
+        XCTAssertTrue(model.isLoadingEntries)
+
+        stream.completeRequest(at: 0, with: .failure(TestFileBrowserServiceError.failed))
+
+        XCTAssertEqual(model.currentDirectory, home)
+        XCTAssertTrue(model.isLoadingEntries)
+        XCTAssertEqual(stream.requests.map(requestDescription), [
+            "\(missing.path)|name",
+            "\(home.path)|name"
+        ])
+
+        stream.completeRequest(at: 1, with: .success(entries(["home.txt"], in: home)))
+
+        XCTAssertFalse(model.isLoadingEntries)
+        XCTAssertEqual(model.entries.map(\.name), ["home.txt"])
+        XCTAssertEqual(model.statusMessage, "failed")
+        XCTAssertEqual(store.state.lastDirectory, home)
     }
 
     func testMoveSelectionClampsToEntryBounds() {
@@ -585,7 +688,11 @@ final class FileBrowserModelTests: XCTestCase {
         let home = URL(fileURLWithPath: "/Users/test")
         let client = StubFileSystemClient(home: home, entriesByDirectory: [home: []])
         let store = InMemoryFileBrowserStore(state: .defaultValue)
-        let model = FileBrowserModel(fileSystem: client, store: store)
+        let model = FileBrowserModel(
+            fileSystem: client,
+            store: store,
+            directoryStream: ImmediateDirectoryStream(fileSystem: client)
+        )
         let pin = URL(fileURLWithPath: "/Users/test/Projects")
 
         model.togglePin(pin)
@@ -610,7 +717,11 @@ final class FileBrowserModelTests: XCTestCase {
             ]
         )
         let store = InMemoryFileBrowserStore(state: .defaultValue)
-        let model = FileBrowserModel(fileSystem: client, store: store)
+        let model = FileBrowserModel(
+            fileSystem: client,
+            store: store,
+            directoryStream: ImmediateDirectoryStream(fileSystem: client)
+        )
 
         model.handle(.right)
         model.handle(.left)
@@ -631,7 +742,11 @@ final class FileBrowserModelTests: XCTestCase {
             ]
         )
         let store = InMemoryFileBrowserStore(state: .defaultValue)
-        let model = FileBrowserModel(fileSystem: client, store: store)
+        let model = FileBrowserModel(
+            fileSystem: client,
+            store: store,
+            directoryStream: ImmediateDirectoryStream(fileSystem: client)
+        )
 
         model.handle(.alphaNumeric("p"))
         model.handle(.right)
@@ -660,7 +775,11 @@ final class FileBrowserModelTests: XCTestCase {
             ]
         )
         let store = InMemoryFileBrowserStore(state: .defaultValue)
-        let model = FileBrowserModel(fileSystem: client, store: store)
+        let model = FileBrowserModel(
+            fileSystem: client,
+            store: store,
+            directoryStream: ImmediateDirectoryStream(fileSystem: client)
+        )
 
         model.handle(.alphaNumeric("p"))
         model.handle(.right)
@@ -687,7 +806,11 @@ final class FileBrowserModelTests: XCTestCase {
             ]
         )
         let store = InMemoryFileBrowserStore(state: .defaultValue)
-        let model = FileBrowserModel(fileSystem: client, store: store)
+        let model = FileBrowserModel(
+            fileSystem: client,
+            store: store,
+            directoryStream: ImmediateDirectoryStream(fileSystem: client)
+        )
 
         model.handle(.right)
         model.handle(.left)
@@ -708,7 +831,11 @@ final class FileBrowserModelTests: XCTestCase {
             sort: .name,
             traversalChain: []
         ))
-        let model = FileBrowserModel(fileSystem: client, store: store)
+        let model = FileBrowserModel(
+            fileSystem: client,
+            store: store,
+            directoryStream: ImmediateDirectoryStream(fileSystem: client)
+        )
 
         model.setSort(.size)
 
@@ -731,7 +858,7 @@ final class FileBrowserModelTests: XCTestCase {
             lastDirectory: home,
             sort: .name,
             traversalChain: []
-        )))
+        )), directoryStream: ImmediateDirectoryStream(fileSystem: client))
 
         XCTAssertEqual(model.directorySnapshots.map(\.directory), [parent, home, child])
         XCTAssertEqual(model.directorySnapshots[1].entries.map(\.name), ["Projects", "notes.txt"])
@@ -759,7 +886,7 @@ final class FileBrowserModelTests: XCTestCase {
             lastDirectory: home,
             sort: .name,
             traversalChain: []
-        )))
+        )), directoryStream: ImmediateDirectoryStream(fileSystem: client))
 
         XCTAssertEqual(model.entry(for: readme)?.modifiedAt, modifiedAt)
         XCTAssertEqual(model.entry(for: readme)?.size, 42)
@@ -777,7 +904,7 @@ final class FileBrowserModelTests: XCTestCase {
             lastDirectory: home,
             sort: .name,
             traversalChain: []
-        )))
+        )), directoryStream: ImmediateDirectoryStream(fileSystem: client))
         let baseline = client.entryRequests
 
         model.handle(.down)
@@ -802,7 +929,7 @@ final class FileBrowserModelTests: XCTestCase {
             lastDirectory: home,
             sort: .name,
             traversalChain: []
-        )))
+        )), directoryStream: ImmediateDirectoryStream(fileSystem: client))
 
         model.handle(.alphaNumeric("a"))
 
@@ -819,7 +946,12 @@ final class FileBrowserModelTests: XCTestCase {
     ) -> FileBrowserModel {
         let client = StubFileSystemClient(home: home, entriesByDirectory: [home: entries])
         let store = InMemoryFileBrowserStore(state: persisted)
-        return FileBrowserModel(fileSystem: client, store: store, fileServices: fileServices)
+        return FileBrowserModel(
+            fileSystem: client,
+            store: store,
+            directoryStream: ImmediateDirectoryStream(fileSystem: client),
+            fileServices: fileServices
+        )
     }
 
     private func makeModel(
@@ -830,7 +962,12 @@ final class FileBrowserModelTests: XCTestCase {
     ) -> FileBrowserModel {
         let client = StubFileSystemClient(home: home, entriesByDirectory: entriesByDirectory)
         let store = InMemoryFileBrowserStore(state: persisted)
-        return FileBrowserModel(fileSystem: client, store: store, fileServices: fileServices)
+        return FileBrowserModel(
+            fileSystem: client,
+            store: store,
+            directoryStream: ImmediateDirectoryStream(fileSystem: client),
+            fileServices: fileServices
+        )
     }
 
     private func entries(_ names: [String]) -> [FileBrowserEntry] {

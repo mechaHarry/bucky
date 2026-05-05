@@ -10,6 +10,10 @@
 
 ---
 
+## Corrective Requirement Note
+
+The latest requirement supersedes older plan snippets that show `LiquidGlassLauncherModel` eagerly owning `@Published var fileBrowserModel: FileBrowserModel` or `FileBrowserModel` reading directories directly from `FileSystemClient`. Apps remains the default view, and Apps/Calculator/Dictionary must not instantiate `FileBrowserModel` or touch file I/O. Files activates lazily through a `fileBrowserModelFactory`, and directory population flows through `FileBrowserDirectoryStreaming` so SwiftUI observes stable loading, empty, and loaded snapshots with stale-result generation checks.
+
 ## Baseline
 
 - Current branch: `file-browser`
@@ -25,7 +29,8 @@ Create:
 - `Sources/Bucky/Files/FileSystemClient.swift`: directory enumeration, metadata loading, sorting, parent/child path helpers.
 - `Sources/Bucky/Files/FileBrowserStore.swift`: JSON persistence for pins, last directory, sort mode, and traversal chain.
 - `Sources/Bucky/Files/MacFileServices.swift`: AppKit/Foundation wrapper for open, reveal, pasteboard, copy, move, trash, conflict naming, and native icons.
-- `Sources/Bucky/Files/FileBrowserModel.swift`: state machine for navigation, selection, focus, actions, transfer staging, confirmations, and persistence.
+- `Sources/Bucky/Files/FileBrowserModel.swift`: state machine for navigation, selection, focus, actions, transfer staging, confirmations, persistence, and stable stream-backed directory snapshots.
+- `Sources/Bucky/Files/FileBrowserDirectoryStream.swift`: stream/shim boundary between file-browser state and filesystem enumeration.
 - `Sources/Bucky/UI/SwiftUI/ModeSwitcherView.swift`: top Liquid Glass mode orbs and active pill shell.
 - `Sources/Bucky/UI/SwiftUI/FileBrowserView.swift`: pinned rail, gliding columns, rows, overlays, transfer state, confirmations, and preview surface.
 - `Sources/Bucky/UI/SwiftUI/FadeMarqueeText.swift`: reusable overflow text component for path and row labels.
@@ -40,7 +45,7 @@ Modify:
 - `Sources/Bucky/Models/CoreModels.swift`: expand `LauncherMode`.
 - `Sources/Bucky/UI/Shared/LauncherCommand.swift`: add mode, file navigation, file selection, preview, and action commands.
 - `Sources/Bucky/UI/Shared/Utilities.swift`: add command-number and file-key event helpers.
-- `Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherModel.swift`: own `FileBrowserModel`, mode routing, and query ownership for calculator/dictionary.
+- `Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherModel.swift`: lazily activates `FileBrowserModel`, mode routing, and query ownership for calculator/dictionary.
 - `Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift`: replace header with `ModeSwitcherView` and route Files body to `FileBrowserView`.
 - `Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift`: route `Cmd+1...4`, arrows, Return, Escape, Space down/up, Shift+Space, and alphanumeric events to the model.
 - `Sources/Bucky/UI/SwiftUI/ToolResultsSnapshotPolicy.swift`: update for split calculator/dictionary modes.
