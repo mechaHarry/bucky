@@ -12,6 +12,7 @@ final class FileBrowserModel: ObservableObject {
     @Published private(set) var sort: FileBrowserSort
     @Published private(set) var pinnedDirectories: [URL] = []
     @Published private(set) var focusedActionIndex = 0
+    @Published private(set) var directorySnapshots: [FileBrowserDirectorySnapshot] = []
 
     private let fileSystem: FileSystemClientProtocol
     private let store: FileBrowserPersisting
@@ -129,6 +130,12 @@ final class FileBrowserModel: ObservableObject {
         persist()
     }
 
+    func setSort(_ nextSort: FileBrowserSort) {
+        guard sort != nextSort else { return }
+        sort = nextSort
+        reloadEntries()
+    }
+
     func performFocusedAction() {
         guard focusState == .previewActions else { return }
         let actions = focusableActions
@@ -156,10 +163,30 @@ final class FileBrowserModel: ObservableObject {
             entries = try fileSystem.entries(in: currentDirectory, sort: sort)
             selectedIndex = entries.isEmpty ? 0 : min(selectedIndex, entries.count - 1)
             pruneStaleSelections()
+            rebuildDirectorySnapshots()
             persist()
         } catch {
             entries = []
+            directorySnapshots = [FileBrowserDirectorySnapshot(directory: currentDirectory, entries: [])]
         }
+    }
+
+    private func rebuildDirectorySnapshots() {
+        var snapshots: [FileBrowserDirectorySnapshot] = []
+
+        if let parent = fileSystem.parentURL(for: currentDirectory),
+           let parentEntries = try? fileSystem.entries(in: parent, sort: sort) {
+            snapshots.append(FileBrowserDirectorySnapshot(directory: parent, entries: parentEntries))
+        }
+
+        snapshots.append(FileBrowserDirectorySnapshot(directory: currentDirectory, entries: entries))
+
+        if let selectedEntry, selectedEntry.kind == .directory,
+           let childEntries = try? fileSystem.entries(in: selectedEntry.url, sort: sort) {
+            snapshots.append(FileBrowserDirectorySnapshot(directory: selectedEntry.url, entries: childEntries))
+        }
+
+        directorySnapshots = snapshots
     }
 
     private func moveSelection(by delta: Int) {
@@ -170,6 +197,7 @@ final class FileBrowserModel: ObservableObject {
     private func moveSelection(to index: Int) {
         guard !entries.isEmpty else { return }
         selectedIndex = max(0, min(entries.count - 1, index))
+        rebuildDirectorySnapshots()
     }
 
     private func moveToParent() {

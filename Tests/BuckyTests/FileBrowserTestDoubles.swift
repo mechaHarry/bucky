@@ -28,3 +28,26 @@ final class InMemoryFileBrowserStore: FileBrowserPersisting {
         state = nextState
     }
 }
+
+final class RecordingFileSystemClient: FileSystemClientProtocol {
+    private let home: URL
+    private let entriesByDirectory: [URL: [FileBrowserEntry]]
+    private(set) var entryRequests: [(directory: URL, sort: FileBrowserSort)] = []
+
+    init(home: URL, entriesByDirectory: [URL: [FileBrowserEntry]]) {
+        self.home = home
+        self.entriesByDirectory = entriesByDirectory
+    }
+
+    func homeDirectory() -> URL { home }
+
+    func parentURL(for url: URL) -> URL? {
+        let parent = url.deletingLastPathComponent()
+        return parent.path == url.path ? nil : parent
+    }
+
+    func entries(in directory: URL, sort: FileBrowserSort) throws -> [FileBrowserEntry] {
+        entryRequests.append((directory, sort))
+        return entriesByDirectory[directory] ?? []
+    }
+}

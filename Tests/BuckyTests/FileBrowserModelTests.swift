@@ -227,6 +227,47 @@ final class FileBrowserModelTests: XCTestCase {
         XCTAssertEqual(model.currentDirectory, other)
     }
 
+    func testSetSortReloadsEntriesAndPersistsSelection() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let client = RecordingFileSystemClient(home: home, entriesByDirectory: [
+            home: entries(["small.txt", "large.txt"], in: home)
+        ])
+        let store = InMemoryFileBrowserStore(state: FileBrowserPersistedState(
+            pinnedDirectories: [],
+            lastDirectory: home,
+            sort: .name,
+            traversalChain: []
+        ))
+        let model = FileBrowserModel(fileSystem: client, store: store)
+
+        model.setSort(.size)
+
+        XCTAssertEqual(model.sort, .size)
+        XCTAssertEqual(store.state.sort, .size)
+        XCTAssertEqual(client.entryRequests.filter { $0.directory == home }.map(\.sort), [.name, .size])
+    }
+
+    func testDirectorySnapshotsIncludeParentCurrentAndSelectedChildContext() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let parent = home.deletingLastPathComponent()
+        let child = home.appendingPathComponent("Projects", isDirectory: true)
+        let client = StubFileSystemClient(home: home, entriesByDirectory: [
+            parent: [directoryEntry(home)],
+            home: [directoryEntry(child), fileEntry(home.appendingPathComponent("notes.txt"))],
+            child: [fileEntry(child.appendingPathComponent("README.md"))]
+        ])
+        let model = FileBrowserModel(fileSystem: client, store: InMemoryFileBrowserStore(state: FileBrowserPersistedState(
+            pinnedDirectories: [],
+            lastDirectory: home,
+            sort: .name,
+            traversalChain: []
+        )))
+
+        XCTAssertEqual(model.directorySnapshots.map(\.directory), [parent, home, child])
+        XCTAssertEqual(model.directorySnapshots[1].entries.map(\.name), ["Projects", "notes.txt"])
+        XCTAssertEqual(model.directorySnapshots[2].entries.map(\.name), ["README.md"])
+    }
+
     private func makeModel(
         entries: [FileBrowserEntry] = [],
         persisted: FileBrowserPersistedState = .defaultValue,
@@ -266,5 +307,9 @@ final class FileBrowserModelTests: XCTestCase {
 
     private func directoryEntry(_ url: URL) -> FileBrowserEntry {
         FileBrowserEntry(url: url, kind: .directory, size: nil, createdAt: nil, modifiedAt: nil, isHidden: false)
+    }
+
+    private func fileEntry(_ url: URL) -> FileBrowserEntry {
+        FileBrowserEntry(url: url, kind: .file, size: 1, createdAt: nil, modifiedAt: nil, isHidden: false)
     }
 }
