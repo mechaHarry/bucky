@@ -38,7 +38,7 @@ final class FileBrowserModel: ObservableObject {
     }
 
     var focusableActions: [FileBrowserAction] {
-        availableActions.filter { $0 != .open }
+        availableActions
     }
 
     init(fileSystem: FileSystemClientProtocol = FileSystemClient(), store: FileBrowserPersisting = FileBrowserStore()) {
@@ -134,6 +134,14 @@ final class FileBrowserModel: ObservableObject {
         guard sort != nextSort else { return }
         sort = nextSort
         reloadEntries()
+    }
+
+    func entry(for url: URL) -> FileBrowserEntry? {
+        let standardizedURL = url.standardizedFileURL
+        return directorySnapshots
+            .lazy
+            .flatMap(\.entries)
+            .first { $0.url.standardizedFileURL == standardizedURL }
     }
 
     func performFocusedAction() {

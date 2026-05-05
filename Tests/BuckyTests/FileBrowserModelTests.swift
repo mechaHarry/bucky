@@ -86,10 +86,12 @@ final class FileBrowserModelTests: XCTestCase {
 
         model.handle(.space)
         XCTAssertEqual(model.availableActions, [.open, .rename, .revealInFinder, .copyPath, .copy, .move, .moveToTrash])
+        XCTAssertEqual(model.focusableActions, [.open, .rename, .revealInFinder, .copyPath, .copy, .move, .moveToTrash])
 
         model.handle(.down)
         model.handle(.shiftSpace)
         XCTAssertEqual(model.availableActions, [.batchRename, .copyPaths, .copy, .move, .moveToTrash])
+        XCTAssertEqual(model.focusableActions, [.batchRename, .copyPaths, .copy, .move, .moveToTrash])
     }
 
     func testActionOverlayKeyboardSelectionAndReturnStartsFocusedAction() {
@@ -97,6 +99,7 @@ final class FileBrowserModelTests: XCTestCase {
 
         model.handle(.space)
         model.handle(.open)
+        model.handle(.down)
         model.handle(.down)
         model.handle(.down)
         model.handle(.down)
@@ -110,6 +113,7 @@ final class FileBrowserModelTests: XCTestCase {
 
         model.handle(.space)
         model.handle(.open)
+        model.handle(.down)
         model.handle(.down)
         model.handle(.down)
         model.handle(.down)
@@ -266,6 +270,33 @@ final class FileBrowserModelTests: XCTestCase {
         XCTAssertEqual(model.directorySnapshots.map(\.directory), [parent, home, child])
         XCTAssertEqual(model.directorySnapshots[1].entries.map(\.name), ["Projects", "notes.txt"])
         XCTAssertEqual(model.directorySnapshots[2].entries.map(\.name), ["README.md"])
+    }
+
+    func testEntryLookupFindsMetadataFromDirectorySnapshots() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let child = home.appendingPathComponent("Projects", isDirectory: true)
+        let readme = child.appendingPathComponent("README.md")
+        let modifiedAt = Date(timeIntervalSince1970: 1_234)
+        let client = StubFileSystemClient(home: home, entriesByDirectory: [
+            home: [directoryEntry(child)],
+            child: [FileBrowserEntry(
+                url: readme,
+                kind: .file,
+                size: 42,
+                createdAt: nil,
+                modifiedAt: modifiedAt,
+                isHidden: false
+            )]
+        ])
+        let model = FileBrowserModel(fileSystem: client, store: InMemoryFileBrowserStore(state: FileBrowserPersistedState(
+            pinnedDirectories: [],
+            lastDirectory: home,
+            sort: .name,
+            traversalChain: []
+        )))
+
+        XCTAssertEqual(model.entry(for: readme)?.modifiedAt, modifiedAt)
+        XCTAssertEqual(model.entry(for: readme)?.size, 42)
     }
 
     private func makeModel(
