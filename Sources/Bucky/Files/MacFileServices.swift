@@ -1,39 +1,44 @@
 import AppKit
 import Foundation
 
-enum FileBrowserConflictResolution {
-    case keepBoth
-    case replace
-    case cancel
-}
-
 enum MacFileServicesError: LocalizedError {
     case cannotReplaceItemWithItself(URL)
+    case cannotOpen(URL)
+    case invalidName(String)
+    case targetAlreadyExists(URL)
 
     var errorDescription: String? {
         switch self {
         case let .cannotReplaceItemWithItself(url):
             return "Cannot replace an item with itself: \(url.path)"
+        case let .cannotOpen(url):
+            return "Could not open: \(url.path)"
+        case let .invalidName(name):
+            return "Invalid file name: \(name)"
+        case let .targetAlreadyExists(url):
+            return "A file already exists at: \(url.path)"
         }
     }
 }
 
-struct MacFileServices {
+struct MacFileServices: FileBrowserNativeServicing {
     private let fileManager: FileManager
 
     init(fileManager: FileManager = .default) {
         self.fileManager = fileManager
     }
 
-    func open(_ url: URL) {
-        NSWorkspace.shared.open(url)
+    func open(_ url: URL) throws {
+        guard NSWorkspace.shared.open(url) else {
+            throw MacFileServicesError.cannotOpen(url)
+        }
     }
 
-    func revealInFinder(_ urls: [URL]) {
+    func revealInFinder(_ urls: [URL]) throws {
         NSWorkspace.shared.activateFileViewerSelecting(urls)
     }
 
-    func copyPathsToPasteboard(_ urls: [URL]) {
+    func copyPathsToPasteboard(_ urls: [URL]) throws {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(urls.map(\.path).joined(separator: "\n"), forType: .string)
@@ -71,6 +76,52 @@ struct MacFileServices {
         for url in urls {
             var resultingURL: NSURL?
             try fileManager.trashItem(at: url, resultingItemURL: &resultingURL)
+        }
+    }
+
+    func rename(_ url: URL, to proposedName: String) throws -> URL {
+        let target = try renameTarget(for: url, proposedName: proposedName)
+        try fileManager.moveItem(at: url, to: target)
+        return target
+    }
+
+    func batchRename(_ urls: [URL], baseName: String) throws -> [URL] {
+        let trimmedBaseName = baseName.trimmingCharacters(in: .whitespacesAndNewlines)
+        try validateFileName(trimmedBaseName)
+
+        let targets = try urls.enumerated().map { offset, url in
+            let extensionSuffix = url.pathExtension.isEmpty ? "" : ".\(url.pathExtension)"
+            let proposedName = "\(trimmedBaseName) \(offset + 1)\(extensionSuffix)"
+            return try renameTarget(for: url, proposedName: proposedName)
+        }
+
+        let uniqueTargets = Set(targets.map { canonicalFileURL($0) })
+        guard uniqueTargets.count == targets.count else {
+            throw MacFileServicesError.invalidName(baseName)
+        }
+
+        for target in targets {
+            let isSource = urls.contains { canonicalFileURL($0) == canonicalFileURL(target) }
+            if !isSource, fileManager.fileExists(atPath: target.path) {
+                throw MacFileServicesError.targetAlreadyExists(target)
+            }
+        }
+
+        for (source, target) in zip(urls, targets) where canonicalFileURL(source) != canonicalFileURL(target) {
+            try fileManager.moveItem(at: source, to: target)
+        }
+
+        return targets
+    }
+
+    func conflictingDestinations(for urls: [URL], in destinationDirectory: URL) -> [FileBrowserConflict] {
+        urls.compactMap { source in
+            let destination = destinationDirectory.appendingPathComponent(source.lastPathComponent)
+            guard fileManager.fileExists(atPath: destination.path),
+                  canonicalFileURL(source) != canonicalFileURL(destination) else {
+                return nil
+            }
+            return FileBrowserConflict(source: source, destination: destination)
         }
     }
 
@@ -145,5 +196,26 @@ struct MacFileServices {
         destination
             .deletingLastPathComponent()
             .appendingPathComponent(".\(destination.lastPathComponent).replacement-\(UUID().uuidString)")
+    }
+
+    private func renameTarget(for url: URL, proposedName: String) throws -> URL {
+        let trimmedName = proposedName.trimmingCharacters(in: .whitespacesAndNewlines)
+        try validateFileName(trimmedName)
+        let target = url.deletingLastPathComponent().appendingPathComponent(trimmedName)
+
+        if canonicalFileURL(url) != canonicalFileURL(target), fileManager.fileExists(atPath: target.path) {
+            throw MacFileServicesError.targetAlreadyExists(target)
+        }
+
+        return target
+    }
+
+    private func validateFileName(_ name: String) throws {
+        guard !name.isEmpty,
+              !name.contains("/"),
+              name != ".",
+              name != ".." else {
+            throw MacFileServicesError.invalidName(name)
+        }
     }
 }

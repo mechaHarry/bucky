@@ -74,7 +74,7 @@ struct ModeSwitcherView: View {
         case .files:
             HStack(spacing: 12) {
                 Button {
-                    MacFileServices().copyPathsToPasteboard([displayedFileURL])
+                    try? MacFileServices().copyPathsToPasteboard([displayedFileURL])
                 } label: {
                     HStack(spacing: 10) {
                         Image(systemName: symbol(for: mode))

@@ -63,6 +63,11 @@ struct FileBrowserDirectorySnapshot: Equatable {
     let entries: [FileBrowserEntry]
 }
 
+struct FileBrowserConflict: Equatable {
+    let source: URL
+    let destination: URL
+}
+
 protocol FileSystemClientProtocol {
     func homeDirectory() -> URL
     func parentURL(for url: URL) -> URL?
@@ -77,6 +82,18 @@ protocol FileBrowserPersisting: AnyObject {
 }
 
 extension FileBrowserStore: FileBrowserPersisting {}
+
+protocol FileBrowserNativeServicing {
+    func open(_ url: URL) throws
+    func revealInFinder(_ urls: [URL]) throws
+    func copyPathsToPasteboard(_ urls: [URL]) throws
+    func copy(_ urls: [URL], to destinationDirectory: URL, conflict: FileBrowserConflictResolution) throws
+    func move(_ urls: [URL], to destinationDirectory: URL, conflict: FileBrowserConflictResolution) throws
+    func trash(_ urls: [URL]) throws
+    func rename(_ url: URL, to proposedName: String) throws -> URL
+    func batchRename(_ urls: [URL], baseName: String) throws -> [URL]
+    func conflictingDestinations(for urls: [URL], in destinationDirectory: URL) -> [FileBrowserConflict]
+}
 
 enum FileBrowserFocusState: Equatable {
     case browse
@@ -106,6 +123,23 @@ enum FileBrowserActionIntent: Equatable {
     case copyPaths([URL])
 }
 
+enum FileBrowserConflictResolution: CaseIterable, Equatable {
+    case keepBoth
+    case replace
+    case cancel
+}
+
+enum FileBrowserRenameMode: Equatable {
+    case single
+    case batch
+}
+
+struct FileBrowserRenameState: Equatable {
+    let mode: FileBrowserRenameMode
+    let urls: [URL]
+    var proposedName: String
+}
+
 enum FileBrowserTransferKind {
     case copy
     case move
@@ -119,7 +153,7 @@ enum FileBrowserTransfer: Equatable {
 enum FileBrowserConfirmation: Equatable {
     case transfer(FileBrowserTransfer, destination: URL)
     case trash([URL], step: Int)
-    case conflict(source: URL, destination: URL)
+    case conflict(FileBrowserTransfer, destination: URL, conflicts: [FileBrowserConflict])
 }
 
 enum FileBrowserWobbleReason: Equatable {

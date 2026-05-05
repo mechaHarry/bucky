@@ -62,7 +62,7 @@ final class FileBrowserModelTests: XCTestCase {
         XCTAssertEqual(model.wobbleReason, .cannotEnterFile)
     }
 
-    func testShiftSpaceAfterDirectoryChangeUsesOnlyCurrentDirectoryEntries() {
+    func testShiftSpaceAfterDirectoryChangePreservesSelectionsFromOtherDirectories() {
         let home = URL(fileURLWithPath: "/Users/test")
         let childDirectory = home.appendingPathComponent("child", isDirectory: true)
         let model = makeModel(home: home, entriesByDirectory: [
@@ -78,7 +78,20 @@ final class FileBrowserModelTests: XCTestCase {
         model.handle(.shiftSpace)
 
         XCTAssertEqual(model.currentDirectory, childDirectory)
-        XCTAssertEqual(model.selectedURLs.map(\.lastPathComponent), ["only.txt"])
+        XCTAssertEqual(model.selectedURLs.map(\.lastPathComponent), ["gamma.txt", "only.txt"])
+    }
+
+    func testStaleSelectionPrunesCurrentDirectoryItemsOnly() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let other = URL(fileURLWithPath: "/Users/other")
+        let model = makeModel(entries: entries(["one.txt", "two.txt"], in: home), home: home)
+        let otherSelection = other.appendingPathComponent("kept.txt")
+
+        model.handle(.space)
+        model.addSelectedURLForTesting(otherSelection)
+        model.replaceEntriesForTesting(entries(["two.txt"], in: home))
+
+        XCTAssertEqual(model.selectedURLs, [otherSelection])
     }
 
     func testActionAvailabilityChangesForSingleAndMultipleSelections() {
@@ -128,23 +141,25 @@ final class FileBrowserModelTests: XCTestCase {
     func testEverySingleSelectionFocusedActionProducesStateOrIntent() {
         let home = URL(fileURLWithPath: "/Users/test")
         let selectedURL = home.appendingPathComponent("one.txt")
-        let expected: [(FileBrowserAction, FileBrowserFocusState, FileBrowserActionIntent?)] = [
-            (.open, .previewActions, .open(selectedURL)),
-            (.rename, .renaming, .rename([selectedURL])),
-            (.revealInFinder, .previewActions, .revealInFinder([selectedURL])),
-            (.copyPath, .previewActions, .copyPaths([selectedURL])),
-            (.copy, .transferPending(.copy([selectedURL])), nil),
-            (.move, .transferPending(.move([selectedURL])), nil),
-            (.moveToTrash, .confirming(.trash([selectedURL], step: 1)), nil)
+        let service = RecordingFileBrowserServices()
+        let expected: [(FileBrowserAction, FileBrowserFocusState, [RecordingFileBrowserServices.Event])] = [
+            (.open, .browse, [.open(selectedURL)]),
+            (.rename, .renaming, []),
+            (.revealInFinder, .browse, [.revealInFinder([selectedURL])]),
+            (.copyPath, .browse, [.copyPaths([selectedURL])]),
+            (.copy, .transferPending(.copy([selectedURL])), []),
+            (.move, .transferPending(.move([selectedURL])), []),
+            (.moveToTrash, .confirming(.trash([selectedURL], step: 1)), [])
         ]
 
-        for (action, expectedFocusState, expectedIntent) in expected {
-            let model = makeModel(entries: entries(["one.txt"], in: home), home: home)
+        for (action, expectedFocusState, expectedEvents) in expected {
+            service.reset()
+            let model = makeModel(entries: entries(["one.txt"], in: home), home: home, fileServices: service)
 
             perform(action, on: model)
 
             XCTAssertEqual(model.focusState, expectedFocusState, "Unexpected focus state for \(action)")
-            XCTAssertEqual(model.pendingActionIntent, expectedIntent, "Unexpected intent for \(action)")
+            XCTAssertEqual(service.events, expectedEvents, "Unexpected service calls for \(action)")
         }
     }
 
@@ -154,16 +169,18 @@ final class FileBrowserModelTests: XCTestCase {
             home.appendingPathComponent("one.txt"),
             home.appendingPathComponent("two.txt")
         ]
-        let expected: [(FileBrowserAction, FileBrowserFocusState, FileBrowserActionIntent?)] = [
-            (.batchRename, .renaming, .rename(urls)),
-            (.copyPaths, .previewActions, .copyPaths(urls)),
-            (.copy, .transferPending(.copy(urls)), nil),
-            (.move, .transferPending(.move(urls)), nil),
-            (.moveToTrash, .confirming(.trash(urls, step: 1)), nil)
+        let service = RecordingFileBrowserServices()
+        let expected: [(FileBrowserAction, FileBrowserFocusState, [RecordingFileBrowserServices.Event])] = [
+            (.batchRename, .renaming, []),
+            (.copyPaths, .browse, [.copyPaths(urls)]),
+            (.copy, .transferPending(.copy(urls)), []),
+            (.move, .transferPending(.move(urls)), []),
+            (.moveToTrash, .confirming(.trash(urls, step: 1)), [])
         ]
 
-        for (action, expectedFocusState, expectedIntent) in expected {
-            let model = makeModel(entries: entries(["one.txt", "two.txt"], in: home), home: home)
+        for (action, expectedFocusState, expectedEvents) in expected {
+            service.reset()
+            let model = makeModel(entries: entries(["one.txt", "two.txt"], in: home), home: home, fileServices: service)
             model.handle(.space)
             model.handle(.down)
             model.handle(.shiftSpace)
@@ -171,8 +188,224 @@ final class FileBrowserModelTests: XCTestCase {
             perform(action, on: model)
 
             XCTAssertEqual(model.focusState, expectedFocusState, "Unexpected focus state for \(action)")
-            XCTAssertEqual(model.pendingActionIntent, expectedIntent, "Unexpected intent for \(action)")
+            XCTAssertEqual(service.events, expectedEvents, "Unexpected service calls for \(action)")
         }
+    }
+
+    func testFocusedOpenRevealAndCopyPathsExecuteThroughNativeService() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let selectedURL = home.appendingPathComponent("one.txt")
+        let service = RecordingFileBrowserServices()
+        let model = makeModel(entries: entries(["one.txt"], in: home), home: home, fileServices: service)
+
+        perform(.open, on: model)
+        perform(.revealInFinder, on: model)
+        perform(.copyPath, on: model)
+
+        XCTAssertEqual(service.events, [
+            .open(selectedURL),
+            .revealInFinder([selectedURL]),
+            .copyPaths([selectedURL])
+        ])
+        XCTAssertEqual(model.focusState, .browse)
+    }
+
+    func testRenameConfirmCallsNativeServiceAndEscapeReturnsToActions() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let selectedURL = home.appendingPathComponent("one.txt")
+        let service = RecordingFileBrowserServices()
+        let model = makeModel(entries: entries(["one.txt"], in: home), home: home, fileServices: service)
+
+        perform(.rename, on: model)
+        XCTAssertEqual(model.renameState?.proposedName, "one.txt")
+
+        model.setRenameText("renamed.txt")
+        model.handle(.open)
+
+        XCTAssertEqual(service.events, [.rename(selectedURL, "renamed.txt")])
+        XCTAssertEqual(model.focusState, .browse)
+
+        perform(.rename, on: model)
+        model.handle(.close)
+
+        XCTAssertEqual(model.focusState, .previewActions)
+        XCTAssertNil(model.renameState)
+    }
+
+    func testBatchRenameConfirmCallsNativeServiceWithBaseName() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let urls = [
+            home.appendingPathComponent("one.txt"),
+            home.appendingPathComponent("two.txt")
+        ]
+        let service = RecordingFileBrowserServices()
+        let model = makeModel(entries: entries(["one.txt", "two.txt"], in: home), home: home, fileServices: service)
+
+        model.handle(.space)
+        model.handle(.down)
+        model.handle(.shiftSpace)
+        perform(.batchRename, on: model)
+        XCTAssertEqual(model.renameState?.proposedName, "Untitled")
+
+        model.setRenameText("Screenshot")
+        model.handle(.open)
+
+        XCTAssertEqual(service.events, [.batchRename(urls, "Screenshot")])
+        XCTAssertEqual(model.focusState, .browse)
+    }
+
+    func testTransferConfirmationExecutesCopyAndMoveThroughNativeService() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let selectedURL = home.appendingPathComponent("one.txt")
+        let service = RecordingFileBrowserServices()
+        let model = makeModel(entries: entries(["one.txt"], in: home), home: home, fileServices: service)
+
+        model.handle(.space)
+        model.startTransfer(.copy)
+        model.handle(.open)
+        model.handle(.open)
+
+        XCTAssertEqual(service.events, [.copy([selectedURL], home, .keepBoth)])
+        XCTAssertEqual(model.focusState, .browse)
+
+        model.startTransfer(.move)
+        model.handle(.open)
+        model.handle(.open)
+
+        XCTAssertEqual(service.events, [
+            .copy([selectedURL], home, .keepBoth),
+            .move([selectedURL], home, .keepBoth)
+        ])
+    }
+
+    func testTrashRequiresDoubleConfirmationBeforeNativeTrash() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let selectedURL = home.appendingPathComponent("one.txt")
+        let service = RecordingFileBrowserServices()
+        let model = makeModel(entries: entries(["one.txt"], in: home), home: home, fileServices: service)
+
+        model.handle(.space)
+        model.requestTrashConfirmation()
+        model.handle(.open)
+
+        XCTAssertEqual(service.events, [])
+        XCTAssertEqual(model.focusState, .confirming(.trash([selectedURL], step: 2)))
+
+        model.handle(.open)
+
+        XCTAssertEqual(service.events, [.trash([selectedURL])])
+        XCTAssertEqual(model.focusState, .browse)
+        XCTAssertEqual(model.selectedURLs, [])
+    }
+
+    func testEscapeBehaviorForQuickLookRenameTransferConfirmationAndConflict() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let selectedURL = home.appendingPathComponent("one.txt")
+        let service = RecordingFileBrowserServices()
+        service.conflicts = [FileBrowserConflict(
+            source: selectedURL,
+            destination: home.appendingPathComponent("one.txt")
+        )]
+        let model = makeModel(entries: entries(["one.txt"], in: home), home: home, fileServices: service)
+
+        model.handle(.space)
+        model.handle(.beginSpaceHold)
+        model.handle(.close)
+        XCTAssertEqual(model.focusState, .browse)
+        XCTAssertEqual(model.selectedURLs, [selectedURL])
+
+        perform(.rename, on: model)
+        model.handle(.close)
+        XCTAssertEqual(model.focusState, .previewActions)
+
+        model.startTransfer(.copy)
+        model.handle(.close)
+        XCTAssertEqual(model.focusState, .previewActions)
+
+        model.startTransfer(.copy)
+        model.handle(.open)
+        model.handle(.close)
+        XCTAssertEqual(model.focusState, .transferPending(.copy([selectedURL])))
+
+        model.handle(.open)
+        model.handle(.open)
+        XCTAssertEqual(model.focusState, .confirming(.conflict(.copy([selectedURL]), destination: home, conflicts: service.conflicts)))
+        model.handle(.close)
+        XCTAssertEqual(model.focusState, .transferPending(.copy([selectedURL])))
+    }
+
+    func testConflictRowsDefaultToKeepBothAndExecuteFocusedOption() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let selectedURL = home.appendingPathComponent("one.txt")
+        let service = RecordingFileBrowserServices()
+        service.conflicts = [FileBrowserConflict(
+            source: selectedURL,
+            destination: home.appendingPathComponent("one.txt")
+        )]
+        let model = makeModel(entries: entries(["one.txt"], in: home), home: home, fileServices: service)
+
+        model.handle(.space)
+        model.startTransfer(.copy)
+        model.handle(.open)
+        model.handle(.open)
+
+        XCTAssertEqual(model.focusedConflictResolution, .keepBoth)
+        XCTAssertEqual(model.focusState, .confirming(.conflict(.copy([selectedURL]), destination: home, conflicts: service.conflicts)))
+
+        model.handle(.down)
+        XCTAssertEqual(model.focusedConflictResolution, .replace)
+        model.handle(.open)
+
+        XCTAssertEqual(service.events, [.copy([selectedURL], home, .replace)])
+        XCTAssertEqual(model.focusState, .browse)
+    }
+
+    func testConflictCancelOptionDoesNotExecuteTransfer() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let selectedURL = home.appendingPathComponent("one.txt")
+        let service = RecordingFileBrowserServices()
+        service.conflicts = [FileBrowserConflict(
+            source: selectedURL,
+            destination: home.appendingPathComponent("one.txt")
+        )]
+        let model = makeModel(entries: entries(["one.txt"], in: home), home: home, fileServices: service)
+
+        model.handle(.space)
+        model.startTransfer(.move)
+        model.handle(.open)
+        model.handle(.open)
+        model.handle(.down)
+        model.handle(.down)
+        model.handle(.open)
+
+        XCTAssertEqual(model.focusedConflictResolution, .cancel)
+        XCTAssertEqual(service.events, [])
+        XCTAssertEqual(model.focusState, .browse)
+    }
+
+    func testOperationFailureShowsStatusAndKeepsRecoverableFocus() {
+        let service = RecordingFileBrowserServices()
+        service.error = TestFileBrowserServiceError.failed
+        let model = makeModel(entries: entries(["one.txt"]), fileServices: service)
+
+        perform(.open, on: model)
+
+        XCTAssertEqual(model.focusState, .previewActions)
+        XCTAssertEqual(model.statusMessage, "failed")
+    }
+
+    func testOpenPinnedDirectoryNavigatesThroughModel() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let pinned = home.appendingPathComponent("Projects", isDirectory: true)
+        let model = makeModel(home: home, entriesByDirectory: [
+            home: [],
+            pinned: entries(["README.md"], in: pinned)
+        ])
+
+        model.openPinnedDirectory(pinned)
+
+        XCTAssertEqual(model.currentDirectory, pinned)
+        XCTAssertEqual(model.entries.map(\.name), ["README.md"])
     }
 
     func testCopyMoveStagePayloadAndEscapeCancelsBackToActions() {
@@ -398,21 +631,23 @@ final class FileBrowserModelTests: XCTestCase {
     private func makeModel(
         entries: [FileBrowserEntry] = [],
         persisted: FileBrowserPersistedState = .defaultValue,
-        home: URL = URL(fileURLWithPath: "/Users/test")
+        home: URL = URL(fileURLWithPath: "/Users/test"),
+        fileServices: FileBrowserNativeServicing = RecordingFileBrowserServices()
     ) -> FileBrowserModel {
         let client = StubFileSystemClient(home: home, entriesByDirectory: [home: entries])
         let store = InMemoryFileBrowserStore(state: persisted)
-        return FileBrowserModel(fileSystem: client, store: store)
+        return FileBrowserModel(fileSystem: client, store: store, fileServices: fileServices)
     }
 
     private func makeModel(
         persisted: FileBrowserPersistedState = .defaultValue,
         home: URL = URL(fileURLWithPath: "/Users/test"),
-        entriesByDirectory: [URL: [FileBrowserEntry]]
+        entriesByDirectory: [URL: [FileBrowserEntry]],
+        fileServices: FileBrowserNativeServicing = RecordingFileBrowserServices()
     ) -> FileBrowserModel {
         let client = StubFileSystemClient(home: home, entriesByDirectory: entriesByDirectory)
         let store = InMemoryFileBrowserStore(state: persisted)
-        return FileBrowserModel(fileSystem: client, store: store)
+        return FileBrowserModel(fileSystem: client, store: store, fileServices: fileServices)
     }
 
     private func entries(_ names: [String]) -> [FileBrowserEntry] {

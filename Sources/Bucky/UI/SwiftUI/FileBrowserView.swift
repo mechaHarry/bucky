@@ -29,6 +29,13 @@ struct FileBrowserView: View {
                 QuickLookPreviewSurface(url: url, entry: model.entry(for: url))
                     .transition(.scale(scale: 0.96).combined(with: .opacity))
             }
+
+            focusedOverlay
+
+            if let statusMessage = model.statusMessage {
+                statusOverlay(statusMessage)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
         .onAppear {
             transferGlow = isTransferPending
@@ -78,6 +85,10 @@ struct FileBrowserView: View {
                     .padding(.vertical, 7)
                     .background(.quaternary.opacity(0.18), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                     .help(url.path)
+                    .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .onTapGesture {
+                        model.openPinnedDirectory(url)
+                    }
                 }
             }
 
@@ -223,6 +234,55 @@ struct FileBrowserView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
     }
 
+    @ViewBuilder
+    private var focusedOverlay: some View {
+        switch model.focusState {
+        case .renaming:
+            RenameOverlay(model: model)
+                .transition(.scale(scale: 0.97).combined(with: .opacity))
+        case let .confirming(.transfer(transfer, destination)):
+            ConfirmationOverlay(
+                title: "Confirm \(transfer.displayName)",
+                message: "Return \(transfer.confirmationVerb) the staged items into \(displayName(for: destination)). Escape returns to destination selection."
+            )
+            .transition(.scale(scale: 0.97).combined(with: .opacity))
+        case let .confirming(.trash(urls, step)):
+            ConfirmationOverlay(
+                title: step == 1 ? "Move to Trash?" : "Confirm Trash",
+                message: step == 1
+                    ? "Return continues. \(urls.count) item\(urls.count == 1 ? "" : "s") will be moved to Trash, never permanently deleted."
+                    : "Return moves the selected item\(urls.count == 1 ? "" : "s") to Trash. Escape cancels."
+            )
+            .transition(.scale(scale: 0.97).combined(with: .opacity))
+        case let .confirming(.conflict(_, _, conflicts)):
+            ConflictOverlay(conflicts: conflicts, focusedResolution: model.focusedConflictResolution)
+                .transition(.scale(scale: 0.97).combined(with: .opacity))
+        default:
+            EmptyView()
+        }
+    }
+
+    private func statusOverlay(_ message: String) -> some View {
+        HStack(spacing: 9) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.caption.weight(.semibold))
+            Text(message)
+                .font(.caption.weight(.medium))
+                .lineLimit(2)
+        }
+        .foregroundStyle(.primary)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .glassEffect(.regular.interactive(false), in: Capsule())
+        .overlay {
+            Capsule()
+                .strokeBorder(Color.red.opacity(0.34), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.18), radius: 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        .padding(.bottom, 18)
+    }
+
     private var selectionGroups: [(parent: URL, count: Int)] {
         let grouped = Dictionary(grouping: model.activeSelectionURLs) { url in
             url.deletingLastPathComponent()
@@ -249,6 +309,11 @@ struct FileBrowserView: View {
     private func title(for directory: URL) -> String {
         let title = directory.lastPathComponent
         return title.isEmpty ? "/" : title
+    }
+
+    private func displayName(for url: URL) -> String {
+        let name = url.lastPathComponent
+        return name.isEmpty ? url.path : name
     }
 
     private func placeholder(_ text: String) -> some View {
@@ -328,6 +393,191 @@ private struct ActionRow: View {
 
             Text(action.displayName)
                 .font(.system(size: 14, weight: .medium))
+
+            Spacer(minLength: 8)
+
+            if isFocused {
+                Image(systemName: "return")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            isFocused ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.24) : Color.clear,
+            in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(isFocused ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.38) : .clear, lineWidth: 1)
+        }
+    }
+}
+
+@available(macOS 26.0, *)
+private struct RenameOverlay: View {
+    @ObservedObject var model: FileBrowserModel
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Image(systemName: state?.mode == .batch ? "textformat.123" : "pencil")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 20)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(state?.mode == .batch ? "Batch Rename" : "Rename")
+                        .font(.headline)
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            TextField("Name", text: Binding(
+                get: { state?.proposedName ?? "" },
+                set: { model.setRenameText($0) }
+            ))
+            .textFieldStyle(.roundedBorder)
+            .focused($isFocused)
+            .onSubmit {
+                model.handle(.open)
+            }
+
+            Text("Return confirms. Escape cancels.")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+        }
+        .padding(18)
+        .frame(width: 340)
+        .glassEffect(.regular.interactive(false), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.28), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.26), radius: 28, x: 0, y: 16)
+        .onAppear {
+            isFocused = true
+        }
+    }
+
+    private var state: FileBrowserRenameState? {
+        model.renameState
+    }
+
+    private var subtitle: String {
+        guard let state else { return "" }
+        switch state.mode {
+        case .single:
+            return state.urls.first?.lastPathComponent ?? ""
+        case .batch:
+            return "\(state.urls.count) items, numbered suffixes"
+        }
+    }
+}
+
+@available(macOS 26.0, *)
+private struct ConfirmationOverlay: View {
+    let title: String
+    let message: String
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Text(title)
+                .font(.headline)
+                .multilineTextAlignment(.center)
+            Text(message)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("Return confirms. Escape cancels.")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+        }
+        .padding(20)
+        .frame(width: 340)
+        .glassEffect(.regular.interactive(false), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.28), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.26), radius: 28, x: 0, y: 16)
+    }
+}
+
+@available(macOS 26.0, *)
+private struct ConflictOverlay: View {
+    let conflicts: [FileBrowserConflict]
+    let focusedResolution: FileBrowserConflictResolution
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Name Conflict")
+                    .font(.headline)
+                Text(conflictSummary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+
+            VStack(spacing: 5) {
+                ForEach(FileBrowserConflictResolution.allCases, id: \.self) { resolution in
+                    ConflictResolutionRow(
+                        resolution: resolution,
+                        isFocused: resolution == focusedResolution
+                    )
+                }
+            }
+
+            Text("Up and Down choose. Return applies.")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+        }
+        .padding(18)
+        .frame(width: 340)
+        .glassEffect(.regular.interactive(false), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.28), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.26), radius: 28, x: 0, y: 16)
+    }
+
+    private var conflictSummary: String {
+        guard let first = conflicts.first else {
+            return "A destination already contains an item with the same name."
+        }
+        let extraCount = conflicts.count - 1
+        let suffix = extraCount > 0 ? " and \(extraCount) more" : ""
+        return "\(first.destination.lastPathComponent)\(suffix)"
+    }
+}
+
+@available(macOS 26.0, *)
+private struct ConflictResolutionRow: View {
+    let resolution: FileBrowserConflictResolution
+    let isFocused: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: resolution.symbol)
+                .font(.system(size: 14, weight: .semibold))
+                .frame(width: 18)
+                .foregroundStyle(isFocused ? .primary : .secondary)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(resolution.displayName)
+                    .font(.system(size: 14, weight: .medium))
+                Text(resolution.detail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
 
             Spacer(minLength: 8)
 
@@ -477,6 +727,61 @@ private extension FileBrowserAction {
             return "arrow.right.square"
         case .moveToTrash:
             return "trash"
+        }
+    }
+}
+
+private extension FileBrowserTransfer {
+    var displayName: String {
+        switch self {
+        case .copy:
+            return "Copy"
+        case .move:
+            return "Move"
+        }
+    }
+
+    var confirmationVerb: String {
+        switch self {
+        case .copy:
+            return "copies"
+        case .move:
+            return "moves"
+        }
+    }
+}
+
+private extension FileBrowserConflictResolution {
+    var displayName: String {
+        switch self {
+        case .keepBoth:
+            return "Keep Both"
+        case .replace:
+            return "Replace"
+        case .cancel:
+            return "Cancel"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .keepBoth:
+            return "Create a numbered copy"
+        case .replace:
+            return "Overwrite the destination item"
+        case .cancel:
+            return "Leave files unchanged"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .keepBoth:
+            return "plus.square.on.square"
+        case .replace:
+            return "arrow.triangle.2.circlepath"
+        case .cancel:
+            return "xmark.circle"
         }
     }
 }
