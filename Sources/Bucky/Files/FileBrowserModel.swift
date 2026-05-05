@@ -12,6 +12,7 @@ final class FileBrowserModel: ObservableObject {
     @Published private(set) var wobbleReason: FileBrowserWobbleReason?
     @Published private(set) var wobbleEvent: FileBrowserWobbleEvent?
     @Published private(set) var navigationTransition: FileBrowserNavigationTransition?
+    @Published private(set) var selectionScrollEvent: FileBrowserSelectionScrollEvent?
     @Published private(set) var sort: FileBrowserSort
     @Published private(set) var pinnedDirectories: [URL] = []
     @Published private(set) var focusedActionIndex = 0
@@ -30,6 +31,7 @@ final class FileBrowserModel: ObservableObject {
     private var recentTraversalChain: [URL]
     private var nextWobbleID = 0
     private var nextNavigationTransitionID = 0
+    private var nextSelectionScrollID = 0
     private var directoryLoadGeneration = 0
     private var snapshotEntryCache: [DirectorySnapshotCacheKey: [FileBrowserEntry]] = [:]
     private var pendingSnapshotRequests: Set<DirectorySnapshotCacheKey> = []
@@ -477,6 +479,7 @@ final class FileBrowserModel: ObservableObject {
         guard !entries.isEmpty else { return }
         selectedIndex = max(0, min(entries.count - 1, index))
         rebuildDirectorySnapshots()
+        publishSelectionScrollEvent()
     }
 
     private func moveToParent() {
@@ -564,6 +567,12 @@ final class FileBrowserModel: ObservableObject {
     private func publishNavigationTransition(_ direction: FileBrowserNavigationDirection) {
         nextNavigationTransitionID += 1
         navigationTransition = FileBrowserNavigationTransition(id: nextNavigationTransitionID, direction: direction)
+    }
+
+    private func publishSelectionScrollEvent() {
+        guard let url = selectedEntry?.url else { return }
+        nextSelectionScrollID += 1
+        selectionScrollEvent = FileBrowserSelectionScrollEvent(id: nextSelectionScrollID, url: url)
     }
 
     private func beginQuickLook() {
