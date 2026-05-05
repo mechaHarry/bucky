@@ -49,6 +49,10 @@ final class LauncherModeRoutingTests: XCTestCase {
         _ = model.handle(command: .switchMode(.applications))
 
         XCTAssertEqual(model.query, "ray")
+        _ = model.handle(command: .switchMode(.calculator))
+        XCTAssertEqual(model.query, "2+2")
+        _ = model.handle(command: .switchMode(.dictionary))
+        XCTAssertEqual(model.query, "hello")
     }
 
     @MainActor
