@@ -409,6 +409,19 @@ final class FileBrowserModelTests: XCTestCase {
         ))
     }
 
+    func testIconLoadingUsesNativeService() {
+        let service = RecordingFileBrowserServices()
+        let icon = NSImage(size: NSSize(width: 10, height: 10))
+        service.iconResult = icon
+        let model = makeModel(entries: entries(["notes.txt"]), fileServices: service)
+        let url = model.selectedEntry!.url
+
+        let loadedIcon = model.icon(for: url)
+
+        XCTAssertIdentical(loadedIcon, icon)
+        XCTAssertEqual(service.iconRequests, [url])
+    }
+
     func testConflictRowsDefaultToKeepBothAndExecuteFocusedOption() {
         let home = URL(fileURLWithPath: "/Users/test")
         let selectedURL = home.appendingPathComponent("one.txt")

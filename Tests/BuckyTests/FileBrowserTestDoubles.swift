@@ -80,14 +80,17 @@ final class RecordingFileBrowserServices: FileBrowserNativeServicing {
     var events: [Event] = []
     var conflicts: [FileBrowserConflict] = []
     var error: Error?
+    var iconResult = NSImage(size: NSSize(width: 16, height: 16))
     var previewMode: FileBrowserPreviewMode = .metadataFallback
     var thumbnailResult: NSImage?
+    private(set) var iconRequests: [URL] = []
     private(set) var thumbnailRequests: [ThumbnailRequest] = []
 
     func reset() {
         events = []
         conflicts = []
         error = nil
+        iconRequests = []
         thumbnailResult = nil
         thumbnailRequests = []
     }
@@ -105,6 +108,11 @@ final class RecordingFileBrowserServices: FileBrowserNativeServicing {
     func copyPathsToPasteboard(_ urls: [URL]) throws {
         if let error { throw error }
         events.append(.copyPaths(urls))
+    }
+
+    func icon(for url: URL) -> NSImage {
+        iconRequests.append(url)
+        return iconResult
     }
 
     func copy(_ urls: [URL], to destinationDirectory: URL, conflict: FileBrowserConflictResolution) throws {

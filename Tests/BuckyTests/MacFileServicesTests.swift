@@ -88,6 +88,33 @@ final class MacFileServicesTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: realSource, encoding: .utf8), "original")
     }
 
+    func testMoveKeepBothIntoSourceParentDoesNotRenameSource() throws {
+        let source = temporaryDirectory.appendingPathComponent("same-move.txt")
+        let keepBothDestination = temporaryDirectory.appendingPathComponent("same-move 2.txt")
+        try "original".write(to: source, atomically: true, encoding: .utf8)
+
+        try MacFileServices(fileManager: .default).move([source], to: temporaryDirectory, conflict: .keepBoth)
+
+        XCTAssertEqual(try String(contentsOf: source, encoding: .utf8), "original")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: keepBothDestination.path))
+    }
+
+    func testMoveKeepBothThroughSymlinkIntoRealParentDoesNotRenameSource() throws {
+        let realDirectory = temporaryDirectory.appendingPathComponent("Real", isDirectory: true)
+        let symlinkDirectory = temporaryDirectory.appendingPathComponent("Linked", isDirectory: true)
+        try FileManager.default.createDirectory(at: realDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: symlinkDirectory, withDestinationURL: realDirectory)
+        let realSource = realDirectory.appendingPathComponent("same-move.txt")
+        let symlinkSource = symlinkDirectory.appendingPathComponent("same-move.txt")
+        let keepBothDestination = realDirectory.appendingPathComponent("same-move 2.txt")
+        try "original".write(to: realSource, atomically: true, encoding: .utf8)
+
+        try MacFileServices(fileManager: .default).move([symlinkSource], to: realDirectory, conflict: .keepBoth)
+
+        XCTAssertEqual(try String(contentsOf: realSource, encoding: .utf8), "original")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: keepBothDestination.path))
+    }
+
     func testConflictingDestinationsReportsExistingDestinationWithoutSelfConflict() throws {
         let source = temporaryDirectory.appendingPathComponent("source.txt")
         let destination = temporaryDirectory.appendingPathComponent("Destination", isDirectory: true)
@@ -144,6 +171,19 @@ final class MacFileServicesTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: first.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: second.path))
         XCTAssertEqual(try String(contentsOf: existing, encoding: .utf8), "existing")
+    }
+
+    func testBatchRenameRejectsSelectedSourceTargetCollisionBeforeMovingAnyFile() throws {
+        let first = temporaryDirectory.appendingPathComponent("Screenshot 2.txt")
+        let second = temporaryDirectory.appendingPathComponent("other.txt")
+        let wouldBeFirstTarget = temporaryDirectory.appendingPathComponent("Screenshot 1.txt")
+        try "first".write(to: first, atomically: true, encoding: .utf8)
+        try "second".write(to: second, atomically: true, encoding: .utf8)
+
+        XCTAssertThrowsError(try MacFileServices(fileManager: .default).batchRename([first, second], baseName: "Screenshot"))
+        XCTAssertEqual(try String(contentsOf: first, encoding: .utf8), "first")
+        XCTAssertEqual(try String(contentsOf: second, encoding: .utf8), "second")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: wouldBeFirstTarget.path))
     }
 
     func testPreviewModeUsesNativeThumbnailForSupportedFilesAndFallbackOtherwise() throws {
