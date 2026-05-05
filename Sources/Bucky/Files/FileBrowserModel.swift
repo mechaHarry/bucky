@@ -10,6 +10,7 @@ final class FileBrowserModel: ObservableObject {
     @Published private(set) var selectedURLs: [URL] = []
     @Published private(set) var focusState: FileBrowserFocusState = .browse
     @Published private(set) var wobbleReason: FileBrowserWobbleReason?
+    @Published private(set) var wobbleEvent: FileBrowserWobbleEvent?
     @Published private(set) var sort: FileBrowserSort
     @Published private(set) var pinnedDirectories: [URL] = []
     @Published private(set) var focusedActionIndex = 0
@@ -24,6 +25,7 @@ final class FileBrowserModel: ObservableObject {
     private let fileServices: FileBrowserNativeServicing
     private var selectionAnchor: Int?
     private var recentTraversalChain: [URL]
+    private var nextWobbleID = 0
     private var snapshotEntryCache: [DirectorySnapshotCacheKey: [FileBrowserEntry]] = [:]
 
     var selectedEntry: FileBrowserEntry? {
@@ -60,7 +62,7 @@ final class FileBrowserModel: ObservableObject {
         self.pinnedDirectories = store.state.pinnedDirectories
         self.recentTraversalChain = store.state.traversalChain
         self.currentDirectory = store.state.lastDirectory ?? fileSystem.homeDirectory()
-        reloadEntries()
+        reloadEntries(fallbackToHomeOnFailure: true)
     }
 
     func handle(_ command: LauncherCommand) {
@@ -355,19 +357,50 @@ final class FileBrowserModel: ObservableObject {
         }
     }
 
-    private func reloadEntries() {
+    private func reloadEntries(selecting preferredSelection: URL? = nil, fallbackToHomeOnFailure: Bool = false) {
         snapshotEntryCache.removeAll()
         do {
-            entries = try fileSystem.entries(in: currentDirectory, sort: sort)
-            snapshotEntryCache[cacheKey(for: currentDirectory)] = entries
-            selectedIndex = entries.isEmpty ? 0 : min(selectedIndex, entries.count - 1)
-            pruneStaleSelections()
-            rebuildDirectorySnapshots(force: true)
-            persist()
+            applyLoadedEntries(try fileSystem.entries(in: currentDirectory, sort: sort), selecting: preferredSelection)
         } catch {
+            if fallbackToHomeOnFailure {
+                let fallback = fileSystem.homeDirectory()
+                if fallback.standardizedFileURL.path != currentDirectory.standardizedFileURL.path {
+                    currentDirectory = fallback
+                    selectedIndex = 0
+                    selectionAnchor = nil
+                    do {
+                        applyLoadedEntries(
+                            try fileSystem.entries(in: currentDirectory, sort: sort),
+                            selecting: nil,
+                            status: error.localizedDescription
+                        )
+                    } catch {
+                        entries = []
+                        directorySnapshots = [FileBrowserDirectorySnapshot(directory: currentDirectory, entries: [])]
+                        statusMessage = error.localizedDescription
+                        persist()
+                    }
+                    return
+                }
+            }
             entries = []
             directorySnapshots = [FileBrowserDirectorySnapshot(directory: currentDirectory, entries: [])]
+            statusMessage = error.localizedDescription
         }
+    }
+
+    private func applyLoadedEntries(
+        _ loadedEntries: [FileBrowserEntry],
+        selecting preferredSelection: URL?,
+        status: String? = nil
+    ) {
+        entries = loadedEntries
+        snapshotEntryCache[cacheKey(for: currentDirectory)] = entries
+        selectEntry(matching: preferredSelection)
+        statusMessage = status
+        pruneStaleSelections()
+        rebuildDirectorySnapshots(force: true)
+        persist()
     }
 
     private func rebuildDirectorySnapshots(force: Bool = false) {
@@ -427,14 +460,15 @@ final class FileBrowserModel: ObservableObject {
 
     private func moveToParent() {
         guard let parent = fileSystem.parentURL(for: currentDirectory) else {
-            wobbleReason = .noParentDirectory
+            publishWobble(.noParentDirectory)
             return
         }
+        let child = currentDirectory
         recentTraversalChain.insert(currentDirectory, at: 0)
         currentDirectory = URL(fileURLWithPath: parent.path)
         selectedIndex = 0
         selectionAnchor = nil
-        reloadEntries()
+        reloadEntries(selecting: child)
     }
 
     private func enterSelectedDirectoryOrWobble() {
@@ -446,12 +480,12 @@ final class FileBrowserModel: ObservableObject {
             currentDirectory = remembered
             selectedIndex = 0
             selectionAnchor = nil
-            reloadEntries()
+            reloadEntries(selecting: recentTraversalChain.first)
             return
         }
 
         guard let entry = selectedEntry, entry.kind == .directory else {
-            wobbleReason = .cannotEnterFile
+            publishWobble(.cannotEnterFile)
             return
         }
         currentDirectory = entry.url
@@ -486,6 +520,21 @@ final class FileBrowserModel: ObservableObject {
         if let match = orderedIndexes.first(where: { entries[$0].name.lowercased().hasPrefix(needle) }) {
             moveSelection(to: match)
         }
+    }
+
+    private func selectEntry(matching preferredSelection: URL?) {
+        if let preferredSelection,
+           let index = entries.firstIndex(where: { $0.url.standardizedFileURL.path == preferredSelection.standardizedFileURL.path }) {
+            selectedIndex = index
+        } else {
+            selectedIndex = entries.isEmpty ? 0 : min(selectedIndex, entries.count - 1)
+        }
+    }
+
+    private func publishWobble(_ reason: FileBrowserWobbleReason) {
+        wobbleReason = reason
+        nextWobbleID += 1
+        wobbleEvent = FileBrowserWobbleEvent(id: nextWobbleID, reason: reason)
     }
 
     private func beginQuickLook() {

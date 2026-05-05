@@ -5,10 +5,12 @@ import SwiftUI
 struct FileBrowserView: View {
     @ObservedObject var model: FileBrowserModel
     @State private var transferGlow = false
+    @State private var wobblePhase: CGFloat = 0
 
     var body: some View {
         ZStack(alignment: .trailing) {
             browsePane
+                .modifier(FileBrowserPaneWobbleEffect(phase: wobblePhase))
 
             if model.focusState == .previewActions {
                 actionOverlay
@@ -42,6 +44,12 @@ struct FileBrowserView: View {
         }
         .onChange(of: isTransferPending) { _, isPending in
             transferGlow = isPending
+        }
+        .onChange(of: model.wobbleEvent?.id) { _, id in
+            guard id != nil else { return }
+            withAnimation(.easeOut(duration: 0.24)) {
+                wobblePhase += 1
+            }
         }
         .animation(.easeInOut(duration: 0.18), value: model.focusState)
     }
@@ -323,6 +331,21 @@ struct FileBrowserView: View {
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, minHeight: 72)
             .background(.quaternary.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+}
+
+@available(macOS 26.0, *)
+private struct FileBrowserPaneWobbleEffect: GeometryEffect {
+    var phase: CGFloat
+
+    var animatableData: CGFloat {
+        get { phase }
+        set { phase = newValue }
+    }
+
+    func effectValue(size: CGSize) -> ProjectionTransform {
+        let offset = sin(phase * .pi * 4) * 5
+        return ProjectionTransform(CGAffineTransform(translationX: offset, y: 0))
     }
 }
 

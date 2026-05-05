@@ -14,7 +14,7 @@ struct StubFileSystemClient: FileSystemClientProtocol {
     }
 
     func entries(in directory: URL, sort: FileBrowserSort) throws -> [FileBrowserEntry] {
-        entriesByDirectory[directory] ?? []
+        entriesByDirectory.matching(directory) ?? []
     }
 }
 
@@ -49,7 +49,47 @@ final class RecordingFileSystemClient: FileSystemClientProtocol {
 
     func entries(in directory: URL, sort: FileBrowserSort) throws -> [FileBrowserEntry] {
         entryRequests.append((directory, sort))
-        return entriesByDirectory[directory] ?? []
+        return entriesByDirectory.matching(directory) ?? []
+    }
+}
+
+final class ThrowingFileSystemClient: FileSystemClientProtocol {
+    private let home: URL
+    private let entriesByDirectory: [URL: [FileBrowserEntry]]
+    private let throwingDirectories: Set<URL>
+    private(set) var entryRequests: [(directory: URL, sort: FileBrowserSort)] = []
+
+    init(home: URL, entriesByDirectory: [URL: [FileBrowserEntry]], throwingDirectories: Set<URL>) {
+        self.home = home
+        self.entriesByDirectory = entriesByDirectory
+        self.throwingDirectories = throwingDirectories
+    }
+
+    func homeDirectory() -> URL { home }
+
+    func parentURL(for url: URL) -> URL? {
+        let parent = url.deletingLastPathComponent()
+        return parent.path == url.path ? nil : parent
+    }
+
+    func entries(in directory: URL, sort: FileBrowserSort) throws -> [FileBrowserEntry] {
+        entryRequests.append((directory, sort))
+        if throwingDirectories.containsPath(matching: directory) {
+            throw TestFileBrowserServiceError.failed
+        }
+        return entriesByDirectory.matching(directory) ?? []
+    }
+}
+
+private extension Dictionary where Key == URL, Value == [FileBrowserEntry] {
+    func matching(_ directory: URL) -> [FileBrowserEntry]? {
+        first { $0.key.standardizedFileURL.path == directory.standardizedFileURL.path }?.value
+    }
+}
+
+private extension Set where Element == URL {
+    func containsPath(matching directory: URL) -> Bool {
+        contains { $0.standardizedFileURL.path == directory.standardizedFileURL.path }
     }
 }
 
