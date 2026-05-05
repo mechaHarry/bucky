@@ -26,5 +26,7 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
             ModeSwitcherLayoutPolicy.activeTextPillInputHeight
         )
         XCTAssertLessThan(ModeSwitcherLayoutPolicy.activeTextPillInputHeight, ModeSwitcherLayoutPolicy.activePillHeight)
+        XCTAssertGreaterThan(ModeSwitcherLayoutPolicy.activeTextPillInputVerticalOffset, 0)
+        XCTAssertLessThanOrEqual(ModeSwitcherLayoutPolicy.activeTextPillInputVerticalOffset, 3)
     }
 }

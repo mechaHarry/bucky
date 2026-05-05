@@ -887,6 +887,30 @@ final class FileBrowserModelTests: XCTestCase {
         XCTAssertEqual(model.currentDirectory, notes)
     }
 
+    func testRightAfterLeftRestoresSelectionInsideRememberedDirectory() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let projects = home.appendingPathComponent("Projects", isDirectory: true)
+        let alpha = projects.appendingPathComponent("alpha.txt")
+        let beta = projects.appendingPathComponent("beta.txt")
+        let model = makeModel(home: home, entriesByDirectory: [
+            home: [directoryEntry(projects)],
+            projects: [
+                fileEntry(alpha),
+                fileEntry(beta)
+            ]
+        ])
+
+        model.handle(.right)
+        model.handle(.down)
+        XCTAssertEqual(model.selectedEntry?.url, beta)
+
+        model.handle(.left)
+        model.handle(.right)
+
+        XCTAssertEqual(model.currentDirectory, projects)
+        XCTAssertEqual(model.selectedEntry?.url, beta)
+    }
+
     func testRightAfterMovingAwayFromRememberedChildUsesSelectedRow() {
         let home = URL(fileURLWithPath: "/Users/test")
         let remembered = home.appendingPathComponent("Projects", isDirectory: true)
