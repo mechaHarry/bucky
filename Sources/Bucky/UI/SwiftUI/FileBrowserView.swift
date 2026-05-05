@@ -6,6 +6,12 @@ struct FileBrowserView: View {
     @ObservedObject var model: FileBrowserModel
     @State private var transferGlow = false
     @State private var wobblePhase: CGFloat = 0
+    @State private var displayedEntries: [FileBrowserEntry] = []
+    @State private var pendingDisplayedEntries: [FileBrowserEntry] = []
+    @State private var activeNavigationTransitionID: Int?
+    @State private var activeNavigationDirection: FileBrowserNavigationDirection?
+    @State private var rowSwapStartedAt: Date?
+    @State private var rowSwapTask: Task<Void, Never>?
 
     var body: some View {
         ZStack(alignment: .trailing) {
@@ -51,6 +57,11 @@ struct FileBrowserView: View {
                 wobblePhase += 1
             }
         }
+        .onDisappear {
+            rowSwapTask?.cancel()
+            rowSwapTask = nil
+            rowSwapStartedAt = nil
+        }
         .animation(.easeInOut(duration: 0.18), value: model.focusState)
     }
 
@@ -59,7 +70,7 @@ struct FileBrowserView: View {
             pinnedRail
                 .frame(width: 150)
 
-            directoryColumns
+            currentDirectoryColumn
         }
         .padding(10)
         .overlay {
@@ -110,52 +121,78 @@ struct FileBrowserView: View {
         }
     }
 
-    private var directoryColumns: some View {
-        let snapshots = model.directorySnapshots.isEmpty
-            ? [FileBrowserDirectorySnapshot(directory: model.currentDirectory, entries: model.entries)]
-            : model.directorySnapshots
-
-        return HStack(spacing: 10) {
-            ForEach(snapshots, id: \.directory) { snapshot in
-                fileListColumn(snapshot)
-            }
-        }
-    }
-
-    private func fileListColumn(_ snapshot: FileBrowserDirectorySnapshot) -> some View {
+    private var currentDirectoryColumn: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Text(title(for: snapshot.directory))
+                Text(title(for: model.currentDirectory))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
 
                 Spacer(minLength: 6)
 
-                Text("\(snapshot.entries.count)")
+                Text("\(model.entries.count)")
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.tertiary)
             }
 
-            if snapshot.directory == model.currentDirectory, model.isLoadingEntries {
-                placeholder("Loading files")
-            } else if snapshot.entries.isEmpty {
-                placeholder(snapshot.directory == model.currentDirectory ? "No readable files" : "No preview data")
-            } else {
-                ScrollView(.vertical, showsIndicators: false) {
-                    LazyVStack(spacing: 5) {
-                        ForEach(Array(snapshot.entries.enumerated()), id: \.element.url) { index, entry in
-                            FileBrowserRow(
-                                entry: entry,
-                                isSelected: isSelected(entry, at: index, in: snapshot),
-                                isMarked: model.selectedURLs.contains(entry.url),
-                                model: model
-                            )
+            ScrollViewReader { proxy in
+                ZStack {
+                    ScrollView(.vertical, showsIndicators: false) {
+                        LazyVStack(spacing: 5) {
+                            ForEach(Array(displayedEntries.enumerated()), id: \.element.url) { index, entry in
+                                FileBrowserRow(
+                                    entry: entry,
+                                    isSelected: entry.url == model.selectedEntry?.url,
+                                    isMarked: model.selectedURLs.contains(entry.url),
+                                    model: model
+                                )
+                                .id(entry.url)
+                                .transition(rowTransition)
+                                .animation(rowAnimation(for: index), value: model.navigationTransition?.id)
+                                .animation(rowAnimation(for: index), value: displayedEntries.map(\.url))
+                            }
                         }
+                        .padding(.vertical, 1)
                     }
-                    .padding(.vertical, 1)
+                    .scrollIndicators(.hidden)
+
+                    if displayedEntries.isEmpty, activeNavigationTransitionID == nil {
+                        placeholder(model.isLoadingEntries ? "Loading files" : "No readable files")
+                            .transition(.opacity)
+                    }
                 }
-                .scrollIndicators(.hidden)
+                .onAppear {
+                    syncDisplayedEntries()
+                    scrollSelectedEntry(in: proxy)
+                }
+                .onChange(of: model.navigationTransition?.id) { _, id in
+                    guard id != nil, let transition = model.navigationTransition else { return }
+                    beginNavigationRowSwap(transition)
+                    if !model.isLoadingEntries {
+                        stageNavigationEntries(model.entries)
+                    }
+                }
+                .onChange(of: model.entries.map(\.url)) { _, _ in
+                    if activeNavigationTransitionID != nil {
+                        stageNavigationEntries(model.entries)
+                    } else {
+                        syncDisplayedEntries()
+                    }
+                }
+                .onChange(of: model.isLoadingEntries) { _, _ in
+                    if activeNavigationTransitionID != nil {
+                        stageNavigationEntries(model.entries)
+                    } else {
+                        syncDisplayedEntries()
+                    }
+                }
+                .onChange(of: displayedEntries.map(\.url)) { _, _ in
+                    scrollSelectedEntry(in: proxy)
+                }
+                .onChange(of: model.selectedEntry?.url) { _, _ in
+                    scrollSelectedEntry(in: proxy)
+                }
             }
 
             Spacer(minLength: 0)
@@ -310,11 +347,94 @@ struct FileBrowserView: View {
         return false
     }
 
-    private func isSelected(_ entry: FileBrowserEntry, at index: Int, in snapshot: FileBrowserDirectorySnapshot) -> Bool {
-        if snapshot.directory == model.currentDirectory {
-            return index == model.selectedIndex
+    private var rowTransition: AnyTransition {
+        switch activeNavigationDirection {
+        case .deeper:
+            return .asymmetric(
+                insertion: .move(edge: .trailing).combined(with: .opacity),
+                removal: .move(edge: .leading).combined(with: .opacity)
+            )
+        case .parent:
+            return .asymmetric(
+                insertion: .move(edge: .leading).combined(with: .opacity),
+                removal: .move(edge: .trailing).combined(with: .opacity)
+            )
+        case nil:
+            return .opacity
         }
-        return entry.url == model.currentDirectory
+    }
+
+    private func rowAnimation(for index: Int) -> Animation {
+        .interactiveSpring(response: 0.58, dampingFraction: 0.82, blendDuration: 0.16)
+            .delay(Double(min(index, 18)) * 0.018)
+    }
+
+    private var rowSwapOutgoingDelayNanoseconds: UInt64 {
+        680_000_000
+    }
+
+    private func beginNavigationRowSwap(_ transition: FileBrowserNavigationTransition) {
+        rowSwapTask?.cancel()
+        activeNavigationTransitionID = transition.id
+        activeNavigationDirection = transition.direction
+        rowSwapStartedAt = Date()
+        pendingDisplayedEntries = []
+        withAnimation(.easeInOut(duration: 0.30)) {
+            displayedEntries = []
+        }
+    }
+
+    private func stageNavigationEntries(_ entries: [FileBrowserEntry]) {
+        pendingDisplayedEntries = entries
+        guard activeNavigationTransitionID != nil, !model.isLoadingEntries else { return }
+        scheduleIncomingRows()
+    }
+
+    private func scheduleIncomingRows() {
+        let transitionID = activeNavigationTransitionID
+        let incomingEntries = pendingDisplayedEntries
+        let incomingDelay = rowSwapRemainingDelayNanoseconds
+        rowSwapTask?.cancel()
+        rowSwapTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: incomingDelay)
+            guard !Task.isCancelled, activeNavigationTransitionID == transitionID else { return }
+            withAnimation(.interactiveSpring(response: 0.58, dampingFraction: 0.82, blendDuration: 0.16)) {
+                displayedEntries = incomingEntries
+            }
+            try? await Task.sleep(nanoseconds: 20_000_000)
+            guard !Task.isCancelled, activeNavigationTransitionID == transitionID else { return }
+            pendingDisplayedEntries = []
+            activeNavigationTransitionID = nil
+            activeNavigationDirection = nil
+            rowSwapStartedAt = nil
+            rowSwapTask = nil
+        }
+    }
+
+    private var rowSwapRemainingDelayNanoseconds: UInt64 {
+        guard let rowSwapStartedAt else { return rowSwapOutgoingDelayNanoseconds }
+        let elapsed = Date().timeIntervalSince(rowSwapStartedAt)
+        let target = TimeInterval(rowSwapOutgoingDelayNanoseconds) / 1_000_000_000
+        let remaining = max(0, target - elapsed)
+        return UInt64(remaining * 1_000_000_000)
+    }
+
+    private func syncDisplayedEntries() {
+        if model.isLoadingEntries, model.entries.isEmpty {
+            displayedEntries = []
+        } else {
+            displayedEntries = model.entries
+        }
+    }
+
+    private func scrollSelectedEntry(in proxy: ScrollViewProxy) {
+        guard let url = model.selectedEntry?.url else { return }
+        guard displayedEntries.contains(where: { $0.url == url }) else { return }
+        DispatchQueue.main.async {
+            withAnimation(.easeInOut(duration: 0.20)) {
+                proxy.scrollTo(url, anchor: .center)
+            }
+        }
     }
 
     private func title(for directory: URL) -> String {

@@ -11,6 +11,7 @@ final class FileBrowserModel: ObservableObject {
     @Published private(set) var focusState: FileBrowserFocusState = .browse
     @Published private(set) var wobbleReason: FileBrowserWobbleReason?
     @Published private(set) var wobbleEvent: FileBrowserWobbleEvent?
+    @Published private(set) var navigationTransition: FileBrowserNavigationTransition?
     @Published private(set) var sort: FileBrowserSort
     @Published private(set) var pinnedDirectories: [URL] = []
     @Published private(set) var focusedActionIndex = 0
@@ -28,6 +29,7 @@ final class FileBrowserModel: ObservableObject {
     private var selectionAnchor: Int?
     private var recentTraversalChain: [URL]
     private var nextWobbleID = 0
+    private var nextNavigationTransitionID = 0
     private var directoryLoadGeneration = 0
     private var snapshotEntryCache: [DirectorySnapshotCacheKey: [FileBrowserEntry]] = [:]
     private var pendingSnapshotRequests: Set<DirectorySnapshotCacheKey> = []
@@ -431,19 +433,7 @@ final class FileBrowserModel: ObservableObject {
     }
 
     private func snapshotDirectories() -> [URL] {
-        var directories: [URL] = []
-
-        if let parent = fileSystem.parentURL(for: currentDirectory) {
-            directories.append(parent)
-        }
-
-        directories.append(currentDirectory)
-
-        if let selectedEntry, selectedEntry.kind == .directory {
-            directories.append(selectedEntry.url)
-        }
-
-        return directories
+        [currentDirectory]
     }
 
     private func snapshotEntries(in directory: URL) -> [FileBrowserEntry] {
@@ -499,6 +489,7 @@ final class FileBrowserModel: ObservableObject {
         currentDirectory = URL(fileURLWithPath: parent.path)
         selectedIndex = 0
         selectionAnchor = nil
+        publishNavigationTransition(.parent)
         reloadEntries(selecting: child)
     }
 
@@ -511,6 +502,7 @@ final class FileBrowserModel: ObservableObject {
             currentDirectory = remembered
             selectedIndex = 0
             selectionAnchor = nil
+            publishNavigationTransition(.deeper)
             reloadEntries(selecting: recentTraversalChain.first)
             return
         }
@@ -522,6 +514,7 @@ final class FileBrowserModel: ObservableObject {
         currentDirectory = entry.url
         selectedIndex = 0
         selectionAnchor = nil
+        publishNavigationTransition(.deeper)
         reloadEntries()
     }
 
@@ -566,6 +559,11 @@ final class FileBrowserModel: ObservableObject {
         wobbleReason = reason
         nextWobbleID += 1
         wobbleEvent = FileBrowserWobbleEvent(id: nextWobbleID, reason: reason)
+    }
+
+    private func publishNavigationTransition(_ direction: FileBrowserNavigationDirection) {
+        nextNavigationTransitionID += 1
+        navigationTransition = FileBrowserNavigationTransition(id: nextNavigationTransitionID, direction: direction)
     }
 
     private func beginQuickLook() {

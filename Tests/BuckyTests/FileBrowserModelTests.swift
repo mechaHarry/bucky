@@ -73,7 +73,6 @@ final class FileBrowserModelTests: XCTestCase {
         XCTAssertFalse(model.isLoadingEntries)
         XCTAssertEqual(model.entries.map(\.name), ["home.txt"])
         XCTAssertEqual(model.directorySnapshots, [
-            FileBrowserDirectorySnapshot(directory: home.deletingLastPathComponent(), entries: []),
             FileBrowserDirectorySnapshot(directory: home, entries: entries(["home.txt"], in: home))
         ])
     }
@@ -113,6 +112,27 @@ final class FileBrowserModelTests: XCTestCase {
         XCTAssertEqual(model.currentDirectory, newDirectory)
         XCTAssertEqual(model.entries.map(\.name), ["fresh.txt"])
         XCTAssertFalse(model.isLoadingEntries)
+    }
+
+    func testHighlightingDirectoryDoesNotLoadChildDirectoryEntries() {
+        let home = URL(fileURLWithPath: "/")
+        let archive = home.appendingPathComponent("Archive", isDirectory: true)
+        let projects = home.appendingPathComponent("Projects", isDirectory: true)
+        let stream = ManualDirectoryStream()
+        let model = FileBrowserModel(
+            fileSystem: StubFileSystemClient(home: home, entriesByDirectory: [:]),
+            store: InMemoryFileBrowserStore(state: .defaultValue),
+            directoryStream: stream
+        )
+
+        stream.completeRequest(at: 0, with: .success([directoryEntry(archive), directoryEntry(projects)]))
+
+        XCTAssertEqual(stream.requests.map(\.directory), [home])
+
+        model.handle(.alphaNumeric("p"))
+
+        XCTAssertEqual(model.selectedEntry?.url, projects)
+        XCTAssertEqual(stream.requests.map(\.directory), [home])
     }
 
     func testUnreadablePersistedDirectoryFallsBackToHomeThroughStream() {
@@ -760,6 +780,42 @@ final class FileBrowserModelTests: XCTestCase {
         XCTAssertEqual(model.currentDirectory, child)
     }
 
+    func testRightDirectoryNavigationPublishesDeeperTransition() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let child = home.appendingPathComponent("Projects", isDirectory: true)
+        let model = makeModel(home: home, entriesByDirectory: [
+            home: [directoryEntry(child)],
+            child: []
+        ])
+
+        XCTAssertNil(model.navigationTransition)
+
+        model.handle(.right)
+
+        XCTAssertEqual(model.currentDirectory, child)
+        XCTAssertEqual(model.navigationTransition?.direction, .deeper)
+        XCTAssertEqual(model.navigationTransition?.id, 1)
+    }
+
+    func testLeftDirectoryNavigationPublishesParentTransitionAndSelectsTraversedChild() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let archive = home.appendingPathComponent("Archive", isDirectory: true)
+        let child = home.appendingPathComponent("Projects", isDirectory: true)
+        let model = makeModel(home: home, entriesByDirectory: [
+            home: [directoryEntry(archive), directoryEntry(child)],
+            child: []
+        ])
+
+        model.handle(.alphaNumeric("p"))
+        model.handle(.right)
+        model.handle(.left)
+
+        XCTAssertEqual(model.currentDirectory, home)
+        XCTAssertEqual(model.selectedEntry?.url, child)
+        XCTAssertEqual(model.navigationTransition?.direction, .parent)
+        XCTAssertEqual(model.navigationTransition?.id, 2)
+    }
+
     func testRapidLeftThenRightFollowsRememberedChainWhenChildrenAreNotFirstRows() {
         let home = URL(fileURLWithPath: "/Users/test")
         let archive = home.appendingPathComponent("Archive", isDirectory: true)
@@ -844,12 +900,10 @@ final class FileBrowserModelTests: XCTestCase {
         XCTAssertEqual(client.entryRequests.filter { $0.directory == home }.map(\.sort), [.name, .size])
     }
 
-    func testDirectorySnapshotsIncludeParentCurrentAndSelectedChildContext() {
+    func testDirectorySnapshotsTrackCurrentVisibleDirectoryOnly() {
         let home = URL(fileURLWithPath: "/Users/test")
-        let parent = home.deletingLastPathComponent()
         let child = home.appendingPathComponent("Projects", isDirectory: true)
         let client = StubFileSystemClient(home: home, entriesByDirectory: [
-            parent: [directoryEntry(home)],
             home: [directoryEntry(child), fileEntry(home.appendingPathComponent("notes.txt"))],
             child: [fileEntry(child.appendingPathComponent("README.md"))]
         ])
@@ -860,19 +914,16 @@ final class FileBrowserModelTests: XCTestCase {
             traversalChain: []
         )), directoryStream: ImmediateDirectoryStream(fileSystem: client))
 
-        XCTAssertEqual(model.directorySnapshots.map(\.directory), [parent, home, child])
-        XCTAssertEqual(model.directorySnapshots[1].entries.map(\.name), ["Projects", "notes.txt"])
-        XCTAssertEqual(model.directorySnapshots[2].entries.map(\.name), ["README.md"])
+        XCTAssertEqual(model.directorySnapshots.map(\.directory), [home])
+        XCTAssertEqual(model.directorySnapshots[0].entries.map(\.name), ["Projects", "notes.txt"])
     }
 
     func testEntryLookupFindsMetadataFromDirectorySnapshots() {
         let home = URL(fileURLWithPath: "/Users/test")
-        let child = home.appendingPathComponent("Projects", isDirectory: true)
-        let readme = child.appendingPathComponent("README.md")
+        let readme = home.appendingPathComponent("README.md")
         let modifiedAt = Date(timeIntervalSince1970: 1_234)
         let client = StubFileSystemClient(home: home, entriesByDirectory: [
-            home: [directoryEntry(child)],
-            child: [FileBrowserEntry(
+            home: [FileBrowserEntry(
                 url: readme,
                 kind: .file,
                 size: 42,
@@ -892,11 +943,9 @@ final class FileBrowserModelTests: XCTestCase {
         XCTAssertEqual(model.entry(for: readme)?.size, 42)
     }
 
-    func testArrowNavigationDoesNotRereadUnchangedParentOrCurrentSnapshots() {
+    func testArrowNavigationDoesNotRereadUnchangedCurrentSnapshot() {
         let home = URL(fileURLWithPath: "/Users/test")
-        let parent = home.deletingLastPathComponent()
         let client = RecordingFileSystemClient(home: home, entriesByDirectory: [
-            parent: [directoryEntry(home)],
             home: entries(["alpha.txt", "beta.txt", "gamma.txt"], in: home)
         ])
         let model = FileBrowserModel(fileSystem: client, store: InMemoryFileBrowserStore(state: FileBrowserPersistedState(
@@ -915,7 +964,7 @@ final class FileBrowserModelTests: XCTestCase {
         XCTAssertEqual(client.entryRequests.map(requestDescription), baseline.map(requestDescription))
     }
 
-    func testAlphaSelectionRefreshesSelectedChildSnapshot() {
+    func testAlphaSelectionKeepsSnapshotsOnCurrentDirectoryOnly() {
         let home = URL(fileURLWithPath: "/Users/test")
         let projects = home.appendingPathComponent("Projects", isDirectory: true)
         let archive = home.appendingPathComponent("Archive", isDirectory: true)
@@ -934,8 +983,8 @@ final class FileBrowserModelTests: XCTestCase {
         model.handle(.alphaNumeric("a"))
 
         XCTAssertEqual(model.selectedEntry?.url, archive)
-        XCTAssertEqual(model.directorySnapshots.last?.directory, archive)
-        XCTAssertEqual(model.directorySnapshots.last?.entries.map(\.name), ["archive.txt"])
+        XCTAssertEqual(model.directorySnapshots.map(\.directory), [home])
+        XCTAssertEqual(model.directorySnapshots.last?.entries.map(\.name), ["Projects", "Archive"])
     }
 
     private func makeModel(
