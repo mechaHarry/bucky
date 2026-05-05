@@ -57,6 +57,7 @@ struct ModeSwitcherView: View {
                     .textFieldStyle(.plain)
                     .font(.system(size: 22, weight: .semibold, design: .rounded))
                     .frame(height: ModeSwitcherLayoutPolicy.activeTextPillInputHeight, alignment: .center)
+                    .offset(y: ModeSwitcherLayoutPolicy.activeTextPillInputVerticalOffset)
                     .focused($isSearchFocused)
                     .onChange(of: model.query) {
                         model.queryDidChange()
@@ -166,6 +167,7 @@ struct ModeSwitcherLayoutPolicy {
     static let activeTextPillIconWidth: CGFloat = 22
     static let activeTextPillIconHeight: CGFloat = 28
     static let activeTextPillInputHeight: CGFloat = 28
+    static let activeTextPillInputVerticalOffset: CGFloat = 2.5
     static let filesPillLeadingPadding: CGFloat = 16
     static let filesPillTrailingPadding: CGFloat = 12
     static let filesContentSpacing: CGFloat = 12
