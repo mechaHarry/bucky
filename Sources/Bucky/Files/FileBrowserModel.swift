@@ -93,7 +93,9 @@ final class FileBrowserModel: ObservableObject {
         case .shiftSpace:
             rangeSelect()
         case let .alphaNumeric(character):
-            cycle(toFirstCharacter: character)
+            if focusState == .browse {
+                cycle(toFirstCharacter: character)
+            }
         case .beginSpaceHold:
             beginQuickLook()
         case .endSpaceHold:
@@ -474,7 +476,10 @@ final class FileBrowserModel: ObservableObject {
 
     private func beginQuickLook() {
         guard let url = selectedEntry?.url else { return }
-        focusState = .quickLook(url)
+        focusState = .quickLook(FileBrowserPreview(
+            url: url,
+            mode: fileServices.previewMode(for: url)
+        ))
     }
 
     private func endQuickLook() {
@@ -492,10 +497,8 @@ final class FileBrowserModel: ObservableObject {
             focusState = .previewActions
         case .transferPending:
             focusState = .previewActions
-        case let .confirming(.transfer(transfer, _)):
-            focusState = .transferPending(transfer)
-        case let .confirming(.conflict(transfer, _, _)):
-            focusState = .transferPending(transfer)
+        case .confirming(.transfer), .confirming(.conflict):
+            focusState = .previewActions
         case .confirming(.trash):
             focusState = .previewActions
         default:

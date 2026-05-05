@@ -175,6 +175,15 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
                 return event
             }
 
+            if LauncherKeyRoutingPolicy.shouldPassThroughFileTextEditing(
+                mode: self.model.mode,
+                fileFocusState: self.model.mode == .files ? self.fileBrowserFocusState : nil,
+                keyCode: event.keyCode,
+                eventType: event.type
+            ) {
+                return event
+            }
+
             if event.keyCode == UInt16(kVK_Space), self.model.mode == .files {
                 return self.handleFileSpaceEvent(event)
             }
@@ -221,7 +230,11 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             case UInt16(kVK_Escape):
                 return self.handleLauncherCommand(.close) ? nil : event
             default:
-                if let character = event.firstAlphaNumericCharacter {
+                if let character = event.firstAlphaNumericCharacter,
+                   LauncherKeyRoutingPolicy.shouldRouteAlphaNumeric(
+                       mode: self.model.mode,
+                       fileFocusState: self.model.mode == .files ? self.fileBrowserFocusState : nil
+                   ) {
                     return self.handleLauncherCommand(.alphaNumeric(character)) ? nil : event
                 }
                 return event
@@ -231,6 +244,12 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
 
     private func handleLauncherCommand(_ command: LauncherCommand) -> Bool {
         return model.handle(command: command)
+    }
+
+    private var fileBrowserFocusState: FileBrowserFocusState {
+        MainActor.assumeIsolated {
+            model.fileBrowserModel.focusState
+        }
     }
 
     private func handleFileSpaceEvent(_ event: NSEvent) -> NSEvent? {

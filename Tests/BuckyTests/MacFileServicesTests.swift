@@ -145,4 +145,18 @@ final class MacFileServicesTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: second.path))
         XCTAssertEqual(try String(contentsOf: existing, encoding: .utf8), "existing")
     }
+
+    func testPreviewModeUsesNativeThumbnailForSupportedFilesAndFallbackOtherwise() throws {
+        let textFile = temporaryDirectory.appendingPathComponent("notes.txt")
+        let unsupportedFile = temporaryDirectory.appendingPathComponent("archive.buckyblob")
+        let directory = temporaryDirectory.appendingPathComponent("Folder", isDirectory: true)
+        try "notes".write(to: textFile, atomically: true, encoding: .utf8)
+        try "blob".write(to: unsupportedFile, atomically: true, encoding: .utf8)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let services = MacFileServices(fileManager: .default)
+
+        XCTAssertEqual(services.previewMode(for: textFile), .nativeThumbnail)
+        XCTAssertEqual(services.previewMode(for: unsupportedFile), .metadataFallback)
+        XCTAssertEqual(services.previewMode(for: directory), .metadataFallback)
+    }
 }

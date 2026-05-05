@@ -1,4 +1,5 @@
 import AppKit
+import QuickLookThumbnailing
 import SwiftUI
 
 @available(macOS 26.0, *)
@@ -25,8 +26,8 @@ struct FileBrowserView: View {
                     .transition(.opacity)
             }
 
-            if case let .quickLook(url) = model.focusState {
-                QuickLookPreviewSurface(url: url, entry: model.entry(for: url))
+            if case let .quickLook(preview) = model.focusState {
+                QuickLookPreviewSurface(preview: preview, entry: model.entry(for: preview.url))
                     .transition(.scale(scale: 0.96).combined(with: .opacity))
             }
 
@@ -602,15 +603,47 @@ private struct ConflictResolutionRow: View {
 
 @available(macOS 26.0, *)
 private struct QuickLookPreviewSurface: View {
-    let url: URL
+    let preview: FileBrowserPreview
     let entry: FileBrowserEntry?
+    @State private var nativePreviewFailed = false
 
     var body: some View {
+        if preview.mode == .nativeThumbnail && !nativePreviewFailed {
+            nativePreview
+        } else {
+            metadataFallback
+        }
+    }
+
+    private var nativePreview: some View {
         VStack(spacing: 14) {
-            FileIconView(url: url)
+            NativeQuickLookThumbnailView(url: preview.url, didFail: $nativePreviewFailed)
+                .frame(width: 360, height: 210)
+
+            Text(preview.url.lastPathComponent)
+                .font(.headline)
+                .lineLimit(1)
+
+            FadeMarqueeText(text: preview.url.path, font: .caption)
+                .foregroundStyle(.secondary)
+                .frame(height: 16)
+        }
+        .padding(24)
+        .frame(width: 420, height: 300)
+        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.30), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.28), radius: 34, x: 0, y: 18)
+    }
+
+    private var metadataFallback: some View {
+        VStack(spacing: 14) {
+            FileIconView(url: preview.url)
                 .frame(width: 96, height: 96)
 
-            Text(url.lastPathComponent)
+            Text(preview.url.lastPathComponent)
                 .font(.headline)
                 .lineLimit(1)
 
@@ -622,7 +655,7 @@ private struct QuickLookPreviewSurface: View {
             }
             .font(.caption)
 
-            FadeMarqueeText(text: url.path, font: .caption)
+            FadeMarqueeText(text: preview.url.path, font: .caption)
                 .foregroundStyle(.secondary)
                 .frame(height: 16)
         }
@@ -661,6 +694,59 @@ private struct QuickLookPreviewSurface: View {
         formatter.timeStyle = .short
         return formatter
     }()
+}
+
+@available(macOS 26.0, *)
+private struct NativeQuickLookThumbnailView: NSViewRepresentable {
+    let url: URL
+    @Binding var didFail: Bool
+
+    func makeNSView(context: Context) -> NSImageView {
+        let imageView = NSImageView()
+        imageView.imageScaling = .scaleProportionallyUpOrDown
+        imageView.wantsLayer = true
+        imageView.layer?.cornerRadius = 10
+        imageView.layer?.masksToBounds = true
+        return imageView
+    }
+
+    func updateNSView(_ imageView: NSImageView, context: Context) {
+        context.coordinator.loadThumbnail(for: url, into: imageView, didFail: $didFail)
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    final class Coordinator {
+        private var representedURL: URL?
+
+        func loadThumbnail(for url: URL, into imageView: NSImageView, didFail: Binding<Bool>) {
+            guard representedURL != url else { return }
+            representedURL = url
+            imageView.image = nil
+            didFail.wrappedValue = false
+
+            let scale = NSScreen.main?.backingScaleFactor ?? 2
+            let request = QLThumbnailGenerator.Request(
+                fileAt: url,
+                size: CGSize(width: 720, height: 420),
+                scale: scale,
+                representationTypes: .all
+            )
+
+            QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { thumbnail, _ in
+                DispatchQueue.main.async {
+                    guard self.representedURL == url else { return }
+                    if let thumbnail {
+                        imageView.image = thumbnail.nsImage
+                    } else {
+                        didFail.wrappedValue = true
+                    }
+                }
+            }
+        }
+    }
 }
 
 @available(macOS 26.0, *)

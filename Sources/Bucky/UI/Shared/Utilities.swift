@@ -135,6 +135,32 @@ extension String {
         return result
     }
 }
+
+enum LauncherKeyRoutingPolicy {
+    static func shouldRouteAlphaNumeric(mode: LauncherMode, fileFocusState: FileBrowserFocusState?) -> Bool {
+        guard mode == .files else { return true }
+        return fileFocusState != .renaming
+    }
+
+    static func shouldPassThroughFileTextEditing(
+        mode: LauncherMode,
+        fileFocusState: FileBrowserFocusState?,
+        keyCode: UInt16,
+        eventType: NSEvent.EventType
+    ) -> Bool {
+        guard mode == .files,
+              fileFocusState == .renaming else {
+            return false
+        }
+        guard eventType == .keyDown || eventType == .keyUp else {
+            return false
+        }
+        return keyCode != UInt16(kVK_Return)
+            && keyCode != UInt16(kVK_ANSI_KeypadEnter)
+            && keyCode != UInt16(kVK_Escape)
+    }
+}
+
 extension NSEvent {
     var commandNumberMode: LauncherMode? {
         let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)

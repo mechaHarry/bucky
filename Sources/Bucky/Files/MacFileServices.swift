@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import UniformTypeIdentifiers
 
 enum MacFileServicesError: LocalizedError {
     case cannotReplaceItemWithItself(URL)
@@ -125,6 +126,26 @@ struct MacFileServices: FileBrowserNativeServicing {
         }
     }
 
+    func previewMode(for url: URL) -> FileBrowserPreviewMode {
+        var isDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory),
+              !isDirectory.boolValue else {
+            return .metadataFallback
+        }
+
+        if let type = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType,
+           Self.nativePreviewTypes.contains(where: { type.conforms(to: $0) }) {
+            return .nativeThumbnail
+        }
+
+        if let type = UTType(filenameExtension: url.pathExtension),
+           Self.nativePreviewTypes.contains(where: { type.conforms(to: $0) }) {
+            return .nativeThumbnail
+        }
+
+        return .metadataFallback
+    }
+
     func keepBothURL(for destination: URL) -> URL {
         let directory = destination.deletingLastPathComponent()
         let base = destination.deletingPathExtension().lastPathComponent
@@ -218,4 +239,16 @@ struct MacFileServices: FileBrowserNativeServicing {
             throw MacFileServicesError.invalidName(name)
         }
     }
+
+    private static let nativePreviewTypes: [UTType] = [
+        .image,
+        .pdf,
+        .plainText,
+        .text,
+        .rtf,
+        .movie,
+        .audio,
+        .mpeg4Movie,
+        .quickTimeMovie
+    ]
 }

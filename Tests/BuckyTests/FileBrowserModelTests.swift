@@ -43,6 +43,17 @@ final class FileBrowserModelTests: XCTestCase {
         XCTAssertEqual(model.selectedEntry?.name, "build.log")
     }
 
+    func testAlphaNumericInputIsIgnoredWhileRenaming() {
+        let model = makeModel(entries: entries(["alpha.txt", "beta.txt", "gamma.txt"]))
+
+        perform(.rename, on: model)
+        model.handle(.alphaNumeric("g"))
+
+        XCTAssertEqual(model.focusState, .renaming)
+        XCTAssertEqual(model.selectedEntry?.name, "alpha.txt")
+        XCTAssertEqual(model.renameState?.proposedName, "alpha.txt")
+    }
+
     func testSpaceTogglesSelectionAndShiftSpaceSelectsRange() {
         let model = makeModel(entries: entries(["one.txt", "two.txt", "three.txt", "four.txt"]))
 
@@ -325,13 +336,41 @@ final class FileBrowserModelTests: XCTestCase {
         model.startTransfer(.copy)
         model.handle(.open)
         model.handle(.close)
-        XCTAssertEqual(model.focusState, .transferPending(.copy([selectedURL])))
+        XCTAssertEqual(model.focusState, .previewActions)
 
+        model.startTransfer(.copy)
         model.handle(.open)
         model.handle(.open)
         XCTAssertEqual(model.focusState, .confirming(.conflict(.copy([selectedURL]), destination: home, conflicts: service.conflicts)))
         model.handle(.close)
-        XCTAssertEqual(model.focusState, .transferPending(.copy([selectedURL])))
+        XCTAssertEqual(model.focusState, .previewActions)
+    }
+
+    func testQuickLookPreviewModeComesFromNativeServiceAndReleaseDismisses() {
+        let nativeService = RecordingFileBrowserServices()
+        nativeService.previewMode = .nativeThumbnail
+        let nativeModel = makeModel(entries: entries(["image.png"]), fileServices: nativeService)
+
+        nativeModel.handle(.beginSpaceHold)
+
+        XCTAssertEqual(nativeModel.focusState, .quickLook(FileBrowserPreview(
+            url: nativeModel.selectedEntry!.url,
+            mode: .nativeThumbnail
+        )))
+
+        nativeModel.handle(.endSpaceHold)
+        XCTAssertEqual(nativeModel.focusState, .browse)
+
+        let fallbackService = RecordingFileBrowserServices()
+        fallbackService.previewMode = .metadataFallback
+        let fallbackModel = makeModel(entries: entries(["archive.bin"]), fileServices: fallbackService)
+
+        fallbackModel.handle(.beginSpaceHold)
+
+        XCTAssertEqual(fallbackModel.focusState, .quickLook(FileBrowserPreview(
+            url: fallbackModel.selectedEntry!.url,
+            mode: .metadataFallback
+        )))
     }
 
     func testConflictRowsDefaultToKeepBothAndExecuteFocusedOption() {

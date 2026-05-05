@@ -68,6 +68,16 @@ struct FileBrowserConflict: Equatable {
     let destination: URL
 }
 
+enum FileBrowserPreviewMode: Equatable {
+    case nativeThumbnail
+    case metadataFallback
+}
+
+struct FileBrowserPreview: Equatable {
+    let url: URL
+    let mode: FileBrowserPreviewMode
+}
+
 protocol FileSystemClientProtocol {
     func homeDirectory() -> URL
     func parentURL(for url: URL) -> URL?
@@ -93,6 +103,7 @@ protocol FileBrowserNativeServicing {
     func rename(_ url: URL, to proposedName: String) throws -> URL
     func batchRename(_ urls: [URL], baseName: String) throws -> [URL]
     func conflictingDestinations(for urls: [URL], in destinationDirectory: URL) -> [FileBrowserConflict]
+    func previewMode(for url: URL) -> FileBrowserPreviewMode
 }
 
 enum FileBrowserFocusState: Equatable {
@@ -101,7 +112,7 @@ enum FileBrowserFocusState: Equatable {
     case renaming
     case transferPending(FileBrowserTransfer)
     case confirming(FileBrowserConfirmation)
-    case quickLook(URL)
+    case quickLook(FileBrowserPreview)
 }
 
 enum FileBrowserAction: String, CaseIterable, Equatable {
