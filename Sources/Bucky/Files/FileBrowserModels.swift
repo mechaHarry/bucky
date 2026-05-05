@@ -195,7 +195,26 @@ struct FileBrowserNavigationTransition: Equatable {
     let direction: FileBrowserNavigationDirection
 }
 
+enum FileBrowserSelectionScrollAnchor: Equatable {
+    case nearest
+    case top
+    case bottom
+}
+
 struct FileBrowserSelectionScrollEvent: Equatable {
     let id: Int
     let url: URL
+    let anchor: FileBrowserSelectionScrollAnchor
+}
+
+struct FileBrowserMotionPolicy {
+    static let wobbleAmplitude = 1.6
+    static let wobbleOscillations = 1.0
+    static let rowSwapOutgoingDelayNanoseconds: UInt64 = 180_000_000
+    static let rowSwapIncomingSettleDelayNanoseconds: UInt64 = 420_000_000
+    static let rowSwapOutgoingAnimationSeconds = 0.18
+    static let rowSpringResponse = 0.50
+    static let rowSpringDampingFraction = 0.88
+    static let rowSpringBlendDuration = 0.12
+    static let rowStaggerDelaySeconds = 0.012
 }

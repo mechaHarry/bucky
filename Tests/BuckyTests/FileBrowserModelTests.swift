@@ -189,17 +189,32 @@ final class FileBrowserModelTests: XCTestCase {
         model.handle(.down)
         let downEvent = model.selectionScrollEvent
         XCTAssertEqual(downEvent?.url.lastPathComponent, "b.txt")
+        XCTAssertEqual(downEvent?.anchor, .bottom)
 
         model.handle(.up)
         let topEvent = model.selectionScrollEvent
         XCTAssertEqual(topEvent?.url.lastPathComponent, "a.txt")
+        XCTAssertEqual(topEvent?.anchor, .top)
         XCTAssertGreaterThan(topEvent?.id ?? 0, downEvent?.id ?? 0)
 
         model.handle(.up)
         let clampedTopEvent = model.selectionScrollEvent
         XCTAssertEqual(model.selectedEntry?.name, "a.txt")
         XCTAssertEqual(clampedTopEvent?.url.lastPathComponent, "a.txt")
+        XCTAssertEqual(clampedTopEvent?.anchor, .top)
         XCTAssertGreaterThan(clampedTopEvent?.id ?? 0, topEvent?.id ?? 0)
+    }
+
+    func testTopAndBottomSelectionCommandsPublishEdgeScrollAnchors() {
+        let model = makeModel(entries: entries(["a.txt", "b.txt", "c.txt"]))
+
+        model.handle(.bottom)
+        XCTAssertEqual(model.selectedEntry?.name, "c.txt")
+        XCTAssertEqual(model.selectionScrollEvent?.anchor, .bottom)
+
+        model.handle(.top)
+        XCTAssertEqual(model.selectedEntry?.name, "a.txt")
+        XCTAssertEqual(model.selectionScrollEvent?.anchor, .top)
     }
 
     func testFirstCharacterCyclingMovesBetweenMatchingRows() {
@@ -827,12 +842,16 @@ final class FileBrowserModelTests: XCTestCase {
 
         model.handle(.alphaNumeric("p"))
         model.handle(.right)
+        let childDirectoryEvent = model.selectionScrollEvent
         model.handle(.left)
 
         XCTAssertEqual(model.currentDirectory, home)
         XCTAssertEqual(model.selectedEntry?.url, child)
         XCTAssertEqual(model.navigationTransition?.direction, .parent)
         XCTAssertEqual(model.navigationTransition?.id, 2)
+        XCTAssertEqual(model.selectionScrollEvent?.url, child)
+        XCTAssertEqual(model.selectionScrollEvent?.anchor, .top)
+        XCTAssertGreaterThan(model.selectionScrollEvent?.id ?? 0, childDirectoryEvent?.id ?? 0)
     }
 
     func testRapidLeftThenRightFollowsRememberedChainWhenChildrenAreNotFirstRows() {
