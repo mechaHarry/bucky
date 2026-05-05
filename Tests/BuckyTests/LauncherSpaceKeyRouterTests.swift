@@ -33,4 +33,25 @@ final class LauncherSpaceKeyRouterTests: XCTestCase {
         XCTAssertEqual(router.keyDown(isShift: true, isRepeat: false), .sendShiftSpace)
         XCTAssertEqual(router.keyUp(), .pass)
     }
+
+    func testCancelPendingHoldResetsWithoutSendingEndHold() {
+        var router = LauncherSpaceKeyRouter()
+
+        XCTAssertEqual(router.keyDown(isShift: false, isRepeat: false), .scheduleHold)
+        XCTAssertEqual(router.cancel(), .pass)
+        XCTAssertEqual(router.keyUp(), .pass)
+        XCTAssertEqual(router.keyDown(isShift: false, isRepeat: false), .scheduleHold)
+        XCTAssertEqual(router.keyUp(), .sendSpace)
+    }
+
+    func testCancelActiveHoldSendsEndHoldAndResets() {
+        var router = LauncherSpaceKeyRouter()
+
+        XCTAssertEqual(router.keyDown(isShift: false, isRepeat: false), .scheduleHold)
+        XCTAssertEqual(router.holdDelayElapsed(), .sendBeginHold)
+        XCTAssertEqual(router.cancel(), .sendEndHold)
+        XCTAssertEqual(router.keyUp(), .pass)
+        XCTAssertEqual(router.keyDown(isShift: false, isRepeat: false), .scheduleHold)
+        XCTAssertEqual(router.keyUp(), .sendSpace)
+    }
 }
