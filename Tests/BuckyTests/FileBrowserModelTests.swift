@@ -1,5 +1,6 @@
 import XCTest
 import AppKit
+import Combine
 @testable import Bucky
 
 @MainActor
@@ -21,6 +22,30 @@ final class FileBrowserModelTests: XCTestCase {
         let model = makeModel(persisted: .defaultValue, home: URL(fileURLWithPath: "/Users/test"))
 
         XCTAssertEqual(model.currentDirectory, URL(fileURLWithPath: "/Users/test"))
+    }
+
+    func testUnreadablePersistedDirectoryFallsBackToHomeAndPersistsFallback() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let missing = home.appendingPathComponent("Missing", isDirectory: true)
+        let client = ThrowingFileSystemClient(
+            home: home,
+            entriesByDirectory: [home: entries(["home.txt"], in: home)],
+            throwingDirectories: [missing]
+        )
+        let store = InMemoryFileBrowserStore(state: FileBrowserPersistedState(
+            pinnedDirectories: [],
+            lastDirectory: missing,
+            sort: .name,
+            traversalChain: []
+        ))
+
+        let model = FileBrowserModel(fileSystem: client, store: store)
+
+        XCTAssertEqual(model.currentDirectory, home)
+        XCTAssertEqual(model.entries.map(\.name), ["home.txt"])
+        XCTAssertEqual(model.statusMessage, "failed")
+        XCTAssertEqual(store.state.lastDirectory, home)
+        XCTAssertEqual(Array(client.entryRequests.map(\.directory).prefix(2)), [missing, home])
     }
 
     func testMoveSelectionClampsToEntryBounds() {
@@ -72,6 +97,21 @@ final class FileBrowserModelTests: XCTestCase {
         model.handle(.right)
 
         XCTAssertEqual(model.wobbleReason, .cannotEnterFile)
+    }
+
+    func testRepeatedInvalidRightPublishesDistinctWobbleEvents() {
+        let model = makeModel(entries: entries(["file.txt"]))
+        var events: [FileBrowserWobbleEvent] = []
+        let cancellable = model.$wobbleEvent
+            .compactMap { $0 }
+            .sink { events.append($0) }
+
+        model.handle(.right)
+        model.handle(.right)
+
+        XCTAssertEqual(events.map(\.reason), [.cannotEnterFile, .cannotEnterFile])
+        XCTAssertNotEqual(events[0].id, events[1].id)
+        cancellable.cancel()
     }
 
     func testShiftSpaceAfterDirectoryChangePreservesSelectionsFromOtherDirectories() {
@@ -577,6 +617,61 @@ final class FileBrowserModelTests: XCTestCase {
         model.handle(.right)
 
         XCTAssertEqual(model.currentDirectory, child)
+    }
+
+    func testLeftSelectsPreviousChildSoRightRestoresWhenChildIsNotFirstRow() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let archive = home.appendingPathComponent("Archive", isDirectory: true)
+        let child = home.appendingPathComponent("Projects", isDirectory: true)
+        let client = StubFileSystemClient(
+            home: home,
+            entriesByDirectory: [
+                home: [directoryEntry(archive), directoryEntry(child)],
+                child: []
+            ]
+        )
+        let store = InMemoryFileBrowserStore(state: .defaultValue)
+        let model = FileBrowserModel(fileSystem: client, store: store)
+
+        model.handle(.alphaNumeric("p"))
+        model.handle(.right)
+        model.handle(.left)
+
+        XCTAssertEqual(model.currentDirectory, home)
+        XCTAssertEqual(model.selectedEntry?.url, child)
+
+        model.handle(.right)
+
+        XCTAssertEqual(model.currentDirectory, child)
+    }
+
+    func testRapidLeftThenRightFollowsRememberedChainWhenChildrenAreNotFirstRows() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let archive = home.appendingPathComponent("Archive", isDirectory: true)
+        let projects = home.appendingPathComponent("Projects", isDirectory: true)
+        let docs = projects.appendingPathComponent("Docs", isDirectory: true)
+        let notes = projects.appendingPathComponent("Notes", isDirectory: true)
+        let client = StubFileSystemClient(
+            home: home,
+            entriesByDirectory: [
+                home: [directoryEntry(archive), directoryEntry(projects)],
+                projects: [directoryEntry(docs), directoryEntry(notes)],
+                notes: []
+            ]
+        )
+        let store = InMemoryFileBrowserStore(state: .defaultValue)
+        let model = FileBrowserModel(fileSystem: client, store: store)
+
+        model.handle(.alphaNumeric("p"))
+        model.handle(.right)
+        model.handle(.alphaNumeric("n"))
+        model.handle(.right)
+        model.handle(.left)
+        model.handle(.left)
+        model.handle(.right)
+        model.handle(.right)
+
+        XCTAssertEqual(model.currentDirectory, notes)
     }
 
     func testRightAfterMovingAwayFromRememberedChildUsesSelectedRow() {

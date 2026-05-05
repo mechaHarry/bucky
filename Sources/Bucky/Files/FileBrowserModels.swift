@@ -179,3 +179,8 @@ enum FileBrowserWobbleReason: Equatable {
     case cannotEnterFile
     case noParentDirectory
 }
+
+struct FileBrowserWobbleEvent: Equatable {
+    let id: Int
+    let reason: FileBrowserWobbleReason
+}
