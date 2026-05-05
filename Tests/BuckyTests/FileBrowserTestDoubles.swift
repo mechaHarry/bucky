@@ -73,6 +73,7 @@ final class RecordingFileBrowserServices: FileBrowserNativeServicing {
     var events: [Event] = []
     var conflicts: [FileBrowserConflict] = []
     var error: Error?
+    var previewMode: FileBrowserPreviewMode = .metadataFallback
 
     func reset() {
         events = []
@@ -126,5 +127,9 @@ final class RecordingFileBrowserServices: FileBrowserNativeServicing {
 
     func conflictingDestinations(for urls: [URL], in destinationDirectory: URL) -> [FileBrowserConflict] {
         conflicts
+    }
+
+    func previewMode(for url: URL) -> FileBrowserPreviewMode {
+        previewMode
     }
 }

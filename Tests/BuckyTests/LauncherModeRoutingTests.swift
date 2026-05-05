@@ -1,4 +1,5 @@
 import XCTest
+import Carbon
 @testable import Bucky
 
 final class LauncherModeRoutingTests: XCTestCase {
@@ -24,6 +25,48 @@ final class LauncherModeRoutingTests: XCTestCase {
         XCTAssertEqual(LauncherMode.calculator.placeholder, "Perform Calculations Here")
         XCTAssertEqual(LauncherMode.dictionary.placeholder, "Search Dictionary Here")
         XCTAssertEqual(LauncherMode.files.placeholder, "Browse Files")
+    }
+
+    func testFilesRenameFocusDoesNotRouteAlphaNumericKeysAwayFromTextField() {
+        XCTAssertTrue(LauncherKeyRoutingPolicy.shouldRouteAlphaNumeric(
+            mode: .files,
+            fileFocusState: .browse
+        ))
+        XCTAssertFalse(LauncherKeyRoutingPolicy.shouldRouteAlphaNumeric(
+            mode: .files,
+            fileFocusState: .renaming
+        ))
+        XCTAssertTrue(LauncherKeyRoutingPolicy.shouldRouteAlphaNumeric(
+            mode: .applications,
+            fileFocusState: nil
+        ))
+    }
+
+    func testFilesRenameFocusPassesTextEditingKeysExceptReturnAndEscape() {
+        XCTAssertTrue(LauncherKeyRoutingPolicy.shouldPassThroughFileTextEditing(
+            mode: .files,
+            fileFocusState: .renaming,
+            keyCode: UInt16(kVK_Space),
+            eventType: .keyDown
+        ))
+        XCTAssertTrue(LauncherKeyRoutingPolicy.shouldPassThroughFileTextEditing(
+            mode: .files,
+            fileFocusState: .renaming,
+            keyCode: UInt16(kVK_LeftArrow),
+            eventType: .keyDown
+        ))
+        XCTAssertFalse(LauncherKeyRoutingPolicy.shouldPassThroughFileTextEditing(
+            mode: .files,
+            fileFocusState: .renaming,
+            keyCode: UInt16(kVK_Return),
+            eventType: .keyDown
+        ))
+        XCTAssertFalse(LauncherKeyRoutingPolicy.shouldPassThroughFileTextEditing(
+            mode: .files,
+            fileFocusState: .renaming,
+            keyCode: UInt16(kVK_Escape),
+            eventType: .keyDown
+        ))
     }
 
     @MainActor
@@ -141,7 +184,10 @@ final class LauncherModeRoutingTests: XCTestCase {
 
         model.show(mode: .files)
         _ = model.handle(command: .beginSpaceHold)
-        XCTAssertEqual(model.fileBrowserModel.focusState, .quickLook(model.fileBrowserModel.selectedEntry!.url))
+        XCTAssertEqual(model.fileBrowserModel.focusState, .quickLook(FileBrowserPreview(
+            url: model.fileBrowserModel.selectedEntry!.url,
+            mode: .metadataFallback
+        )))
 
         _ = model.handle(command: .switchMode(.calculator))
 
