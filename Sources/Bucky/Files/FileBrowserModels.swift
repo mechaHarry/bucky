@@ -99,6 +99,13 @@ enum FileBrowserAction: String, CaseIterable, Equatable {
     case moveToTrash
 }
 
+enum FileBrowserActionIntent: Equatable {
+    case open(URL)
+    case rename([URL])
+    case revealInFinder([URL])
+    case copyPaths([URL])
+}
+
 enum FileBrowserTransferKind {
     case copy
     case move
