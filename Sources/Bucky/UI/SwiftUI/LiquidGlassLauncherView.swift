@@ -225,7 +225,7 @@ struct LiquidGlassLauncherView: View {
                             applicationRow(item: item, index: index)
                         }
                     }
-                case .calculator, .dictionary, .files:
+                case .calculator, .dictionary:
                     resultScrollView {
                         ForEach(Array(model.toolItems.enumerated()), id: \.element) { index, item in
                             toolRow(item: item, index: index)
@@ -236,6 +236,12 @@ struct LiquidGlassLauncherView: View {
                         toolSnapshotAnimation(for: model.toolItems),
                         value: toolResultsSnapshotIdentity
                     )
+                case .files:
+                    resultScrollView {
+                        ForEach(Array(model.fileBrowserModel.entries.enumerated()), id: \.element.url) { index, entry in
+                            fileRow(entry: entry, index: index)
+                        }
+                    }
                 }
             }
         }
@@ -380,6 +386,38 @@ struct LiquidGlassLauncherView: View {
         .id(rowID)
     }
 
+    private func fileRow(entry: FileBrowserEntry, index: Int) -> some View {
+        let rowID = ResultRowID.file(entry.url)
+        let isSelected = index == model.selectedIndex
+
+        return HStack(spacing: 14) {
+            Image(systemName: fileSymbol(for: entry.kind))
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(entry.kind == .directory ? .blue : .secondary)
+                .frame(width: 38, height: 38)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(entry.name)
+                    .font(.system(size: 18, weight: .semibold))
+                    .lineLimit(1)
+                Text(entry.url.deletingLastPathComponent().path)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 12)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            rowPanel(isSelected: isSelected)
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .id(rowID)
+    }
+
     @ViewBuilder
     private func rowPanel(isSelected: Bool) -> some View {
         GlassEffectContainer(spacing: 0) {
@@ -439,9 +477,12 @@ struct LiquidGlassLauncherView: View {
         case .applications:
             guard index >= 0, index < model.filteredItems.count else { return nil }
             return .application(model.filteredItems[index].url)
-        case .calculator, .dictionary, .files:
+        case .calculator, .dictionary:
             guard index >= 0, index < model.toolItems.count else { return nil }
             return .tool(model.toolItems[index])
+        case .files:
+            guard index >= 0, index < model.fileBrowserModel.entries.count else { return nil }
+            return .file(model.fileBrowserModel.entries[index].url)
         }
     }
 
@@ -506,6 +547,21 @@ struct LiquidGlassLauncherView: View {
         }
     }
 
+    private func fileSymbol(for kind: FileBrowserEntry.Kind) -> String {
+        switch kind {
+        case .directory:
+            return "folder"
+        case .package:
+            return "shippingbox"
+        case .symbolicLink:
+            return "arrowshape.turn.up.right"
+        case .file:
+            return "doc"
+        case .other:
+            return "questionmark.square"
+        }
+    }
+
     private func toolActionConfiguration(for item: ToolItem) -> RowActionConfiguration? {
         switch item.kind {
         case .calculation, .calculationHistory:
@@ -543,6 +599,7 @@ struct LiquidGlassLauncherView: View {
 private enum ResultRowID: Hashable {
     case application(URL)
     case tool(ToolItem)
+    case file(URL)
 }
 
 @available(macOS 26.0, *)
