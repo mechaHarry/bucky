@@ -7,6 +7,8 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     private let window: LiquidGlassWindow
     private let model: LiquidGlassLauncherModel
     private var localKeyMonitor: Any?
+    private var spaceKeyRouter = LauncherSpaceKeyRouter()
+    private var pendingSpaceHoldTimer: Timer?
     private var visibilityState: WindowVisibilityState = .hidden
     private var visibilityTransitionID = 0
     private var presentationAnimation: Animation {
@@ -47,6 +49,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     }
 
     deinit {
+        pendingSpaceHoldTimer?.invalidate()
         if let localKeyMonitor {
             NSEvent.removeMonitor(localKeyMonitor)
         }
@@ -107,6 +110,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         }
 
         beginVisibilityTransition(.hiding)
+        cancelPendingSpaceHold()
         model.cancelPendingCalculationHistory()
 
         let transitionID = visibilityTransitionID
@@ -159,10 +163,18 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     private func installLocalKeyMonitor() {
         guard localKeyMonitor == nil else { return }
 
-        localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+        localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
             guard let self,
                   self.window.isVisible,
                   self.window.isKeyWindow || self.window.isMainWindow else {
+                return event
+            }
+
+            if event.keyCode == UInt16(kVK_Space), self.model.mode == .files {
+                return self.handleFileSpaceEvent(event)
+            }
+
+            guard event.type == .keyDown else {
                 return event
             }
 
@@ -210,6 +222,71 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
                 return event
             }
         }
+    }
+
+    private func handleFileSpaceEvent(_ event: NSEvent) -> NSEvent? {
+        switch event.type {
+        case .keyDown:
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            let isShift = flags == .shift
+            guard flags.isEmpty || isShift else {
+                return event
+            }
+            return performSpaceKeyDecision(
+                spaceKeyRouter.keyDown(isShift: isShift, isRepeat: event.isARepeat),
+                event: event
+            )
+        case .keyUp:
+            return performSpaceKeyDecision(spaceKeyRouter.keyUp(), event: event)
+        default:
+            return event
+        }
+    }
+
+    private func performSpaceKeyDecision(
+        _ decision: LauncherSpaceKeyDecision,
+        event: NSEvent?
+    ) -> NSEvent? {
+        switch decision {
+        case .pass:
+            return event
+        case .consume:
+            return nil
+        case .scheduleHold:
+            scheduleSpaceHold()
+            return nil
+        case .sendSpace:
+            cancelPendingSpaceHold()
+            return model.handle(command: .space) ? nil : event
+        case .sendShiftSpace:
+            cancelPendingSpaceHold()
+            return model.handle(command: .shiftSpace) ? nil : event
+        case .sendBeginHold:
+            return model.handle(command: .beginSpaceHold) ? nil : event
+        case .sendEndHold:
+            cancelPendingSpaceHold()
+            return model.handle(command: .endSpaceHold) ? nil : event
+        }
+    }
+
+    private func scheduleSpaceHold() {
+        pendingSpaceHoldTimer?.invalidate()
+        pendingSpaceHoldTimer = Timer.scheduledTimer(
+            withTimeInterval: LauncherSpaceKeyRouter.holdDelay,
+            repeats: false
+        ) { [weak self] _ in
+            guard let self else { return }
+            self.pendingSpaceHoldTimer = nil
+            _ = self.performSpaceKeyDecision(
+                self.spaceKeyRouter.holdDelayElapsed(),
+                event: nil
+            )
+        }
+    }
+
+    private func cancelPendingSpaceHold() {
+        pendingSpaceHoldTimer?.invalidate()
+        pendingSpaceHoldTimer = nil
     }
 
     private func positionWindow() {
@@ -278,6 +355,71 @@ private enum WindowVisibilityState {
     case showing
     case shown
     case hiding
+}
+
+enum LauncherSpaceKeyDecision: Equatable {
+    case pass
+    case consume
+    case scheduleHold
+    case sendSpace
+    case sendShiftSpace
+    case sendBeginHold
+    case sendEndHold
+}
+
+struct LauncherSpaceKeyRouter {
+    static let holdDelay: TimeInterval = 0.28
+
+    private var isPendingHold = false
+    private var isHolding = false
+
+    mutating func keyDown(isShift: Bool, isRepeat: Bool) -> LauncherSpaceKeyDecision {
+        if isShift {
+            isPendingHold = false
+            isHolding = false
+            return isRepeat ? .consume : .sendShiftSpace
+        }
+
+        if isRepeat {
+            guard !isPendingHold, !isHolding else {
+                return .consume
+            }
+
+            isPendingHold = true
+            return .scheduleHold
+        }
+
+        guard !isPendingHold, !isHolding else {
+            return .consume
+        }
+
+        isPendingHold = true
+        return .scheduleHold
+    }
+
+    mutating func keyUp() -> LauncherSpaceKeyDecision {
+        if isHolding {
+            isHolding = false
+            return .sendEndHold
+        }
+
+        if isPendingHold {
+            isPendingHold = false
+            return .sendSpace
+        }
+
+        return .pass
+    }
+
+    mutating func holdDelayElapsed() -> LauncherSpaceKeyDecision {
+        guard isPendingHold else {
+            return .pass
+        }
+
+        isPendingHold = false
+        isHolding = true
+        return .sendBeginHold
+    }
 }
 
 @available(macOS 26.0, *)

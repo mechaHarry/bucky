@@ -136,8 +136,14 @@ final class LiquidGlassLauncherModel: ObservableObject {
             }
             moveSelection(by: 1)
         case .top:
+            if mode == .files {
+                return handleFileBrowserCommand(command, anchor: .top)
+            }
             moveSelection(to: 0, anchor: .top)
         case .bottom:
+            if mode == .files {
+                return handleFileBrowserCommand(command, anchor: .bottom)
+            }
             moveSelection(to: resultCount - 1, anchor: .bottom)
         case .open:
             if mode == .files {
@@ -145,6 +151,9 @@ final class LiquidGlassLauncherModel: ObservableObject {
             }
             activateSelected()
         case .close:
+            if mode == .files, fileBrowserFocusState != .browse {
+                return handleFileBrowserCommand(command)
+            }
             clearInputOrHide()
         case .reindex:
             reindex()
@@ -505,12 +514,21 @@ final class LiquidGlassLauncherModel: ObservableObject {
         return true
     }
 
-    private func handleFileBrowserCommand(_ command: LauncherCommand) -> Bool {
+    private var fileBrowserFocusState: FileBrowserFocusState {
+        MainActor.assumeIsolated {
+            fileBrowserModel.focusState
+        }
+    }
+
+    private func handleFileBrowserCommand(
+        _ command: LauncherCommand,
+        anchor: SelectionScrollAnchor = .nearest
+    ) -> Bool {
         MainActor.assumeIsolated {
             fileBrowserModel.handle(command)
             selectedIndex = fileBrowserModel.selectedIndex
         }
-        requestSelectionScroll(anchor: .nearest)
+        requestSelectionScroll(anchor: anchor)
         return true
     }
 
