@@ -39,6 +39,21 @@ struct LauncherWindowDragPolicy {
     static let isMovableByWindowBackground = false
 }
 
+struct FileBrowserPreviewWindowFramePolicy {
+    static func frame(for mode: FileBrowserPreviewMode, visibleFrame: CGRect) -> CGRect {
+        let size = FileBrowserPreviewLayoutPolicy.surfaceSize(
+            for: mode,
+            availableSize: visibleFrame.size
+        )
+        return CGRect(
+            x: visibleFrame.midX - size.width / 2,
+            y: visibleFrame.minY,
+            width: size.width,
+            height: visibleFrame.height
+        )
+    }
+}
+
 struct LauncherWindowRepositionPolicy {
     static func shouldReposition(after command: LauncherCommand) -> Bool {
         if case .switchMode = command {

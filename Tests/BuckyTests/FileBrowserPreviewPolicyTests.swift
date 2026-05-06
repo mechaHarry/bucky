@@ -9,7 +9,7 @@ final class FileBrowserPreviewPolicyTests: XCTestCase {
             availableSize: CGSize(width: 1_000, height: 800)
         )
 
-        XCTAssertEqual(surfaceSize.height, 768)
+        XCTAssertEqual(surfaceSize.height, 800)
         XCTAssertGreaterThan(surfaceSize.width, 560)
     }
 
@@ -20,7 +20,7 @@ final class FileBrowserPreviewPolicyTests: XCTestCase {
         )
 
         XCTAssertLessThanOrEqual(surfaceSize.width, 668)
-        XCTAssertLessThanOrEqual(surfaceSize.height, 468)
+        XCTAssertLessThanOrEqual(surfaceSize.height, 500)
     }
 
     func testPreviewAreaLeavesRoomForTitleAndPath() {

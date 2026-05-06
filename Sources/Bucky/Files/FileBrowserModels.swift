@@ -282,7 +282,7 @@ struct FileBrowserPreviewLayoutPolicy {
 
     static func surfaceSize(for mode: FileBrowserPreviewMode, availableSize: CGSize) -> CGSize {
         let maxWidth = max(0, availableSize.width - surfaceMargin * 2)
-        let maxHeight = max(0, availableSize.height - surfaceMargin * 2)
+        let maxHeight = max(0, availableSize.height)
         let targetHeight = maxHeight
         let targetWidth = min(maxWidth, max(minimumSurfaceSize(for: mode).width, targetHeight * preferredAspectRatio(for: mode)))
 

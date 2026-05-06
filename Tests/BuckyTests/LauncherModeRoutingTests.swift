@@ -131,6 +131,19 @@ final class LauncherModeRoutingTests: XCTestCase {
         XCTAssertTrue(visibleFrame.contains(frame))
     }
 
+    func testQuickLookPreviewWindowUsesFullVisibleScreenHeight() {
+        let visibleFrame = CGRect(x: 120, y: 48, width: 1_440, height: 900)
+        let frame = FileBrowserPreviewWindowFramePolicy.frame(
+            for: .nativeThumbnail,
+            visibleFrame: visibleFrame
+        )
+
+        XCTAssertEqual(frame.height, visibleFrame.height)
+        XCTAssertEqual(frame.minY, visibleFrame.minY)
+        XCTAssertLessThanOrEqual(frame.width, visibleFrame.width)
+        XCTAssertEqual(frame.midX, visibleFrame.midX)
+    }
+
     @available(macOS 26.0, *)
     func testLauncherWindowBackgroundDoesNotDragRowsAwayFromNativeFileDragging() {
         XCTAssertFalse(LauncherWindowDragPolicy.isMovableByWindowBackground)
@@ -322,6 +335,27 @@ final class LauncherModeRoutingTests: XCTestCase {
 
     @MainActor
     @available(macOS 26.0, *)
+    func testFilesFocusedOpenActionHidesLauncherAfterSuccessfulOpen() {
+        let service = RecordingFileBrowserServices()
+        let model = makeFileLauncherModel(entries: ["alpha.txt"], fileServices: service)
+        var didHide = false
+        model.hideAction = { didHide = true }
+
+        model.show(mode: .files)
+        _ = model.handle(command: .open)
+        XCTAssertEqual(model.fileBrowserModel.focusState, .previewActions)
+
+        _ = model.handle(command: .open)
+
+        XCTAssertTrue(didHide)
+        XCTAssertEqual(service.events, [
+            .open(URL(fileURLWithPath: "/Users/test/alpha.txt"))
+        ])
+        XCTAssertEqual(model.fileBrowserModel.focusState, .browse)
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
     func testCommandPInFilesPinsSelectedPathInsteadOfWindow() {
         let model = makeFileLauncherModel(entries: ["alpha.txt", "beta.txt"])
 
@@ -357,7 +391,10 @@ final class LauncherModeRoutingTests: XCTestCase {
 
     @MainActor
     @available(macOS 26.0, *)
-    private func makeFileLauncherModel(entries names: [String]) -> LiquidGlassLauncherModel {
+    private func makeFileLauncherModel(
+        entries names: [String],
+        fileServices: FileBrowserNativeServicing = RecordingFileBrowserServices()
+    ) -> LiquidGlassLauncherModel {
         let home = URL(fileURLWithPath: "/Users/test")
         let entries = names.map { name in
             FileBrowserEntry(
@@ -378,7 +415,8 @@ final class LauncherModeRoutingTests: XCTestCase {
             fileBrowserModel: FileBrowserModel(
                 fileSystem: client,
                 store: InMemoryFileBrowserStore(state: .defaultValue),
-                directoryStream: ImmediateDirectoryStream(fileSystem: client)
+                directoryStream: ImmediateDirectoryStream(fileSystem: client),
+                fileServices: fileServices
             )
         )
     }
