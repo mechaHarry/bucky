@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 
 @available(macOS 26.0, *)
@@ -142,7 +141,7 @@ struct ModeSwitcherLayoutPolicy {
     static let activeTextPillIconWidth: CGFloat = 22
     static let activeTextPillIconHeight: CGFloat = activeTextPillControlHeight
     static let activeTextPillInputHeight: CGFloat = activeTextPillControlHeight
-    static let activeTextPillInputVerticalOffset: CGFloat = 0
+    static let activeTextPillInputVerticalOffset: CGFloat = 2
     static let activeTextPillCalculatorIconVerticalOffset: CGFloat = 0
     static let activeTextPillDictionaryIconVerticalOffset: CGFloat = 0
     static let filesPillLeadingPadding: CGFloat = 16
@@ -182,36 +181,6 @@ struct ModeSwitcherLayoutPolicy {
         }
     }
 
-    static func activeTextPillEditorFrame(in bounds: CGRect, editorHeight: CGFloat) -> CGRect {
-        let height = min(bounds.height, max(0, editorHeight))
-        return CGRect(
-            x: bounds.minX,
-            y: bounds.minY + (bounds.height - height) / 2,
-            width: bounds.width,
-            height: height
-        )
-    }
-}
-
-enum ModeSwitcherTextFieldFocusPolicy {
-    static func shouldRequestFirstResponder(
-        isFocused: Bool,
-        hasWindow: Bool,
-        hasCurrentEditor: Bool
-    ) -> Bool {
-        isFocused && hasWindow && !hasCurrentEditor
-    }
-
-    static func shouldResignFirstResponder(
-        isFocused: Bool,
-        hasCurrentEditor: Bool
-    ) -> Bool {
-        !isFocused && hasCurrentEditor
-    }
-
-    static func shouldPublishFocusEnd(isFocusRequested: Bool) -> Bool {
-        !isFocusRequested
-    }
 }
 
 @available(macOS 26.0, *)
@@ -233,13 +202,9 @@ private struct TextInputModePill: View {
                 )
                 .offset(y: ModeSwitcherLayoutPolicy.activeTextPillIconVerticalOffset(for: mode))
 
-            CenteredLauncherTextField(
-                text: $model.query,
-                placeholder: mode.placeholder,
-                isFocused: $isSearchFocused
-            ) {
-                _ = model.handle(command: .open)
-            }
+            TextField(mode.placeholder, text: $model.query)
+                .textFieldStyle(.plain)
+                .font(.system(size: 22, weight: .semibold, design: .rounded))
                 .frame(
                     maxWidth: .infinity,
                     minHeight: ModeSwitcherLayoutPolicy.activeTextPillInputHeight,
@@ -248,8 +213,12 @@ private struct TextInputModePill: View {
                 )
                 .layoutPriority(1)
                 .offset(y: ModeSwitcherLayoutPolicy.activeTextPillInputVerticalOffset)
+                .focused($isSearchFocused)
                 .onChange(of: model.query) {
                     model.queryDidChange()
+                }
+                .onSubmit {
+                    _ = model.handle(command: .open)
                 }
 
             if model.isIndexing && mode == .applications {
@@ -268,209 +237,6 @@ private struct TextInputModePill: View {
         )
         .contentShape(Capsule())
         .glassEffect(.regular.interactive(), in: Capsule())
-    }
-}
-
-@available(macOS 26.0, *)
-private struct CenteredLauncherTextField: NSViewRepresentable {
-    @Binding var text: String
-    let placeholder: String
-    let isFocused: FocusState<Bool>.Binding
-    let onSubmit: () -> Void
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text, isFocused: isFocused, onSubmit: onSubmit)
-    }
-
-    func makeNSView(context: Context) -> NSTextField {
-        let field = CenteredLauncherNSTextField(frame: .zero)
-        field.cell = CenteredLauncherTextFieldCell()
-        field.delegate = context.coordinator
-        field.onMovedToWindow = { [weak coordinator = context.coordinator] field in
-            coordinator?.syncFocus(for: field)
-        }
-        field.isBordered = false
-        field.isBezeled = false
-        field.drawsBackground = false
-        field.focusRingType = .none
-        field.usesSingleLineMode = true
-        field.lineBreakMode = .byClipping
-        field.isEditable = true
-        field.isSelectable = true
-        field.font = Self.textFont
-        field.textColor = .labelColor
-        field.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        applyPlaceholder(to: field)
-        return field
-    }
-
-    func updateNSView(_ field: NSTextField, context: Context) {
-        context.coordinator.text = $text
-        context.coordinator.isFocused = isFocused
-        context.coordinator.onSubmit = onSubmit
-
-        if field.stringValue != text {
-            field.stringValue = text
-        }
-        field.font = Self.textFont
-        field.textColor = .labelColor
-        applyPlaceholder(to: field)
-        context.coordinator.syncFocus(for: field)
-    }
-
-    private func applyPlaceholder(to field: NSTextField) {
-        field.placeholderAttributedString = NSAttributedString(
-            string: placeholder,
-            attributes: [
-                .font: Self.textFont,
-                .foregroundColor: NSColor.placeholderTextColor
-            ]
-        )
-    }
-
-    private static let textFont: NSFont = {
-        let font = NSFont.systemFont(ofSize: 22, weight: .semibold)
-        if let descriptor = font.fontDescriptor.withDesign(.rounded),
-           let rounded = NSFont(descriptor: descriptor, size: 22) {
-            return rounded
-        }
-        return font
-    }()
-
-    final class Coordinator: NSObject, NSTextFieldDelegate {
-        var text: Binding<String>
-        var isFocused: FocusState<Bool>.Binding
-        var onSubmit: () -> Void
-
-        init(
-            text: Binding<String>,
-            isFocused: FocusState<Bool>.Binding,
-            onSubmit: @escaping () -> Void
-        ) {
-            self.text = text
-            self.isFocused = isFocused
-            self.onSubmit = onSubmit
-        }
-
-        func controlTextDidBeginEditing(_ notification: Notification) {
-            isFocused.wrappedValue = true
-        }
-
-        func controlTextDidChange(_ notification: Notification) {
-            guard let field = notification.object as? NSTextField else { return }
-            text.wrappedValue = field.stringValue
-        }
-
-        func controlTextDidEndEditing(_ notification: Notification) {
-            guard ModeSwitcherTextFieldFocusPolicy.shouldPublishFocusEnd(
-                isFocusRequested: isFocused.wrappedValue
-            ) else {
-                return
-            }
-            isFocused.wrappedValue = false
-        }
-
-        func control(
-            _ control: NSControl,
-            textView: NSTextView,
-            doCommandBy commandSelector: Selector
-        ) -> Bool {
-            if commandSelector == #selector(NSResponder.insertNewline(_:)) {
-                text.wrappedValue = textView.string
-                onSubmit()
-                return true
-            }
-            return false
-        }
-
-        func syncFocus(for field: NSTextField) {
-            let hasWindow = field.window != nil
-            let hasCurrentEditor = field.currentEditor() != nil
-
-            if ModeSwitcherTextFieldFocusPolicy.shouldRequestFirstResponder(
-                isFocused: isFocused.wrappedValue,
-                hasWindow: hasWindow,
-                hasCurrentEditor: hasCurrentEditor
-            ) {
-                DispatchQueue.main.async { [weak self, weak field] in
-                    guard let self,
-                          let field,
-                          let window = field.window,
-                          ModeSwitcherTextFieldFocusPolicy.shouldRequestFirstResponder(
-                              isFocused: self.isFocused.wrappedValue,
-                              hasWindow: true,
-                              hasCurrentEditor: field.currentEditor() != nil
-                          ) else {
-                        return
-                    }
-                    window.makeFirstResponder(field)
-                }
-            } else if let window = field.window,
-                      ModeSwitcherTextFieldFocusPolicy.shouldResignFirstResponder(
-                          isFocused: isFocused.wrappedValue,
-                          hasCurrentEditor: hasCurrentEditor
-                      ) {
-                window.makeFirstResponder(nil)
-            }
-        }
-    }
-}
-
-private final class CenteredLauncherNSTextField: NSTextField {
-    var onMovedToWindow: ((CenteredLauncherNSTextField) -> Void)?
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        onMovedToWindow?(self)
-    }
-}
-
-private final class CenteredLauncherTextFieldCell: NSTextFieldCell {
-    override func drawingRect(forBounds rect: NSRect) -> NSRect {
-        centeredFrame(in: rect)
-    }
-
-    override func edit(
-        withFrame rect: NSRect,
-        in controlView: NSView,
-        editor textObj: NSText,
-        delegate: Any?,
-        event: NSEvent?
-    ) {
-        super.edit(
-            withFrame: centeredFrame(in: rect),
-            in: controlView,
-            editor: textObj,
-            delegate: delegate,
-            event: event
-        )
-    }
-
-    override func select(
-        withFrame rect: NSRect,
-        in controlView: NSView,
-        editor textObj: NSText,
-        delegate: Any?,
-        start selStart: Int,
-        length selLength: Int
-    ) {
-        super.select(
-            withFrame: centeredFrame(in: rect),
-            in: controlView,
-            editor: textObj,
-            delegate: delegate,
-            start: selStart,
-            length: selLength
-        )
-    }
-
-    private func centeredFrame(in rect: NSRect) -> NSRect {
-        let proposedHeight = max(cellSize.height, font?.boundingRectForFont.height ?? 0)
-        return ModeSwitcherLayoutPolicy.activeTextPillEditorFrame(
-            in: rect,
-            editorHeight: proposedHeight
-        )
     }
 }
 
