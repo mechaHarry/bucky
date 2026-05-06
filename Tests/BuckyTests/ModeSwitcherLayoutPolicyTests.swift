@@ -49,6 +49,17 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
         XCTAssertEqual(ModeSwitcherLayoutPolicy.activeTextPillIconVerticalOffset(for: .dictionary), 0)
     }
 
+    func testTextInputFieldEditorIsVerticallyCenteredInsideControlBounds() {
+        let frame = ModeSwitcherLayoutPolicy.activeTextPillEditorFrame(
+            in: CGRect(x: 0, y: 0, width: 300, height: 30),
+            editorHeight: 24
+        )
+
+        XCTAssertEqual(frame.origin.y, 3)
+        XCTAssertEqual(frame.height, 24)
+        XCTAssertEqual(frame.midY, 15)
+    }
+
     func testFilesPathMarqueeUsesFixedPathWidthInsidePill() {
         let pathWidth = ModeSwitcherLayoutPolicy.filesPathTextWidth(
             in: 420,
