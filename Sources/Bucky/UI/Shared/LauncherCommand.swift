@@ -12,9 +12,15 @@ enum LauncherCommand {
     case switchMode(LauncherMode)
     case clearHistory
     case togglePin
+    case prepareSpaceInteraction
     case space
     case shiftSpace
     case beginSpaceHold
     case endSpaceHold
     case alphaNumeric(Character)
+    case shiftAlphaNumeric(Character)
+    case beginPinnedFocus
+    case endPinnedFocus
+    case historyBack
+    case historyForward
 }

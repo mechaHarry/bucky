@@ -22,6 +22,7 @@ struct ModeSwitcherView: View {
                     }
                 }
             }
+            .frame(maxWidth: .infinity)
         }
     }
 
@@ -72,16 +73,18 @@ struct ModeSwitcherView: View {
                             )
                             .frame(width: pathWidth, height: ModeSwitcherLayoutPolicy.filesPathTextHeight, alignment: .leading)
                             .clipped()
+                            .layoutPriority(0)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(width: ModeSwitcherLayoutPolicy.filesPathButtonWidth(in: proxy.size.width), alignment: .leading)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .frame(width: ModeSwitcherLayoutPolicy.filesPathButtonWidth(in: proxy.size.width), alignment: .leading)
                     .clipped()
+                    .layoutPriority(0)
                     .help("Copy path")
 
                     sortMenu
+                        .layoutPriority(1)
                 }
                 .padding(.leading, ModeSwitcherLayoutPolicy.filesPillLeadingPadding)
                 .padding(.trailing, ModeSwitcherLayoutPolicy.filesPillTrailingPadding)
@@ -89,6 +92,7 @@ struct ModeSwitcherView: View {
                 .glassEffect(.regular.interactive(), in: Capsule())
             }
             .frame(minWidth: 0, maxWidth: .infinity, minHeight: ModeSwitcherLayoutPolicy.activePillHeight, maxHeight: ModeSwitcherLayoutPolicy.activePillHeight)
+            .layoutPriority(1)
         }
     }
 
@@ -112,6 +116,7 @@ struct ModeSwitcherView: View {
         .pickerStyle(.menu)
         .controlSize(.small)
         .frame(width: 128)
+        .fixedSize(horizontal: true, vertical: false)
         .help("Sort files")
     }
 
@@ -137,6 +142,8 @@ struct ModeSwitcherLayoutPolicy {
     static let activeTextPillIconHeight: CGFloat = activeTextPillControlHeight
     static let activeTextPillInputHeight: CGFloat = activeTextPillControlHeight
     static let activeTextPillInputVerticalOffset: CGFloat = 0
+    static let activeTextPillCalculatorIconVerticalOffset: CGFloat = -1
+    static let activeTextPillDictionaryIconVerticalOffset: CGFloat = -1
     static let filesPillLeadingPadding: CGFloat = 16
     static let filesPillTrailingPadding: CGFloat = 12
     static let filesContentSpacing: CGFloat = 12
@@ -157,6 +164,17 @@ struct ModeSwitcherLayoutPolicy {
         let fixedWidth = filesPathIconWidth + filesPathIconSpacing
         return max(0, filesPathButtonWidth(in: pillWidth) - fixedWidth)
     }
+
+    static func activeTextPillIconVerticalOffset(for mode: LauncherMode) -> CGFloat {
+        switch mode {
+        case .applications, .files:
+            return 0
+        case .calculator:
+            return activeTextPillCalculatorIconVerticalOffset
+        case .dictionary:
+            return activeTextPillDictionaryIconVerticalOffset
+        }
+    }
 }
 
 @available(macOS 26.0, *)
@@ -176,6 +194,7 @@ private struct TextInputModePill: View {
                     height: ModeSwitcherLayoutPolicy.activeTextPillIconHeight,
                     alignment: .center
                 )
+                .offset(y: ModeSwitcherLayoutPolicy.activeTextPillIconVerticalOffset(for: mode))
 
             TextField(mode.placeholder, text: $model.query)
                 .textFieldStyle(.plain)

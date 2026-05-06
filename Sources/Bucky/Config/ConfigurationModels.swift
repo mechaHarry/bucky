@@ -48,27 +48,32 @@ struct BuckySettings: Codable {
     var hotKey: HotKeyConfiguration
     var launchAtStartup: Bool
     var animationTiming: LauncherAnimationTiming
+    var fileBrowserStartDirectory: URL?
 
     static let defaultValue = BuckySettings(
         hotKey: .defaultValue,
         launchAtStartup: false,
-        animationTiming: .defaultValue
+        animationTiming: .defaultValue,
+        fileBrowserStartDirectory: nil
     )
 
     init(
         hotKey: HotKeyConfiguration,
         launchAtStartup: Bool,
-        animationTiming: LauncherAnimationTiming = .defaultValue
+        animationTiming: LauncherAnimationTiming = .defaultValue,
+        fileBrowserStartDirectory: URL? = nil
     ) {
         self.hotKey = hotKey
         self.launchAtStartup = launchAtStartup
         self.animationTiming = animationTiming
+        self.fileBrowserStartDirectory = fileBrowserStartDirectory
     }
 
     private enum CodingKeys: String, CodingKey {
         case hotKey
         case launchAtStartup
         case animationTiming
+        case fileBrowserStartDirectory
     }
 
     init(from decoder: Decoder) throws {
@@ -76,6 +81,7 @@ struct BuckySettings: Codable {
         hotKey = try container.decodeIfPresent(HotKeyConfiguration.self, forKey: .hotKey) ?? .defaultValue
         launchAtStartup = try container.decodeIfPresent(Bool.self, forKey: .launchAtStartup) ?? false
         animationTiming = try container.decodeIfPresent(LauncherAnimationTiming.self, forKey: .animationTiming) ?? .defaultValue
+        fileBrowserStartDirectory = try container.decodeIfPresent(URL.self, forKey: .fileBrowserStartDirectory)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -83,5 +89,6 @@ struct BuckySettings: Codable {
         try container.encode(hotKey, forKey: .hotKey)
         try container.encode(launchAtStartup, forKey: .launchAtStartup)
         try container.encode(animationTiming, forKey: .animationTiming)
+        try container.encodeIfPresent(fileBrowserStartDirectory, forKey: .fileBrowserStartDirectory)
     }
 }

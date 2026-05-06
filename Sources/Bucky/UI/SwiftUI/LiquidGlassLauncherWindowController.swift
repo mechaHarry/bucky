@@ -9,6 +9,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     private var localKeyMonitor: Any?
     private var spaceKeyRouter = LauncherSpaceKeyRouter()
     private var pendingSpaceHoldTimer: Timer?
+    private var isOptionPinnedFocusActive = false
     private var visibilityState: WindowVisibilityState = .hidden
     private var visibilityTransitionID = 0
     private var presentationAnimation: Animation {
@@ -46,6 +47,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         model.modeWillSwitchAction = { [weak self] oldMode, nextMode in
             if oldMode == .files, nextMode != .files {
                 self?.cancelSpaceHoldState(deliverEndHold: true)
+                self?.cancelOptionPinnedFocus()
             }
         }
         buildWindow()
@@ -55,6 +57,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
 
     deinit {
         cancelSpaceHoldState(deliverEndHold: true)
+        cancelOptionPinnedFocus()
         if let localKeyMonitor {
             NSEvent.removeMonitor(localKeyMonitor)
         }
@@ -116,6 +119,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
 
         beginVisibilityTransition(.hiding)
         cancelSpaceHoldState(deliverEndHold: true)
+        cancelOptionPinnedFocus()
         model.cancelPendingCalculationHistory()
 
         let transitionID = visibilityTransitionID
@@ -168,11 +172,15 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     private func installLocalKeyMonitor() {
         guard localKeyMonitor == nil else { return }
 
-        localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
+        localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp, .flagsChanged]) { [weak self] event in
             guard let self,
                   self.window.isVisible,
                   self.window.isKeyWindow || self.window.isMainWindow else {
                 return event
+            }
+
+            if event.type == .flagsChanged, self.model.mode == .files {
+                return self.handleFileModifierEvent(event)
             }
 
             if LauncherKeyRoutingPolicy.shouldPassThroughFileTextEditing(
@@ -204,6 +212,12 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             if event.isCommandP {
                 return self.handleLauncherCommand(.togglePin) ? nil : event
             }
+            if event.isCommandLeftBracket {
+                return self.handleLauncherCommand(.historyBack) ? nil : event
+            }
+            if event.isCommandRightBracket {
+                return self.handleLauncherCommand(.historyForward) ? nil : event
+            }
             if event.isCommandUpArrow {
                 return self.handleLauncherCommand(.top) ? nil : event
             }
@@ -230,11 +244,21 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             case UInt16(kVK_Escape):
                 return self.handleLauncherCommand(.close) ? nil : event
             default:
-                if let character = event.firstAlphaNumericCharacter,
+                if self.model.mode == .files,
+                   let routedCharacter = event.fileNavigationAlphaNumericCharacter,
                    LauncherKeyRoutingPolicy.shouldRouteAlphaNumeric(
                        mode: self.model.mode,
-                       fileFocusState: self.model.mode == .files ? self.fileBrowserFocusState : nil
+                       fileFocusState: self.fileBrowserFocusState
                    ) {
+                    let command: LauncherCommand = routedCharacter.isReverse
+                        ? .shiftAlphaNumeric(routedCharacter.character)
+                        : .alphaNumeric(routedCharacter.character)
+                    return self.handleLauncherCommand(command) ? nil : event
+                } else if let character = event.firstAlphaNumericCharacter,
+                          LauncherKeyRoutingPolicy.shouldRouteAlphaNumeric(
+                              mode: self.model.mode,
+                              fileFocusState: self.model.mode == .files ? self.fileBrowserFocusState : nil
+                          ) {
                     return self.handleLauncherCommand(.alphaNumeric(character)) ? nil : event
                 }
                 return event
@@ -281,6 +305,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         case .consume:
             return nil
         case .scheduleHold:
+            _ = handleLauncherCommand(.prepareSpaceInteraction)
             scheduleSpaceHold()
             return nil
         case .sendSpace:
@@ -322,6 +347,29 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         let decision = spaceKeyRouter.cancel()
         guard deliverEndHold, decision == .sendEndHold else { return }
         _ = model.handle(command: .endSpaceHold)
+    }
+
+    private func handleFileModifierEvent(_ event: NSEvent) -> NSEvent? {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let isOptionDown = flags.contains(.option)
+
+        if isOptionDown, !isOptionPinnedFocusActive {
+            isOptionPinnedFocusActive = true
+            return handleLauncherCommand(.beginPinnedFocus) ? nil : event
+        }
+
+        if !isOptionDown, isOptionPinnedFocusActive {
+            isOptionPinnedFocusActive = false
+            return handleLauncherCommand(.endPinnedFocus) ? nil : event
+        }
+
+        return event
+    }
+
+    private func cancelOptionPinnedFocus() {
+        guard isOptionPinnedFocusActive else { return }
+        isOptionPinnedFocusActive = false
+        _ = model.handle(command: .endPinnedFocus)
     }
 
     private func positionWindow() {
@@ -490,6 +538,12 @@ private final class LiquidGlassWindow: NSWindow {
             return true
         }
         if event.isCommandP, commandHandler?(.togglePin) == true {
+            return true
+        }
+        if event.isCommandLeftBracket, commandHandler?(.historyBack) == true {
+            return true
+        }
+        if event.isCommandRightBracket, commandHandler?(.historyForward) == true {
             return true
         }
         if event.isCommandUpArrow, commandHandler?(.top) == true {

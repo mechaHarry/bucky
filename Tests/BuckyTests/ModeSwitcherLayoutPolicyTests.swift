@@ -41,4 +41,11 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
         ])
         XCTAssertEqual(ModeSwitcherLayoutPolicy.activeTextPillSpacing, 12)
     }
+
+    func testCalculatorAndDictionaryUseOnlyIconOpticalOffsets() {
+        XCTAssertEqual(ModeSwitcherLayoutPolicy.activeTextPillInputVerticalOffset, 0)
+        XCTAssertEqual(ModeSwitcherLayoutPolicy.activeTextPillIconVerticalOffset(for: .applications), 0)
+        XCTAssertEqual(ModeSwitcherLayoutPolicy.activeTextPillIconVerticalOffset(for: .calculator), -1)
+        XCTAssertEqual(ModeSwitcherLayoutPolicy.activeTextPillIconVerticalOffset(for: .dictionary), -1)
+    }
 }

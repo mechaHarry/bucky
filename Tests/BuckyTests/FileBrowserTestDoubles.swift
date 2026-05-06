@@ -13,6 +13,10 @@ struct StubFileSystemClient: FileSystemClientProtocol {
         return parent.path == url.path ? nil : parent
     }
 
+    func isDirectory(_ url: URL) -> Bool {
+        url.hasDirectoryPath || entriesByDirectory.matching(url) != nil
+    }
+
     func entries(in directory: URL, sort: FileBrowserSort) throws -> [FileBrowserEntry] {
         entriesByDirectory.matching(directory) ?? []
     }
@@ -47,6 +51,10 @@ final class RecordingFileSystemClient: FileSystemClientProtocol {
         return parent.path == url.path ? nil : parent
     }
 
+    func isDirectory(_ url: URL) -> Bool {
+        url.hasDirectoryPath || entriesByDirectory.matching(url) != nil
+    }
+
     func entries(in directory: URL, sort: FileBrowserSort) throws -> [FileBrowserEntry] {
         entryRequests.append((directory, sort))
         return entriesByDirectory.matching(directory) ?? []
@@ -70,6 +78,10 @@ final class ThrowingFileSystemClient: FileSystemClientProtocol {
     func parentURL(for url: URL) -> URL? {
         let parent = url.deletingLastPathComponent()
         return parent.path == url.path ? nil : parent
+    }
+
+    func isDirectory(_ url: URL) -> Bool {
+        url.hasDirectoryPath || entriesByDirectory.matching(url) != nil
     }
 
     func entries(in directory: URL, sort: FileBrowserSort) throws -> [FileBrowserEntry] {

@@ -50,13 +50,54 @@ struct FileBrowserPersistedState: Codable, Equatable {
     var lastDirectory: URL?
     var sort: FileBrowserSort
     var traversalChain: [URL]
+    var rememberedSelections: [FileBrowserRememberedSelection]
 
     static let defaultValue = FileBrowserPersistedState(
         pinnedDirectories: [],
         lastDirectory: nil,
         sort: .name,
-        traversalChain: []
+        traversalChain: [],
+        rememberedSelections: []
     )
+
+    init(
+        pinnedDirectories: [URL],
+        lastDirectory: URL?,
+        sort: FileBrowserSort,
+        traversalChain: [URL],
+        rememberedSelections: [FileBrowserRememberedSelection] = []
+    ) {
+        self.pinnedDirectories = pinnedDirectories
+        self.lastDirectory = lastDirectory
+        self.sort = sort
+        self.traversalChain = traversalChain
+        self.rememberedSelections = rememberedSelections
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case pinnedDirectories
+        case lastDirectory
+        case sort
+        case traversalChain
+        case rememberedSelections
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        pinnedDirectories = try container.decodeIfPresent([URL].self, forKey: .pinnedDirectories) ?? []
+        lastDirectory = try container.decodeIfPresent(URL.self, forKey: .lastDirectory)
+        sort = try container.decodeIfPresent(FileBrowserSort.self, forKey: .sort) ?? .name
+        traversalChain = try container.decodeIfPresent([URL].self, forKey: .traversalChain) ?? []
+        rememberedSelections = try container.decodeIfPresent(
+            [FileBrowserRememberedSelection].self,
+            forKey: .rememberedSelections
+        ) ?? []
+    }
+}
+
+struct FileBrowserRememberedSelection: Codable, Equatable {
+    let directory: URL
+    let selection: URL
 }
 
 struct FileBrowserDirectorySnapshot: Equatable {
@@ -82,6 +123,7 @@ struct FileBrowserPreview: Equatable {
 protocol FileSystemClientProtocol {
     func homeDirectory() -> URL
     func parentURL(for url: URL) -> URL?
+    func isDirectory(_ url: URL) -> Bool
     func entries(in directory: URL, sort: FileBrowserSort) throws -> [FileBrowserEntry]
 }
 
@@ -116,6 +158,7 @@ protocol FileBrowserNativeServicing {
 
 enum FileBrowserFocusState: Equatable {
     case browse
+    case pinnedItems
     case previewActions
     case renaming
     case transferPending(FileBrowserTransfer)
@@ -210,11 +253,5 @@ struct FileBrowserSelectionScrollEvent: Equatable {
 struct FileBrowserMotionPolicy {
     static let wobbleAmplitude = 1.6
     static let wobbleOscillations = 1.0
-    static let rowSwapOutgoingDelayNanoseconds: UInt64 = 180_000_000
-    static let rowSwapIncomingSettleDelayNanoseconds: UInt64 = 420_000_000
-    static let rowSwapOutgoingAnimationSeconds = 0.18
-    static let rowSpringResponse = 0.50
-    static let rowSpringDampingFraction = 0.88
-    static let rowSpringBlendDuration = 0.12
-    static let rowStaggerDelaySeconds = 0.012
+    static let listReconstructionAnimationSeconds = 0.18
 }
