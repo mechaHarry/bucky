@@ -42,10 +42,20 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
         XCTAssertEqual(ModeSwitcherLayoutPolicy.activeTextPillSpacing, 12)
     }
 
-    func testCalculatorAndDictionaryUseOnlyIconOpticalOffsets() {
+    func testTextInputModesUseAppsVerticalAlignment() {
         XCTAssertEqual(ModeSwitcherLayoutPolicy.activeTextPillInputVerticalOffset, 0)
         XCTAssertEqual(ModeSwitcherLayoutPolicy.activeTextPillIconVerticalOffset(for: .applications), 0)
-        XCTAssertEqual(ModeSwitcherLayoutPolicy.activeTextPillIconVerticalOffset(for: .calculator), -1)
-        XCTAssertEqual(ModeSwitcherLayoutPolicy.activeTextPillIconVerticalOffset(for: .dictionary), -1)
+        XCTAssertEqual(ModeSwitcherLayoutPolicy.activeTextPillIconVerticalOffset(for: .calculator), 0)
+        XCTAssertEqual(ModeSwitcherLayoutPolicy.activeTextPillIconVerticalOffset(for: .dictionary), 0)
+    }
+
+    func testFilesPathMarqueeUsesFixedPathWidthInsidePill() {
+        let pathWidth = ModeSwitcherLayoutPolicy.filesPathTextWidth(
+            in: 420,
+            path: "/Users/test/Very Long Folder Name/Deep/File.txt"
+        )
+
+        XCTAssertEqual(ModeSwitcherLayoutPolicy.filesPathMarqueeWidth(in: 420), pathWidth)
+        XCTAssertLessThan(pathWidth, 420)
     }
 }

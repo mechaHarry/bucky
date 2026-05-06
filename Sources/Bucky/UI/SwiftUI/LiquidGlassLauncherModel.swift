@@ -13,6 +13,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     @Published var isIndexing = false
     @Published var animationTiming: LauncherAnimationTiming
     @Published var isPresented = false
+    @Published var isWindowKey = true
     @Published var isPinned = false {
         didSet { pinnedChangedAction?(isPinned) }
     }
@@ -126,6 +127,11 @@ final class LiquidGlassLauncherModel: ObservableObject {
         isPinned = false
         applyCurrentMode()
         requestSelectionScroll(anchor: .top)
+    }
+
+    func setWindowKeyState(_ isWindowKey: Bool) {
+        guard self.isWindowKey != isWindowKey else { return }
+        self.isWindowKey = isWindowKey
     }
 
     func queryDidChange() {
