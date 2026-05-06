@@ -5,6 +5,8 @@ APP_DIR := build/$(APP_NAME).app
 CONTENTS_DIR := $(APP_DIR)/Contents
 MACOS_DIR := $(CONTENTS_DIR)/MacOS
 RESOURCES_DIR := $(CONTENTS_DIR)/Resources
+CODESIGN_IDENTITY ?= -
+CODESIGN_FLAGS ?= --force --deep
 
 .PHONY: build bundle run clean perf perf-baseline
 
@@ -17,6 +19,7 @@ bundle: build
 	cp "$(EXECUTABLE)" "$(MACOS_DIR)/$(APP_NAME)"
 	cp "packaging/Info.plist" "$(CONTENTS_DIR)/Info.plist"
 	chmod +x "$(MACOS_DIR)/$(APP_NAME)"
+	codesign $(CODESIGN_FLAGS) --sign "$(CODESIGN_IDENTITY)" "$(APP_DIR)"
 
 run: bundle
 	open "$(APP_DIR)"

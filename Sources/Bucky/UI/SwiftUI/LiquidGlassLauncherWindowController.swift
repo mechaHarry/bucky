@@ -7,6 +7,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     private let window: LiquidGlassWindow
     private let model: LiquidGlassLauncherModel
     private var localKeyMonitor: Any?
+    private var applicationActivationObserver: NSObjectProtocol?
     private var spaceKeyRouter = LauncherSpaceKeyRouter()
     private var pendingSpaceHoldTimer: Timer?
     private var isOptionPinnedFocusActive = false
@@ -52,6 +53,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         }
         buildWindow()
         installLocalKeyMonitor()
+        installApplicationActivationObserver()
         reindex()
     }
 
@@ -60,6 +62,9 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         cancelOptionPinnedFocus()
         if let localKeyMonitor {
             NSEvent.removeMonitor(localKeyMonitor)
+        }
+        if let applicationActivationObserver {
+            NotificationCenter.default.removeObserver(applicationActivationObserver)
         }
     }
 
@@ -88,10 +93,11 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         if shouldMaterialize {
             model.isPresented = false
         }
-        positionWindow()
+        positionWindow(animated: false)
         window.alphaValue = 1
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        model.setWindowKeyState(true)
         let transitionID = visibilityTransitionID
 
         if shouldMaterialize {
@@ -152,7 +158,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         window.isOpaque = false
         window.backgroundColor = .clear
         window.hasShadow = false
-        window.isMovableByWindowBackground = true
+        window.isMovableByWindowBackground = LauncherWindowDragPolicy.isMovableByWindowBackground
         window.minSize = NSSize(width: 520, height: 340)
         window.delegate = self
         window.commandHandler = { [weak self] command in
@@ -266,8 +272,26 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         }
     }
 
+    private func installApplicationActivationObserver() {
+        guard applicationActivationObserver == nil else { return }
+
+        applicationActivationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: NSApp,
+            queue: .main
+        ) { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.restoreFocusAfterExternalPromptIfNeeded()
+            }
+        }
+    }
+
     private func handleLauncherCommand(_ command: LauncherCommand) -> Bool {
-        return model.handle(command: command)
+        let handled = model.handle(command: command)
+        if handled, LauncherWindowRepositionPolicy.shouldReposition(after: command) {
+            positionWindow(animated: true)
+        }
+        return handled
     }
 
     private var fileBrowserFocusState: FileBrowserFocusState {
@@ -372,23 +396,36 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         _ = model.handle(command: .endPinnedFocus)
     }
 
-    private func positionWindow() {
+    private func positionWindow(animated: Bool) {
         guard let screen = primaryDisplayScreen() ?? NSScreen.main ?? NSScreen.screens.first else {
             window.center()
             return
         }
 
         let visibleFrame = screen.visibleFrame
-        let width = min(760, max(520, visibleFrame.width - 120))
-        let height = min(460, max(340, visibleFrame.height - 120))
-        let frame = NSRect(
-            x: visibleFrame.midX - width / 2,
-            y: visibleFrame.midY - height / 2,
-            width: width,
-            height: height
+        let frame = LauncherWindowFramePolicy.frame(
+            mode: model.mode,
+            fileFocusState: model.mode == .files ? fileBrowserFocusState : nil,
+            visibleFrame: visibleFrame
         )
 
-        window.setFrame(frame, display: true)
+        guard window.frame != frame else { return }
+        window.setFrame(frame, display: true, animate: animated)
+    }
+
+    private func restoreFocusAfterExternalPromptIfNeeded() {
+        guard LauncherWindowFocusRestorationPolicy.shouldRestoreAfterAppActivation(
+            mode: model.mode,
+            isPinned: model.isPinned,
+            isPresented: model.isPresented,
+            isVisible: window.isVisible,
+            isKeyWindow: window.isKeyWindow
+        ) else {
+            return
+        }
+
+        window.makeKeyAndOrderFront(nil)
+        model.setWindowKeyState(true)
     }
 
     private func setPinned(_ isPinned: Bool) {
@@ -403,6 +440,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
 
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        model.setWindowKeyState(true)
     }
 
     private func beginVisibilityTransition(_ state: WindowVisibilityState) {
@@ -513,9 +551,25 @@ struct LauncherSpaceKeyRouter {
 }
 
 @available(macOS 26.0, *)
+struct LauncherWindowDismissalPolicy {
+    static func shouldHideOnResignKey(mode: LauncherMode, isPinned: Bool) -> Bool {
+        !isPinned && mode != .files
+    }
+}
+
+@available(macOS 26.0, *)
 extension LiquidGlassLauncherWindowController: NSWindowDelegate {
+    func windowDidBecomeKey(_ notification: Notification) {
+        model.setWindowKeyState(true)
+    }
+
     func windowDidResignKey(_ notification: Notification) {
-        guard window.isVisible, !model.isPinned else { return }
+        model.setWindowKeyState(false)
+
+        guard window.isVisible,
+              LauncherWindowDismissalPolicy.shouldHideOnResignKey(mode: model.mode, isPinned: model.isPinned) else {
+            return
+        }
         hide()
     }
 }

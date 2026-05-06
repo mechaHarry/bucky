@@ -76,6 +76,106 @@ final class LauncherModeRoutingTests: XCTestCase {
         ))
     }
 
+    func testFilesModeDoesNotHideLauncherWhenPermissionPromptStealsFocus() {
+        XCTAssertFalse(LauncherWindowDismissalPolicy.shouldHideOnResignKey(
+            mode: .files,
+            isPinned: false
+        ))
+        XCTAssertTrue(LauncherWindowDismissalPolicy.shouldHideOnResignKey(
+            mode: .applications,
+            isPinned: false
+        ))
+        XCTAssertFalse(LauncherWindowDismissalPolicy.shouldHideOnResignKey(
+            mode: .applications,
+            isPinned: true
+        ))
+    }
+
+    func testFilesModeRestoresFocusWhenAppReactivatesAfterPermissionPrompt() {
+        XCTAssertTrue(LauncherWindowFocusRestorationPolicy.shouldRestoreAfterAppActivation(
+            mode: .files,
+            isPinned: false,
+            isPresented: true,
+            isVisible: true,
+            isKeyWindow: false
+        ))
+        XCTAssertFalse(LauncherWindowFocusRestorationPolicy.shouldRestoreAfterAppActivation(
+            mode: .applications,
+            isPinned: false,
+            isPresented: true,
+            isVisible: true,
+            isKeyWindow: false
+        ))
+        XCTAssertFalse(LauncherWindowFocusRestorationPolicy.shouldRestoreAfterAppActivation(
+            mode: .files,
+            isPinned: false,
+            isPresented: true,
+            isVisible: true,
+            isKeyWindow: true
+        ))
+    }
+
+    @available(macOS 26.0, *)
+    func testQuickLookPreviewDoesNotResizeLauncherWindow() {
+        let visibleFrame = CGRect(x: 0, y: 0, width: 1_440, height: 900)
+        let frame = LauncherWindowFramePolicy.frame(
+            mode: .files,
+            fileFocusState: .quickLook(FileBrowserPreview(
+                url: URL(fileURLWithPath: "/Users/test/photo.jpg"),
+                mode: .nativeThumbnail
+            )),
+            visibleFrame: visibleFrame
+        )
+
+        XCTAssertEqual(frame.size, CGSize(width: 760, height: 460))
+        XCTAssertTrue(visibleFrame.contains(frame))
+    }
+
+    @available(macOS 26.0, *)
+    func testLauncherWindowBackgroundDoesNotDragRowsAwayFromNativeFileDragging() {
+        XCTAssertFalse(LauncherWindowDragPolicy.isMovableByWindowBackground)
+    }
+
+    @available(macOS 26.0, *)
+    func testQuickLookAndFileNavigationCommandsDoNotRepositionLauncherWindow() {
+        XCTAssertFalse(LauncherWindowRepositionPolicy.shouldReposition(after: .beginSpaceHold))
+        XCTAssertFalse(LauncherWindowRepositionPolicy.shouldReposition(after: .endSpaceHold))
+        XCTAssertFalse(LauncherWindowRepositionPolicy.shouldReposition(after: .down))
+        XCTAssertFalse(LauncherWindowRepositionPolicy.shouldReposition(after: .up))
+        XCTAssertTrue(LauncherWindowRepositionPolicy.shouldReposition(after: .switchMode(.files)))
+    }
+
+    @available(macOS 26.0, *)
+    func testDefaultWindowFrameKeepsBaselineLauncherSize() {
+        let visibleFrame = CGRect(x: 0, y: 0, width: 1_440, height: 900)
+        let frame = LauncherWindowFramePolicy.frame(
+            mode: .applications,
+            fileFocusState: nil,
+            visibleFrame: visibleFrame
+        )
+
+        XCTAssertEqual(frame.size, CGSize(width: 760, height: 460))
+    }
+
+    @available(macOS 26.0, *)
+    func testInactiveWindowVisualPolicyDimsWholeSurfaceWithoutSuppressingIcons() {
+        XCTAssertEqual(LauncherWindowFocusVisualPolicy.contentOpacity(isKeyWindow: true), 1)
+        XCTAssertEqual(LauncherWindowFocusVisualPolicy.dimOverlayOpacity(isKeyWindow: true), 0)
+        XCTAssertEqual(LauncherWindowFocusVisualPolicy.blurRadius(isKeyWindow: true), 0)
+
+        XCTAssertLessThan(
+            LauncherWindowFocusVisualPolicy.contentOpacity(isKeyWindow: false),
+            LauncherWindowFocusVisualPolicy.contentOpacity(isKeyWindow: true)
+        )
+        XCTAssertGreaterThan(LauncherWindowFocusVisualPolicy.dimOverlayOpacity(isKeyWindow: false), 0)
+        XCTAssertGreaterThan(LauncherWindowFocusVisualPolicy.blurRadius(isKeyWindow: false), 0)
+        XCTAssertEqual(
+            LauncherWindowFocusVisualPolicy.iconOpacity(isKeyWindow: false),
+            LauncherWindowFocusVisualPolicy.textOpacity(isKeyWindow: false)
+        )
+        XCTAssertGreaterThan(LauncherWindowFocusVisualPolicy.iconOpacity(isKeyWindow: false), 0)
+    }
+
     @MainActor
     @available(macOS 26.0, *)
     func testFileBrowserModelActivatesOnlyWhenFilesModeIsShown() {
