@@ -74,6 +74,24 @@ final class FileSystemClientTests: XCTestCase {
         XCTAssertFalse(client.isDirectory(file))
     }
 
+    func testIsDirectoryFollowsSymbolicLinksToDirectories() throws {
+        let target = temporaryDirectory.appendingPathComponent("OneDrive-Cisco", isDirectory: true)
+        let link = temporaryDirectory.appendingPathComponent("OneDrive - Cisco")
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
+
+        XCTAssertTrue(FileSystemClient().isDirectory(link))
+    }
+
+    func testResolvedDirectoryURLFollowsSymbolicLinksToDirectoryTargets() throws {
+        let target = temporaryDirectory.appendingPathComponent("OneDrive-Cisco", isDirectory: true)
+        let link = temporaryDirectory.appendingPathComponent("OneDrive - Cisco")
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
+
+        XCTAssertEqual(FileSystemClient().resolvedDirectoryURL(for: link), target.standardizedFileURL)
+    }
+
     private func entry(named name: String, createdAt: Date? = nil, modifiedAt: Date? = nil) -> FileBrowserEntry {
         FileBrowserEntry(
             url: temporaryDirectory.appendingPathComponent(name),

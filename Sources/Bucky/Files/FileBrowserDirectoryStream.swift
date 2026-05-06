@@ -12,13 +12,16 @@ protocol FileBrowserDirectoryStreaming {
 @MainActor
 final class FileBrowserDirectoryStream: FileBrowserDirectoryStreaming {
     private let fileSystem: FileSystemClientProtocol
+    private weak var accessStore: FileBrowserPersisting?
     private let queue: DispatchQueue
 
     init(
         fileSystem: FileSystemClientProtocol,
+        accessStore: FileBrowserPersisting? = nil,
         queue: DispatchQueue = DispatchQueue(label: "com.mechaHarry.bucky.file-browser.directory-stream", qos: .userInitiated)
     ) {
         self.fileSystem = fileSystem
+        self.accessStore = accessStore
         self.queue = queue
     }
 
@@ -28,9 +31,15 @@ final class FileBrowserDirectoryStream: FileBrowserDirectoryStreaming {
         completion: @escaping (Result<[FileBrowserEntry], Error>) -> Void
     ) {
         let fileSystem = DirectoryStreamFileSystemBox(fileSystem: fileSystem)
+        let bookmarkData = accessStore?.bookmarkData(for: directory)
         queue.async {
             let result = Result {
-                try fileSystem.entries(in: directory, sort: sort)
+                try FileBrowserSecurityScopedBookmarkPolicy.withAccess(
+                    to: directory,
+                    bookmarkData: bookmarkData
+                ) {
+                    try fileSystem.entries(in: directory, sort: sort)
+                }
             }
 
             DispatchQueue.main.async {
