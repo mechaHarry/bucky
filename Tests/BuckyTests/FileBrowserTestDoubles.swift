@@ -5,6 +5,7 @@ import Foundation
 struct StubFileSystemClient: FileSystemClientProtocol {
     let home: URL
     var entriesByDirectory: [URL: [FileBrowserEntry]]
+    var resolvedDirectoriesByURL: [URL: URL] = [:]
 
     func homeDirectory() -> URL { home }
 
@@ -14,7 +15,21 @@ struct StubFileSystemClient: FileSystemClientProtocol {
     }
 
     func isDirectory(_ url: URL) -> Bool {
-        url.hasDirectoryPath || entriesByDirectory.matching(url) != nil
+        resolvedDirectoryURL(for: url) != nil
+    }
+
+    func resolvedDirectoryURL(for url: URL) -> URL? {
+        if let resolved = resolvedDirectoriesByURL.first(where: {
+            $0.key.standardizedFileURL.path == url.standardizedFileURL.path
+        })?.value {
+            return resolved.standardizedFileURL
+        }
+
+        if url.hasDirectoryPath || entriesByDirectory.matching(url) != nil {
+            return url.standardizedFileURL
+        }
+
+        return nil
     }
 
     func entries(in directory: URL, sort: FileBrowserSort) throws -> [FileBrowserEntry] {
@@ -24,6 +39,7 @@ struct StubFileSystemClient: FileSystemClientProtocol {
 
 final class InMemoryFileBrowserStore: FileBrowserPersisting {
     private(set) var state: FileBrowserPersistedState
+    private(set) var rememberedAccessDirectories: [URL] = []
 
     init(state: FileBrowserPersistedState) {
         self.state = state
@@ -31,6 +47,16 @@ final class InMemoryFileBrowserStore: FileBrowserPersisting {
 
     func update(_ nextState: FileBrowserPersistedState) {
         state = nextState
+    }
+
+    func bookmarkData(for directory: URL) -> Data? {
+        state.directoryBookmarks.first {
+            $0.directory.standardizedFileURL.path == directory.standardizedFileURL.path
+        }?.bookmarkData
+    }
+
+    func rememberDirectoryAccess(_ directory: URL) {
+        rememberedAccessDirectories.append(directory.standardizedFileURL)
     }
 }
 
@@ -52,7 +78,15 @@ final class RecordingFileSystemClient: FileSystemClientProtocol {
     }
 
     func isDirectory(_ url: URL) -> Bool {
-        url.hasDirectoryPath || entriesByDirectory.matching(url) != nil
+        resolvedDirectoryURL(for: url) != nil
+    }
+
+    func resolvedDirectoryURL(for url: URL) -> URL? {
+        if url.hasDirectoryPath || entriesByDirectory.matching(url) != nil {
+            return url.standardizedFileURL
+        }
+
+        return nil
     }
 
     func entries(in directory: URL, sort: FileBrowserSort) throws -> [FileBrowserEntry] {
@@ -81,7 +115,15 @@ final class ThrowingFileSystemClient: FileSystemClientProtocol {
     }
 
     func isDirectory(_ url: URL) -> Bool {
-        url.hasDirectoryPath || entriesByDirectory.matching(url) != nil
+        resolvedDirectoryURL(for: url) != nil
+    }
+
+    func resolvedDirectoryURL(for url: URL) -> URL? {
+        if url.hasDirectoryPath || entriesByDirectory.matching(url) != nil {
+            return url.standardizedFileURL
+        }
+
+        return nil
     }
 
     func entries(in directory: URL, sort: FileBrowserSort) throws -> [FileBrowserEntry] {
@@ -174,6 +216,7 @@ final class RecordingFileBrowserServices: FileBrowserNativeServicing {
     var error: Error?
     var iconResult = NSImage(size: NSSize(width: 16, height: 16))
     var previewMode: FileBrowserPreviewMode = .metadataFallback
+    var previewModesByURL: [URL: FileBrowserPreviewMode] = [:]
     var thumbnailResult: NSImage?
     private(set) var iconRequests: [URL] = []
     private(set) var thumbnailRequests: [ThumbnailRequest] = []
@@ -241,7 +284,7 @@ final class RecordingFileBrowserServices: FileBrowserNativeServicing {
     }
 
     func previewMode(for url: URL) -> FileBrowserPreviewMode {
-        previewMode
+        previewModesByURL[url] ?? previewMode
     }
 
     func loadPreviewThumbnail(

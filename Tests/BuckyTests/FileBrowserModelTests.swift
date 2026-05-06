@@ -24,6 +24,23 @@ final class FileBrowserModelTests: XCTestCase {
         XCTAssertEqual(model.currentDirectory, URL(fileURLWithPath: "/Users/test"))
     }
 
+    func testStartsAtConfiguredDefaultDirectoryBeforeHomeWhenPersistedDirectoryIsMissing() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let documents = home.appendingPathComponent("Documents", isDirectory: true)
+        let client = StubFileSystemClient(home: home, entriesByDirectory: [
+            documents: entries(["notes.txt"], in: documents)
+        ])
+
+        let model = FileBrowserModel(
+            fileSystem: client,
+            store: InMemoryFileBrowserStore(state: .defaultValue),
+            directoryStream: ImmediateDirectoryStream(fileSystem: client),
+            startDirectory: documents
+        )
+
+        XCTAssertEqual(model.currentDirectory, documents)
+    }
+
     func testUnreadablePersistedDirectoryFallsBackToHomeAndPersistsFallback() {
         let home = URL(fileURLWithPath: "/Users/test")
         let missing = home.appendingPathComponent("Missing", isDirectory: true)
@@ -75,6 +92,22 @@ final class FileBrowserModelTests: XCTestCase {
         XCTAssertEqual(model.directorySnapshots, [
             FileBrowserDirectorySnapshot(directory: home, entries: entries(["home.txt"], in: home))
         ])
+    }
+
+    func testSuccessfulDirectoryLoadRemembersDirectoryAccess() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let store = InMemoryFileBrowserStore(state: .defaultValue)
+        _ = FileBrowserModel(
+            fileSystem: StubFileSystemClient(home: home, entriesByDirectory: [
+                home: entries(["home.txt"], in: home)
+            ]),
+            store: store,
+            directoryStream: ImmediateDirectoryStream(fileSystem: StubFileSystemClient(home: home, entriesByDirectory: [
+                home: entries(["home.txt"], in: home)
+            ]))
+        )
+
+        XCTAssertEqual(store.rememberedAccessDirectories, [home])
     }
 
     func testStaleOlderStreamResultsCannotOverwriteNewerDirectoryRequest() {
@@ -297,6 +330,50 @@ final class FileBrowserModelTests: XCTestCase {
 
         model.handle(.right)
 
+        XCTAssertEqual(model.wobbleReason, .cannotEnterFile)
+    }
+
+    func testRightEntersSymbolicLinkThatResolvesToDirectory() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let link = home.appendingPathComponent("Sample Cloud Target")
+        let linkedDirectory = home
+            .appendingPathComponent("Library", isDirectory: true)
+            .appendingPathComponent("CloudStorage", isDirectory: true)
+            .appendingPathComponent("SampleCloudTarget", isDirectory: true)
+        let child = linkedDirectory.appendingPathComponent("Reports", isDirectory: true)
+        let client = StubFileSystemClient(home: home, entriesByDirectory: [
+            home: [symbolicLinkEntry(link)],
+            linkedDirectory: [directoryEntry(child)]
+        ], resolvedDirectoriesByURL: [link: linkedDirectory])
+        let model = FileBrowserModel(
+            fileSystem: client,
+            store: InMemoryFileBrowserStore(state: .defaultValue),
+            directoryStream: ImmediateDirectoryStream(fileSystem: client)
+        )
+
+        model.handle(.right)
+
+        XCTAssertEqual(model.currentDirectory, linkedDirectory.standardizedFileURL)
+        XCTAssertEqual(model.entries.map(\.name), ["Reports"])
+        XCTAssertNil(model.wobbleReason)
+    }
+
+    func testRightOnPackageDoesNotEnterEvenWhenPackageIsFilesystemDirectory() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let appBundle = home.appendingPathComponent("Bucky.app", isDirectory: true)
+        let client = StubFileSystemClient(home: home, entriesByDirectory: [
+            home: [packageEntry(appBundle)],
+            appBundle: [fileEntry(appBundle.appendingPathComponent("Contents"))]
+        ])
+        let model = FileBrowserModel(
+            fileSystem: client,
+            store: InMemoryFileBrowserStore(state: .defaultValue),
+            directoryStream: ImmediateDirectoryStream(fileSystem: client)
+        )
+
+        model.handle(.right)
+
+        XCTAssertEqual(model.currentDirectory, home)
         XCTAssertEqual(model.wobbleReason, .cannotEnterFile)
     }
 
@@ -613,6 +690,28 @@ final class FileBrowserModelTests: XCTestCase {
             url: fallbackModel.selectedEntry!.url,
             mode: .metadataFallback
         )))
+    }
+
+    func testQuickLookPreviewFollowsSelectionWhileHeld() {
+        let service = RecordingFileBrowserServices()
+        let model = makeModel(entries: entries(["one.png", "two.mov", "three.swift"]), fileServices: service)
+        let firstURL = model.entries[0].url
+        let secondURL = model.entries[1].url
+        let thirdURL = model.entries[2].url
+        service.previewModesByURL = [
+            firstURL: .nativeThumbnail,
+            secondURL: .video,
+            thirdURL: .codeText
+        ]
+
+        model.handle(.beginSpaceHold)
+        XCTAssertEqual(model.focusState, .quickLook(FileBrowserPreview(url: firstURL, mode: .nativeThumbnail)))
+
+        model.handle(.down)
+        XCTAssertEqual(model.focusState, .quickLook(FileBrowserPreview(url: secondURL, mode: .video)))
+
+        model.handle(.down)
+        XCTAssertEqual(model.focusState, .quickLook(FileBrowserPreview(url: thirdURL, mode: .codeText)))
     }
 
     func testQuickLookThumbnailLoadingUsesNativeServiceForSuccessAndFailure() {
@@ -1294,6 +1393,14 @@ final class FileBrowserModelTests: XCTestCase {
 
     private func directoryEntry(_ url: URL) -> FileBrowserEntry {
         FileBrowserEntry(url: url, kind: .directory, size: nil, createdAt: nil, modifiedAt: nil, isHidden: false)
+    }
+
+    private func symbolicLinkEntry(_ url: URL) -> FileBrowserEntry {
+        FileBrowserEntry(url: url, kind: .symbolicLink, size: nil, createdAt: nil, modifiedAt: nil, isHidden: false)
+    }
+
+    private func packageEntry(_ url: URL) -> FileBrowserEntry {
+        FileBrowserEntry(url: url, kind: .package, size: nil, createdAt: nil, modifiedAt: nil, isHidden: false)
     }
 
     private func fileEntry(_ url: URL) -> FileBrowserEntry {

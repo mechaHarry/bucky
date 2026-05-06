@@ -77,7 +77,7 @@ final class FileBrowserModel: ObservableObject {
     ) {
         self.fileSystem = fileSystem
         self.store = store
-        self.directoryStream = directoryStream ?? FileBrowserDirectoryStream(fileSystem: fileSystem)
+        self.directoryStream = directoryStream ?? FileBrowserDirectoryStream(fileSystem: fileSystem, accessStore: store)
         self.fileServices = fileServices
         self.sort = store.state.sort
         self.pinnedDirectories = store.state.pinnedDirectories
@@ -471,6 +471,7 @@ final class FileBrowserModel: ObservableObject {
     ) {
         isLoadingEntries = false
         entries = loadedEntries
+        store.rememberDirectoryAccess(currentDirectory)
         snapshotEntryCache[cacheKey(for: currentDirectory)] = entries
         selectEntry(matching: preferredSelection)
         rememberCurrentDirectorySelection()
@@ -537,6 +538,7 @@ final class FileBrowserModel: ObservableObject {
         rebuildDirectorySnapshots()
         rememberCurrentDirectorySelection()
         publishSelectionScrollEvent(anchor: anchor)
+        refreshQuickLookPreviewIfNeeded()
     }
 
     private func moveToParent() {
@@ -557,29 +559,38 @@ final class FileBrowserModel: ObservableObject {
     private func enterSelectedDirectoryOrWobble() {
         if let remembered = recentTraversalChain.first,
            let entry = selectedEntry,
-           entry.url.path == remembered.path,
-           entry.kind == .directory {
+           let targetDirectory = directoryURL(for: entry),
+           targetDirectory.path == remembered.standardizedFileURL.path {
             recentTraversalChain.removeFirst()
             rememberCurrentDirectorySelection()
             navigateToDirectory(
-                remembered,
-                selecting: recentTraversalChain.first ?? rememberedSelection(in: remembered),
+                targetDirectory,
+                selecting: recentTraversalChain.first ?? rememberedSelection(in: targetDirectory),
                 transition: .deeper
             )
             return
         }
 
-        guard let entry = selectedEntry, entry.kind == .directory else {
+        guard let entry = selectedEntry,
+              let child = directoryURL(for: entry) else {
             publishWobble(.cannotEnterFile)
             return
         }
-        let child = entry.url
         rememberCurrentDirectorySelection()
         navigateToDirectory(
             child,
             selecting: rememberedSelection(in: child),
             transition: .deeper
         )
+    }
+
+    private func directoryURL(for entry: FileBrowserEntry) -> URL? {
+        switch entry.kind {
+        case .directory, .symbolicLink, .other:
+            return fileSystem.resolvedDirectoryURL(for: entry.url)
+        case .file, .package:
+            return nil
+        }
     }
 
     private func prepareSpaceInteraction() {
@@ -691,9 +702,9 @@ final class FileBrowserModel: ObservableObject {
         let targetDirectory: URL
         let preferredSelection: URL?
 
-        if pinnedURLRepresentsDirectory(standardizedURL) {
-            targetDirectory = standardizedURL
-            preferredSelection = rememberedSelection(in: standardizedURL)
+        if let resolvedDirectory = fileSystem.resolvedDirectoryURL(for: standardizedURL) {
+            targetDirectory = resolvedDirectory
+            preferredSelection = rememberedSelection(in: resolvedDirectory)
         } else if let parent = fileSystem.parentURL(for: standardizedURL) {
             targetDirectory = parent.standardizedFileURL
             preferredSelection = standardizedURL
@@ -708,22 +719,6 @@ final class FileBrowserModel: ObservableObject {
             selecting: preferredSelection,
             transition: nil
         )
-    }
-
-    private func pinnedURLRepresentsDirectory(_ url: URL) -> Bool {
-        if url.hasDirectoryPath {
-            return true
-        }
-
-        if fileSystem.isDirectory(url) {
-            return true
-        }
-
-        return directorySnapshots
-            .lazy
-            .flatMap(\.entries)
-            .first { $0.url.standardizedFileURL.path == url.standardizedFileURL.path }?
-            .kind == .directory
     }
 
     private func togglePinSelectedItem() {
@@ -826,10 +821,22 @@ final class FileBrowserModel: ObservableObject {
 
     private func beginQuickLook() {
         guard let url = pendingSpaceInteractionURL ?? selectedEntry?.url else { return }
-        focusState = .quickLook(FileBrowserPreview(
+        focusState = .quickLook(preview(for: url))
+    }
+
+    private func refreshQuickLookPreviewIfNeeded() {
+        guard case .quickLook = focusState,
+              let url = selectedEntry?.url else {
+            return
+        }
+        focusState = .quickLook(preview(for: url))
+    }
+
+    private func preview(for url: URL) -> FileBrowserPreview {
+        FileBrowserPreview(
             url: url,
             mode: fileServices.previewMode(for: url)
-        ))
+        )
     }
 
     private func endQuickLook() {
@@ -878,7 +885,8 @@ final class FileBrowserModel: ObservableObject {
                 .map { FileBrowserRememberedSelection(directory: $0.key, selection: $0.value) }
                 .sorted { lhs, rhs in
                     lhs.directory.path.localizedStandardCompare(rhs.directory.path) == .orderedAscending
-                }
+                },
+            directoryBookmarks: store.state.directoryBookmarks
         ))
     }
 }

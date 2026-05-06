@@ -19,7 +19,37 @@ struct FileSystemClient {
     }
 
     func isDirectory(_ url: URL) -> Bool {
-        (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+        resolvedDirectoryURL(for: url) != nil
+    }
+
+    func resolvedDirectoryURL(for url: URL) -> URL? {
+        let standardized = url.standardizedFileURL
+
+        if let resolvedAliasURL = try? URL(resolvingAliasFileAt: standardized),
+           let resolvedAliasDirectory = existingDirectoryURL(for: resolvedAliasURL) {
+            return resolvedAliasDirectory
+        }
+
+        let resolvedSymlinkURL = standardized.resolvingSymlinksInPath()
+        if resolvedSymlinkURL.path != standardized.path,
+           let resolvedSymlinkDirectory = existingDirectoryURL(for: resolvedSymlinkURL) {
+            return resolvedSymlinkDirectory
+        }
+
+        return existingDirectoryURL(for: standardized)
+    }
+
+    private func existingDirectoryURL(for url: URL) -> URL? {
+        var directoryFlag = ObjCBool(false)
+        if fileManager.fileExists(atPath: url.path, isDirectory: &directoryFlag) {
+            return directoryFlag.boolValue ? url.standardizedFileURL : nil
+        }
+
+        if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
+            return url.standardizedFileURL
+        }
+
+        return nil
     }
 
     func entries(in directory: URL, sort: FileBrowserSort) throws -> [FileBrowserEntry] {
@@ -27,6 +57,7 @@ struct FileSystemClient {
             .isDirectoryKey,
             .isPackageKey,
             .isSymbolicLinkKey,
+            .isAliasFileKey,
             .isHiddenKey,
             .fileSizeKey,
             .creationDateKey,
@@ -60,7 +91,7 @@ struct FileSystemClient {
     }
 
     private func kind(for values: URLResourceValues) -> FileBrowserEntry.Kind {
-        if values.isSymbolicLink == true {
+        if values.isSymbolicLink == true || values.isAliasFile == true {
             return .symbolicLink
         }
         if values.isPackage == true {

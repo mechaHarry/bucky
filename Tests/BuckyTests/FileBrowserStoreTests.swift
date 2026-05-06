@@ -32,6 +32,7 @@ final class FileBrowserStoreTests: XCTestCase {
 
     func testSaveAndReloadPersistsPinsLastDirectorySortTraversalChainAndRememberedSelections() {
         let store = FileBrowserStore(fileURL: fileURL)
+        let bookmarkData = Data([1, 2, 3, 4])
         let state = FileBrowserPersistedState(
             pinnedDirectories: [URL(fileURLWithPath: "/Users/test")],
             lastDirectory: URL(fileURLWithPath: "/Users/test/Projects"),
@@ -42,6 +43,12 @@ final class FileBrowserStoreTests: XCTestCase {
                     directory: URL(fileURLWithPath: "/Users/test/Projects"),
                     selection: URL(fileURLWithPath: "/Users/test/Projects/README.md")
                 )
+            ],
+            directoryBookmarks: [
+                FileBrowserDirectoryBookmark(
+                    directory: URL(fileURLWithPath: "/Users/test/Projects"),
+                    bookmarkData: bookmarkData
+                )
             ]
         )
 
@@ -49,5 +56,9 @@ final class FileBrowserStoreTests: XCTestCase {
 
         let reloaded = FileBrowserStore(fileURL: fileURL)
         XCTAssertEqual(reloaded.state, state)
+        XCTAssertEqual(
+            reloaded.bookmarkData(for: URL(fileURLWithPath: "/Users/test/Projects")),
+            bookmarkData
+        )
     }
 }

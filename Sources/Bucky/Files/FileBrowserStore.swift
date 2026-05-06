@@ -34,6 +34,30 @@ final class FileBrowserStore {
         save()
     }
 
+    func bookmarkData(for directory: URL) -> Data? {
+        let standardizedDirectory = directory.standardizedFileURL
+        return state.directoryBookmarks.first {
+            $0.directory.standardizedFileURL.path == standardizedDirectory.path
+        }?.bookmarkData
+    }
+
+    func rememberDirectoryAccess(_ directory: URL) {
+        guard let bookmarkData = FileBrowserSecurityScopedBookmarkPolicy.bookmarkData(for: directory) else {
+            return
+        }
+
+        let standardizedDirectory = directory.standardizedFileURL
+        var nextState = state
+        nextState.directoryBookmarks.removeAll {
+            $0.directory.standardizedFileURL.path == standardizedDirectory.path
+        }
+        nextState.directoryBookmarks.append(FileBrowserDirectoryBookmark(
+            directory: standardizedDirectory,
+            bookmarkData: bookmarkData
+        ))
+        update(nextState)
+    }
+
     private func save() {
         do {
             try fileManager.createDirectory(
@@ -47,5 +71,52 @@ final class FileBrowserStore {
         } catch {
             NSLog("Bucky could not save file browser state at %@: %@", fileURL.path, error.localizedDescription)
         }
+    }
+}
+
+enum FileBrowserSecurityScopedBookmarkPolicy {
+    static func bookmarkData(for directory: URL) -> Data? {
+        try? directory.bookmarkData(
+            options: [.withSecurityScope],
+            includingResourceValuesForKeys: nil,
+            relativeTo: nil
+        )
+    }
+
+    static func withAccess<T>(
+        to directory: URL,
+        bookmarkData: Data?,
+        perform operation: () throws -> T
+    ) rethrows -> T {
+        var didStartAccess = false
+        var scopedURL: URL?
+
+        if let bookmarkData,
+           let resolved = resolveURL(for: bookmarkData, fallbackDirectory: directory) {
+            scopedURL = resolved
+            didStartAccess = resolved.startAccessingSecurityScopedResource()
+        }
+
+        defer {
+            if didStartAccess {
+                scopedURL?.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        return try operation()
+    }
+
+    private static func resolveURL(for bookmarkData: Data, fallbackDirectory: URL) -> URL? {
+        var isStale = false
+        if let resolved = try? URL(
+            resolvingBookmarkData: bookmarkData,
+            options: [.withSecurityScope, .withoutUI],
+            relativeTo: nil,
+            bookmarkDataIsStale: &isStale
+        ), !isStale {
+            return resolved
+        }
+
+        return fallbackDirectory
     }
 }
