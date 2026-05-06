@@ -1,59 +1,176 @@
 import SwiftUI
 
+struct FadeMarqueeTextLayoutPolicy {
+    static let edgePauseSeconds: TimeInterval = 0.72
+    static let minimumTravelSeconds: TimeInterval = 1.8
+    static let maximumTravelSeconds: TimeInterval = 7.5
+    static let pointsPerSecond: CGFloat = 72
+    static let fadeActivationDistance: CGFloat = 22
+
+    static func overflow(contentWidth: CGFloat, containerWidth: CGFloat) -> CGFloat {
+        max(0, contentWidth - containerWidth)
+    }
+
+    static func shouldMarquee(contentWidth: CGFloat, containerWidth: CGFloat, reduceMotion: Bool) -> Bool {
+        containerWidth > 1
+            && overflow(contentWidth: contentWidth, containerWidth: containerWidth) > 1
+            && !reduceMotion
+    }
+
+    static func travelDuration(forOverflow overflow: CGFloat) -> TimeInterval {
+        let unclamped = TimeInterval(max(0, overflow) / pointsPerSecond)
+        return min(max(unclamped, minimumTravelSeconds), maximumTravelSeconds)
+    }
+
+    static func cycleDuration(forOverflow overflow: CGFloat) -> TimeInterval {
+        edgePauseSeconds * 2 + travelDuration(forOverflow: overflow) * 2
+    }
+
+    static func scrollProgress(elapsed: TimeInterval, overflow: CGFloat) -> CGFloat {
+        let travelDuration = travelDuration(forOverflow: overflow)
+        let cycleDuration = cycleDuration(forOverflow: overflow)
+        guard cycleDuration > 0 else { return 0 }
+
+        var phase = elapsed.truncatingRemainder(dividingBy: cycleDuration)
+        if phase < 0 {
+            phase += cycleDuration
+        }
+
+        if phase < edgePauseSeconds {
+            return 0
+        }
+
+        phase -= edgePauseSeconds
+        if phase < travelDuration {
+            return easedProgress(CGFloat(phase / travelDuration))
+        }
+
+        phase -= travelDuration
+        if phase < edgePauseSeconds {
+            return 1
+        }
+
+        phase -= edgePauseSeconds
+        if phase < travelDuration {
+            return 1 - easedProgress(CGFloat(phase / travelDuration))
+        }
+
+        return 0
+    }
+
+    static func offset(forProgress progress: CGFloat, overflow: CGFloat) -> CGFloat {
+        -max(0, overflow) * min(1, max(0, progress))
+    }
+
+    static func leadingFadeStrength(offset: CGFloat, overflow: CGFloat) -> Double {
+        guard overflow > 1 else { return 0 }
+        return Double(min(1, max(0, -offset / fadeActivationDistance)))
+    }
+
+    static func trailingFadeStrength(offset: CGFloat, overflow: CGFloat) -> Double {
+        guard overflow > 1 else { return 0 }
+        return Double(min(1, max(0, (overflow + offset) / fadeActivationDistance)))
+    }
+
+    private static func easedProgress(_ progress: CGFloat) -> CGFloat {
+        0.5 - 0.5 * cos(min(1, max(0, progress)) * .pi)
+    }
+}
+
 @available(macOS 26.0, *)
 struct FadeMarqueeText: View {
     let text: String
     var font: Font = .body
+    var constrainedWidth: CGFloat?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var containerWidth: CGFloat = 0
     @State private var contentWidth: CGFloat = 0
+    @State private var animationStartDate = Date()
 
     var body: some View {
-        let overflow = max(0, contentWidth - containerWidth)
+        let measuredContainerWidth = constrainedWidth ?? containerWidth
+        let overflow = FadeMarqueeTextLayoutPolicy.overflow(
+            contentWidth: contentWidth,
+            containerWidth: measuredContainerWidth
+        )
 
         Group {
-            if overflow > 1, !reduceMotion {
-                TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
-                    marqueeText(offset: -overflow * oscillation(at: timeline.date), overflow: overflow)
-                }
+            if FadeMarqueeTextLayoutPolicy.shouldMarquee(
+                contentWidth: contentWidth,
+                containerWidth: measuredContainerWidth,
+                reduceMotion: reduceMotion
+            ) {
+                animatedMarqueeText(overflow: overflow, measuredContainerWidth: measuredContainerWidth)
             } else {
-                marqueeText(offset: 0, overflow: overflow)
+                marqueeText(offset: 0, overflow: overflow, viewportWidth: measuredContainerWidth)
             }
         }
         .readContainerWidth($containerWidth)
+        .onAppear {
+            animationStartDate = Date()
+        }
+        .onChange(of: text) {
+            animationStartDate = Date()
+        }
     }
 
-    private func marqueeText(offset: CGFloat, overflow: CGFloat) -> some View {
-        Text(text)
+    @ViewBuilder
+    private func animatedMarqueeText(overflow: CGFloat, measuredContainerWidth: CGFloat) -> some View {
+        TimelineView(.animation) { timeline in
+            marqueeText(
+                offset: offset(at: timeline.date, overflow: overflow),
+                overflow: overflow,
+                viewportWidth: measuredContainerWidth
+            )
+        }
+    }
+
+    private func marqueeText(offset: CGFloat, overflow: CGFloat, viewportWidth: CGFloat) -> some View {
+        let explicitWidth = viewportWidth > 0 ? viewportWidth : constrainedWidth
+
+        return Text(text)
             .font(font)
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
             .offset(x: offset)
-            .readContentWidth($contentWidth)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(width: explicitWidth, alignment: .leading)
+            .frame(maxWidth: explicitWidth == nil ? .infinity : nil, alignment: .leading)
             .clipped()
+            .background(alignment: .leading) {
+                measuredText
+            }
             .mask {
                 fadeMask(offset: offset, overflow: overflow)
             }
     }
 
-    private func oscillation(at date: Date) -> CGFloat {
-        let period = 5.2
-        let phase = date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: period) / period
-        return 0.5 - 0.5 * cos(phase * 2 * .pi)
+    private var measuredText: some View {
+        Text(text)
+            .font(font)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+            .readContentWidth($contentWidth)
+            .opacity(0)
+            .accessibilityHidden(true)
+    }
+
+    private func offset(at date: Date, overflow: CGFloat) -> CGFloat {
+        let elapsed = date.timeIntervalSince(animationStartDate)
+        let progress = FadeMarqueeTextLayoutPolicy.scrollProgress(elapsed: elapsed, overflow: overflow)
+        return FadeMarqueeTextLayoutPolicy.offset(forProgress: progress, overflow: overflow)
     }
 
     private func fadeMask(offset: CGFloat, overflow: CGFloat) -> some View {
-        let leadingFades = overflow > 1 && offset < -1
-        let trailingFades = overflow > 1 && offset > -overflow + 1
+        let leadingFadeStrength = FadeMarqueeTextLayoutPolicy.leadingFadeStrength(offset: offset, overflow: overflow)
+        let trailingFadeStrength = FadeMarqueeTextLayoutPolicy.trailingFadeStrength(offset: offset, overflow: overflow)
 
         return LinearGradient(
             stops: [
-                .init(color: leadingFades ? .clear : .black, location: 0),
+                .init(color: .black.opacity(1 - leadingFadeStrength), location: 0),
                 .init(color: .black, location: 0.08),
                 .init(color: .black, location: 0.92),
-                .init(color: trailingFades ? .clear : .black, location: 1)
+                .init(color: .black.opacity(1 - trailingFadeStrength), location: 1)
             ],
             startPoint: .leading,
             endPoint: .trailing

@@ -69,7 +69,8 @@ struct ModeSwitcherView: View {
 
                             FadeMarqueeText(
                                 text: displayedFileURL.path,
-                                font: .system(size: 16, weight: .semibold)
+                                font: .system(size: 16, weight: .semibold),
+                                constrainedWidth: pathWidth
                             )
                             .frame(width: pathWidth, height: ModeSwitcherLayoutPolicy.filesPathTextHeight, alignment: .leading)
                             .clipped()
@@ -142,8 +143,8 @@ struct ModeSwitcherLayoutPolicy {
     static let activeTextPillIconHeight: CGFloat = activeTextPillControlHeight
     static let activeTextPillInputHeight: CGFloat = activeTextPillControlHeight
     static let activeTextPillInputVerticalOffset: CGFloat = 0
-    static let activeTextPillCalculatorIconVerticalOffset: CGFloat = -1
-    static let activeTextPillDictionaryIconVerticalOffset: CGFloat = -1
+    static let activeTextPillCalculatorIconVerticalOffset: CGFloat = 0
+    static let activeTextPillDictionaryIconVerticalOffset: CGFloat = 0
     static let filesPillLeadingPadding: CGFloat = 16
     static let filesPillTrailingPadding: CGFloat = 12
     static let filesContentSpacing: CGFloat = 12
@@ -161,6 +162,11 @@ struct ModeSwitcherLayoutPolicy {
     }
 
     static func filesPathTextWidth(in pillWidth: CGFloat, path: String) -> CGFloat {
+        let fixedWidth = filesPathIconWidth + filesPathIconSpacing
+        return max(0, filesPathButtonWidth(in: pillWidth) - fixedWidth)
+    }
+
+    static func filesPathMarqueeWidth(in pillWidth: CGFloat) -> CGFloat {
         let fixedWidth = filesPathIconWidth + filesPathIconSpacing
         return max(0, filesPathButtonWidth(in: pillWidth) - fixedWidth)
     }
