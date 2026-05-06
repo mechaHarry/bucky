@@ -145,23 +145,56 @@ struct MacFileServices: FileBrowserNativeServicing {
     }
 
     func previewMode(for url: URL) -> FileBrowserPreviewMode {
+        let previewURL = previewContentURL(for: url)
         var isDirectory: ObjCBool = false
-        guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory),
+        guard fileManager.fileExists(atPath: previewURL.path, isDirectory: &isDirectory),
               !isDirectory.boolValue else {
             return .metadataFallback
         }
 
-        if let type = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType,
+        let pathExtension = previewURL.pathExtension.lowercased()
+        if Self.codePreviewExtensions.contains(pathExtension) {
+            return .codeText
+        }
+
+        if let type = try? previewURL.resourceValues(forKeys: [.contentTypeKey]).contentType,
+           Self.videoPreviewTypes.contains(where: { type.conforms(to: $0) }) {
+            return .video
+        }
+
+        if let type = UTType(filenameExtension: pathExtension),
+           Self.videoPreviewTypes.contains(where: { type.conforms(to: $0) }) {
+            return .video
+        }
+
+        if let type = try? previewURL.resourceValues(forKeys: [.contentTypeKey]).contentType,
            Self.nativePreviewTypes.contains(where: { type.conforms(to: $0) }) {
             return .nativeThumbnail
         }
 
-        if let type = UTType(filenameExtension: url.pathExtension),
+        if let type = UTType(filenameExtension: pathExtension),
            Self.nativePreviewTypes.contains(where: { type.conforms(to: $0) }) {
             return .nativeThumbnail
         }
 
         return .metadataFallback
+    }
+
+    func previewContentURL(for url: URL) -> URL {
+        let standardized = url.standardizedFileURL
+
+        if let resolvedAlias = try? URL(resolvingAliasFileAt: standardized),
+           existingPreviewFileURL(for: resolvedAlias) != nil {
+            return resolvedAlias.standardizedFileURL
+        }
+
+        let resolvedSymlink = standardized.resolvingSymlinksInPath()
+        if resolvedSymlink.path != standardized.path,
+           existingPreviewFileURL(for: resolvedSymlink) != nil {
+            return resolvedSymlink.standardizedFileURL
+        }
+
+        return standardized
     }
 
     func loadPreviewThumbnail(
@@ -171,7 +204,7 @@ struct MacFileServices: FileBrowserNativeServicing {
         completion: @escaping (NSImage?) -> Void
     ) {
         let request = QLThumbnailGenerator.Request(
-            fileAt: url,
+            fileAt: previewContentURL(for: url),
             size: size,
             scale: scale,
             representationTypes: .all
@@ -216,6 +249,16 @@ struct MacFileServices: FileBrowserNativeServicing {
         case .cancel:
             return nil
         }
+    }
+
+    private func existingPreviewFileURL(for url: URL) -> URL? {
+        var isDirectory = ObjCBool(false)
+        guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory),
+              !isDirectory.boolValue else {
+            return nil
+        }
+
+        return url.standardizedFileURL
     }
 
     private func copyReplacingItem(at destination: URL, with source: URL) throws {
@@ -280,13 +323,20 @@ struct MacFileServices: FileBrowserNativeServicing {
 
     private static let nativePreviewTypes: [UTType] = [
         .image,
-        .pdf,
-        .plainText,
-        .text,
-        .rtf,
+        .pdf
+    ]
+
+    private static let videoPreviewTypes: [UTType] = [
         .movie,
-        .audio,
         .mpeg4Movie,
         .quickTimeMovie
+    ]
+
+    private static let codePreviewExtensions: Set<String> = [
+        "bash", "c", "cc", "conf", "cpp", "css", "go", "h", "hpp",
+        "html", "ini", "java", "js", "json", "jsx", "m", "markdown",
+        "md", "mm", "pem", "plist", "py", "rb", "rs", "scss", "sh",
+        "sql", "swift", "tf", "toml", "ts", "tsx", "txt", "xml", "yaml",
+        "yml", "zsh"
     ]
 }

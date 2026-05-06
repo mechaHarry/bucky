@@ -187,16 +187,42 @@ final class MacFileServicesTests: XCTestCase {
     }
 
     func testPreviewModeUsesNativeThumbnailForSupportedFilesAndFallbackOtherwise() throws {
-        let textFile = temporaryDirectory.appendingPathComponent("notes.txt")
+        let imageFile = temporaryDirectory.appendingPathComponent("image.png")
+        let codeFile = temporaryDirectory.appendingPathComponent("notes.swift")
+        let markdownFile = temporaryDirectory.appendingPathComponent("notes.md")
+        let videoFile = temporaryDirectory.appendingPathComponent("clip.mov")
         let unsupportedFile = temporaryDirectory.appendingPathComponent("archive.buckyblob")
         let directory = temporaryDirectory.appendingPathComponent("Folder", isDirectory: true)
-        try "notes".write(to: textFile, atomically: true, encoding: .utf8)
+        try "png".write(to: imageFile, atomically: true, encoding: .utf8)
+        try "let value = 1".write(to: codeFile, atomically: true, encoding: .utf8)
+        try "# Notes".write(to: markdownFile, atomically: true, encoding: .utf8)
+        try "mov".write(to: videoFile, atomically: true, encoding: .utf8)
         try "blob".write(to: unsupportedFile, atomically: true, encoding: .utf8)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let services = MacFileServices(fileManager: .default)
 
-        XCTAssertEqual(services.previewMode(for: textFile), .nativeThumbnail)
+        XCTAssertEqual(services.previewMode(for: imageFile), .nativeThumbnail)
+        XCTAssertEqual(services.previewMode(for: codeFile), .codeText)
+        XCTAssertEqual(services.previewMode(for: markdownFile), .codeText)
+        XCTAssertEqual(services.previewMode(for: videoFile), .video)
         XCTAssertEqual(services.previewMode(for: unsupportedFile), .metadataFallback)
         XCTAssertEqual(services.previewMode(for: directory), .metadataFallback)
+    }
+
+    func testPreviewModeUsesSymlinkTargetFileContentType() throws {
+        let imageTarget = temporaryDirectory.appendingPathComponent("image.png")
+        let codeTarget = temporaryDirectory.appendingPathComponent("terraform.json")
+        let imageLink = temporaryDirectory.appendingPathComponent("LinkedImage")
+        let codeLink = temporaryDirectory.appendingPathComponent("LinkedTerraform")
+        try "png".write(to: imageTarget, atomically: true, encoding: .utf8)
+        try "{\"resource\":true}".write(to: codeTarget, atomically: true, encoding: .utf8)
+        try FileManager.default.createSymbolicLink(at: imageLink, withDestinationURL: imageTarget)
+        try FileManager.default.createSymbolicLink(at: codeLink, withDestinationURL: codeTarget)
+        let services = MacFileServices(fileManager: .default)
+
+        XCTAssertEqual(services.previewContentURL(for: imageLink), imageTarget.standardizedFileURL)
+        XCTAssertEqual(services.previewContentURL(for: codeLink), codeTarget.standardizedFileURL)
+        XCTAssertEqual(services.previewMode(for: imageLink), .nativeThumbnail)
+        XCTAssertEqual(services.previewMode(for: codeLink), .codeText)
     }
 }
