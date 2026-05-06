@@ -1,11 +1,18 @@
 import AppKit
+import AVKit
 import SwiftUI
 
 @available(macOS 26.0, *)
 struct FileBrowserView: View {
     @ObservedObject var model: FileBrowserModel
+    @Namespace private var browseSelectionGlassNamespace
+    @Namespace private var pinnedSelectionGlassNamespace
     @State private var transferGlow = false
     @State private var wobblePhase: CGFloat = 0
+    @State private var browseScrollTargetID: URL?
+    @State private var browseScrollTargetAnchor: UnitPoint?
+    @State private var pinnedScrollTargetID: URL?
+    @State private var handledSelectionScrollEventID = 0
 
     var body: some View {
         ZStack(alignment: .trailing) {
@@ -29,6 +36,7 @@ struct FileBrowserView: View {
 
             if case let .quickLook(preview) = model.focusState {
                 QuickLookPreviewSurface(model: model, preview: preview, entry: model.entry(for: preview.url))
+                    .id(preview.url)
                     .transition(.scale(scale: 0.96).combined(with: .opacity))
             }
 
@@ -85,14 +93,31 @@ struct FileBrowserView: View {
             if model.pinnedDirectories.isEmpty {
                 placeholder("Pinned items will appear here")
             } else {
-                ForEach(Array(model.pinnedDirectories.enumerated()), id: \.element) { index, url in
-                    FileBrowserPinnedRow(
-                        url: url,
-                        isSelected: model.focusState == .pinnedItems && index == model.focusedPinnedIndex,
-                        model: model
-                    )
-                    .help(url.path)
+                LauncherResultList(
+                    scrollTargetID: $pinnedScrollTargetID,
+                    reconstructionID: pinnedReconstructionIdentity
+                ) {
+                    ForEach(Array(model.pinnedDirectories.enumerated()), id: \.element) { index, url in
+                        FileBrowserPinnedRow(
+                            url: url,
+                            isSelected: model.focusState == .pinnedItems && index == model.focusedPinnedIndex,
+                            selectionNamespace: pinnedSelectionGlassNamespace,
+                            model: model
+                        )
+                        .id(url)
+                        .help(url.path)
+                    }
                 }
+                .onAppear {
+                    scrollFocusedPin(animated: false)
+                }
+                .onChange(of: model.focusedPinnedIndex) { _, _ in
+                    scrollFocusedPin(animated: true)
+                }
+                .onChange(of: model.focusState) { _, _ in
+                    scrollFocusedPin(animated: true)
+                }
+                .frame(maxHeight: .infinity)
             }
 
             Spacer(minLength: 0)
@@ -120,43 +145,37 @@ struct FileBrowserView: View {
                     .foregroundStyle(.tertiary)
             }
 
-            ScrollViewReader { proxy in
-                ZStack {
-                    ScrollView(.vertical, showsIndicators: false) {
-                        LazyVStack(spacing: 5) {
-                            ForEach(Array(model.entries.enumerated()), id: \.element.url) { index, entry in
-                                FileBrowserRow(
-                                    entry: entry,
-                                    isSelected: entry.url == model.selectedEntry?.url,
-                                    isMarked: model.selectedURLs.contains(entry.url),
-                                    model: model
-                                )
-                                .id(entry.url)
-                                .transition(.opacity.combined(with: .move(edge: .top)))
-                                .animation(
-                                    .smooth(duration: FileBrowserMotionPolicy.listReconstructionAnimationSeconds),
-                                    value: model.entries.map(\.url)
-                                )
-                            }
-                        }
-                        .padding(.vertical, 1)
+            ZStack {
+                LauncherResultList(
+                    scrollTargetID: $browseScrollTargetID,
+                    scrollTargetAnchor: browseScrollTargetAnchor,
+                    reconstructionID: entriesReconstructionIdentity
+                ) {
+                    ForEach(Array(model.entries.enumerated()), id: \.element.url) { _, entry in
+                        FileBrowserRow(
+                            entry: entry,
+                            isSelected: entry.url == model.selectedEntry?.url,
+                            isMarked: model.selectedURLs.contains(entry.url),
+                            selectionNamespace: browseSelectionGlassNamespace,
+                            model: model
+                        )
+                        .id(entry.url)
                     }
-                    .scrollIndicators(.hidden)
+                }
 
-                    if model.entries.isEmpty {
-                        placeholder(model.isLoadingEntries ? "Loading files" : "No readable files")
-                            .transition(.opacity)
-                    }
+                if model.entries.isEmpty {
+                    placeholder(model.isLoadingEntries ? "Loading files" : "No readable files")
+                        .transition(.opacity)
                 }
-                .onAppear {
-                    scrollSelectedEntry(in: proxy)
-                }
-                .onChange(of: model.entries.map(\.url)) { _, _ in
-                    scrollSelectedEntry(in: proxy)
-                }
-                .onChange(of: model.selectionScrollEvent?.id) { _, _ in
-                    scrollSelectionEvent(in: proxy)
-                }
+            }
+            .onAppear {
+                scrollSelectedEntry(animated: false)
+            }
+            .onChange(of: model.entries.map(\.url)) { _, _ in
+                scrollSelectedEntry(animated: false)
+            }
+            .onChange(of: model.selectionScrollEvent?.id) { _, _ in
+                scrollSelectionEvent()
             }
 
             Spacer(minLength: 0)
@@ -172,11 +191,10 @@ struct FileBrowserView: View {
 
     private var actionOverlay: some View {
         VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Actions")
-                    .font(.headline)
-                selectionSummary
-            }
+            FileBrowserActionSelectionSummary(
+                urls: model.activeSelectionURLs,
+                model: model
+            )
 
             Divider()
                 .opacity(0.42)
@@ -190,8 +208,9 @@ struct FileBrowserView: View {
                 }
             }
         }
-        .padding(16)
-        .frame(width: 286)
+        .padding(FileBrowserActionPaneLayoutPolicy.padding)
+        .frame(width: FileBrowserActionPaneLayoutPolicy.width)
+        .clipped()
         .glassEffect(.regular.interactive(false), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -199,31 +218,6 @@ struct FileBrowserView: View {
         }
         .shadow(color: .black.opacity(0.24), radius: 24, x: 0, y: 14)
         .padding(18)
-    }
-
-    @ViewBuilder
-    private var selectionSummary: some View {
-        let urls = model.activeSelectionURLs
-
-        if urls.count <= 1, let url = urls.first {
-            FadeMarqueeText(text: url.path, font: .caption)
-                .foregroundStyle(.secondary)
-                .frame(height: 16)
-        } else {
-            VStack(alignment: .leading, spacing: 5) {
-                ForEach(selectionGroups, id: \.parent) { group in
-                    HStack(spacing: 8) {
-                        Text("\(group.count)")
-                            .font(.caption.monospacedDigit().weight(.semibold))
-                            .foregroundStyle(.primary)
-                            .frame(width: 28, alignment: .trailing)
-                        FadeMarqueeText(text: group.parent.path, font: .caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(height: 16)
-                }
-            }
-        }
     }
 
     private var transferHint: some View {
@@ -295,15 +289,6 @@ struct FileBrowserView: View {
         .padding(.bottom, 18)
     }
 
-    private var selectionGroups: [(parent: URL, count: Int)] {
-        let grouped = Dictionary(grouping: model.activeSelectionURLs) { url in
-            url.deletingLastPathComponent()
-        }
-        return grouped
-            .map { (parent: $0.key, count: $0.value.count) }
-            .sorted { lhs, rhs in lhs.parent.path.localizedStandardCompare(rhs.parent.path) == .orderedAscending }
-    }
-
     private var isTransferPending: Bool {
         if case .transferPending = model.focusState {
             return true
@@ -311,48 +296,64 @@ struct FileBrowserView: View {
         return false
     }
 
-    private func scrollSelectedEntry(in proxy: ScrollViewProxy) {
-        guard let url = model.selectedEntry?.url else { return }
-        scrollEntry(url, anchor: .top, in: proxy, animated: true)
+    private var entriesReconstructionIdentity: AnyHashable {
+        AnyHashable(model.entries.map(\.url.path).joined(separator: "\u{1F}"))
     }
 
-    private func scrollSelectionEvent(in proxy: ScrollViewProxy) {
-        guard let event = model.selectionScrollEvent else { return }
-        scrollEntry(event.url, anchor: event.anchor, in: proxy, animated: false)
+    private var pinnedReconstructionIdentity: AnyHashable {
+        AnyHashable(model.pinnedDirectories.map(\.path).joined(separator: "\u{1F}"))
+    }
+
+    private func scrollSelectedEntry(animated: Bool) {
+        guard let url = model.selectedEntry?.url else { return }
+        scrollEntry(url, anchor: .nearest, animated: animated)
+    }
+
+    private func scrollSelectionEvent() {
+        guard let event = model.selectionScrollEvent,
+              event.id != handledSelectionScrollEventID else {
+            return
+        }
+        handledSelectionScrollEventID = event.id
+        scrollEntry(event.url, anchor: event.anchor, animated: false)
     }
 
     private func scrollEntry(
         _ url: URL,
         anchor: FileBrowserSelectionScrollAnchor,
-        in proxy: ScrollViewProxy,
         animated: Bool
     ) {
         guard model.entries.contains(where: { $0.url == url }) else { return }
-        DispatchQueue.main.async {
-            if animated {
-                withAnimation(.easeInOut(duration: 0.20)) {
-                    scrollTo(url, anchor: anchor, in: proxy)
-                }
-            } else {
-                var transaction = Transaction()
-                transaction.disablesAnimations = true
-                withTransaction(transaction) {
-                    scrollTo(url, anchor: anchor, in: proxy)
-                }
-                DispatchQueue.main.async {
-                    withTransaction(transaction) {
-                        scrollTo(url, anchor: anchor, in: proxy)
-                    }
-                }
+        let unitPoint = anchor.unitPoint
+
+        if animated {
+            withAnimation(.smooth(duration: 0.16)) {
+                browseScrollTargetAnchor = unitPoint
+                browseScrollTargetID = url
+            }
+        } else {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                browseScrollTargetAnchor = unitPoint
+                browseScrollTargetID = url
             }
         }
     }
 
-    private func scrollTo(_ url: URL, anchor: FileBrowserSelectionScrollAnchor, in proxy: ScrollViewProxy) {
-        if let unitPoint = anchor.unitPoint {
-            proxy.scrollTo(url, anchor: unitPoint)
+    private func scrollFocusedPin(animated: Bool) {
+        guard let url = model.focusedPinnedURL else { return }
+
+        if animated {
+            withAnimation(.smooth(duration: 0.16)) {
+                pinnedScrollTargetID = url
+            }
         } else {
-            proxy.scrollTo(url)
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                pinnedScrollTargetID = url
+            }
         }
     }
 
@@ -373,6 +374,170 @@ struct FileBrowserView: View {
             .frame(maxWidth: .infinity, minHeight: 72)
             .background(.quaternary.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
+}
+
+@available(macOS 26.0, *)
+private struct FileBrowserActionSelectionSummary: View {
+    let urls: [URL]
+    @ObservedObject var model: FileBrowserModel
+
+    private var rows: FileBrowserActionPaneSelectionRows {
+        FileBrowserActionPaneSelectionPolicy.rows(for: urls)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Actions")
+                .font(.headline)
+
+            if urls.count <= 1, let url = urls.first {
+                singleSelectionSummary(url)
+            } else {
+                if FileBrowserActionPaneLayoutPolicy.usesCardStack(selectionCount: urls.count) {
+                    FileBrowserSelectionCardStack(urls: urls, model: model)
+                        .frame(width: FileBrowserActionPaneLayoutPolicy.contentWidth, height: FileBrowserActionPaneLayoutPolicy.cardStackHeight)
+                }
+
+                multipleSelectionSummary
+            }
+        }
+        .frame(width: FileBrowserActionPaneLayoutPolicy.contentWidth, alignment: .leading)
+    }
+
+    private func singleSelectionSummary(_ url: URL) -> some View {
+        HStack(spacing: 8) {
+            FileIconView(url: url, model: model)
+                .frame(width: 30, height: 30)
+
+            VStack(alignment: .leading, spacing: 4) {
+                boundedMarquee(url.lastPathComponent, font: .callout.weight(.semibold), height: 18, width: singleSelectionTextWidth)
+                boundedMarquee(url.path, font: .caption, height: 16, width: singleSelectionTextWidth)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: FileBrowserActionPaneLayoutPolicy.contentWidth, alignment: .leading)
+    }
+
+    private var multipleSelectionSummary: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("\(urls.count) selected")
+                .font(.caption.monospacedDigit().weight(.semibold))
+
+            if let parent = urls.first?.deletingLastPathComponent() {
+                boundedMarquee(parent.path, font: .caption, height: 16)
+                    .foregroundStyle(.secondary)
+            }
+
+            ForEach(rows.visible, id: \.self) { url in
+                HStack(spacing: 6) {
+                    FileIconView(url: url, model: model)
+                        .frame(width: 16, height: 16)
+
+                    FadeMarqueeText(
+                        text: url.lastPathComponent,
+                        font: .caption,
+                        constrainedWidth: FileBrowserActionPaneLayoutPolicy.contentWidth - 22
+                    )
+                    .frame(width: FileBrowserActionPaneLayoutPolicy.contentWidth - 22, height: FileBrowserActionPaneLayoutPolicy.selectionRowHeight, alignment: .leading)
+                }
+                .frame(width: FileBrowserActionPaneLayoutPolicy.contentWidth, height: FileBrowserActionPaneLayoutPolicy.selectionRowHeight, alignment: .leading)
+                .clipped()
+            }
+
+            if rows.remainingCount > 0 {
+                Text("+ \(rows.remainingCount) more")
+                    .font(.caption.monospacedDigit().weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .frame(height: FileBrowserActionPaneLayoutPolicy.selectionRowHeight)
+            }
+        }
+    }
+
+    private var singleSelectionTextWidth: CGFloat {
+        FileBrowserActionPaneLayoutPolicy.contentWidth - 38
+    }
+
+    private func boundedMarquee(
+        _ text: String,
+        font: Font,
+        height: CGFloat,
+        width: CGFloat = FileBrowserActionPaneLayoutPolicy.contentWidth
+    ) -> some View {
+        FadeMarqueeText(
+            text: text,
+            font: font,
+            constrainedWidth: width
+        )
+        .frame(width: width, height: height, alignment: .leading)
+        .clipped()
+    }
+}
+
+@available(macOS 26.0, *)
+private struct FileBrowserSelectionCardStack: View {
+    let urls: [URL]
+    @ObservedObject var model: FileBrowserModel
+
+    private var visibleURLs: [URL] {
+        Array(urls.prefix(5))
+    }
+
+    var body: some View {
+        ZStack {
+            if visibleURLs.isEmpty {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(.quaternary.opacity(0.18))
+            } else {
+                ForEach(Array(visibleURLs.enumerated()), id: \.element) { index, url in
+                    selectionCard(url)
+                        .rotationEffect(.degrees(rotation(for: index)))
+                        .offset(x: offset(for: index) * 22, y: yOffset(for: index))
+                        .zIndex(Double(index))
+                }
+
+                if urls.count > visibleURLs.count {
+                    Text("+\(urls.count - visibleURLs.count)")
+                        .font(.caption2.monospacedDigit().weight(.bold))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(Color.accentColor.opacity(0.22), in: Capsule())
+                        .overlay {
+                            Capsule().strokeBorder(Color.accentColor.opacity(0.36), lineWidth: 1)
+                        }
+                        .offset(x: 76, y: -18)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func selectionCard(_ url: URL) -> some View {
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .fill(Color(nsColor: .windowBackgroundColor).opacity(0.36))
+            .frame(width: 52, height: 46)
+            .overlay {
+                FileIconView(url: url, model: model)
+                    .frame(width: 34, height: 34)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(Color(nsColor: .separatorColor).opacity(0.36), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.22), radius: 8, x: 0, y: 5)
+    }
+
+    private func offset(for index: Int) -> CGFloat {
+        CGFloat(index) - CGFloat(visibleURLs.count - 1) / 2
+    }
+
+    private func rotation(for index: Int) -> Double {
+        Double(offset(for: index)) * 7
+    }
+
+    private func yOffset(for index: Int) -> CGFloat {
+        abs(offset(for: index)) * 3
+    }
+
 }
 
 @available(macOS 26.0, *)
@@ -410,31 +575,55 @@ private struct FileBrowserRow: View {
     let entry: FileBrowserEntry
     let isSelected: Bool
     let isMarked: Bool
+    let selectionNamespace: Namespace.ID
     @ObservedObject var model: FileBrowserModel
 
     var body: some View {
-        HStack(spacing: 12) {
-            FileIconView(url: entry.url, model: model)
-                .frame(width: 30, height: 30)
+        LauncherResultRow(
+            isSelected: isSelected,
+            isMarked: isMarked,
+            selectionNamespace: selectionNamespace,
+            horizontalPadding: 12,
+            verticalPadding: 8,
+            minHeight: 42
+        ) {
+            HStack(spacing: 12) {
+                FileIconView(url: entry.url, model: model)
+                    .frame(width: 30, height: 30)
 
-            FadeMarqueeText(text: entry.name, font: .system(size: 14, weight: .medium))
-                .foregroundStyle(.primary)
+                FileBrowserRowNameText(
+                    text: entry.name,
+                    font: .system(size: 14, weight: .medium),
+                    height: 18
+                )
+                    .layoutPriority(1)
 
-            Spacer(minLength: 8)
+                Spacer(minLength: 8)
 
-            if isMarked {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Color.accentColor)
+                if isMarked {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
+                }
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .frame(minHeight: 42)
-        .background {
-            FileBrowserGlassRowBackground(isSelected: isSelected, isMarked: isMarked)
+        .overlay(alignment: .leading) {
+            if isSelected {
+                Capsule()
+                    .fill(Color.accentColor)
+                    .frame(
+                        width: FileBrowserRowFocusIndicatorPolicy.activeIndicatorWidth,
+                        height: FileBrowserRowFocusIndicatorPolicy.activeIndicatorHeight
+                    )
+                    .shadow(color: Color.accentColor.opacity(0.5), radius: 5)
+                    .padding(.leading, 6)
+                    .allowsHitTesting(false)
+            }
         }
-        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            NativeFileDragSourceView(url: entry.url)
+                .accessibilityHidden(true)
+        }
     }
 }
 
@@ -442,75 +631,53 @@ private struct FileBrowserRow: View {
 private struct FileBrowserPinnedRow: View {
     let url: URL
     let isSelected: Bool
+    let selectionNamespace: Namespace.ID
     @ObservedObject var model: FileBrowserModel
 
     var body: some View {
-        HStack(spacing: 8) {
-            FileIconView(url: url, model: model)
-                .frame(width: 22, height: 22)
+        LauncherResultRow(
+            isSelected: isSelected,
+            selectionNamespace: selectionNamespace,
+            horizontalPadding: 9,
+            verticalPadding: 8,
+            minHeight: 38
+        ) {
+            HStack(spacing: 8) {
+                FileIconView(url: url, model: model)
+                    .frame(width: 22, height: 22)
 
-            FadeMarqueeText(text: url.lastPathComponent, font: .system(size: 13, weight: .medium))
-                .foregroundStyle(.primary)
+                FileBrowserRowNameText(
+                    text: url.lastPathComponent,
+                    font: .system(size: 13, weight: .medium),
+                    height: 17
+                )
+                    .layoutPriority(1)
+            }
         }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 8)
-        .frame(minHeight: 38)
-        .background {
-            FileBrowserGlassRowBackground(isSelected: isSelected, isMarked: false)
+        .overlay {
+            NativeFileDragSourceView(url: url)
+                .accessibilityHidden(true)
         }
-        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }
 
 @available(macOS 26.0, *)
-private struct FileBrowserGlassRowBackground: View {
-    let isSelected: Bool
-    let isMarked: Bool
+private struct FileBrowserRowNameText: View {
+    let text: String
+    let font: Font
+    let height: CGFloat
 
     var body: some View {
-        GlassEffectContainer(spacing: 0) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(Color.clear)
-                    .glassEffect(
-                        .regular.tint(Color(nsColor: .windowBackgroundColor).opacity(0.035)).interactive(false),
-                        in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    )
-
-                if isSelected || isMarked {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(Color.clear)
-                        .glassEffect(
-                            .regular.tint(rowFill.opacity(isSelected ? 0.18 : 0.11)).interactive(isSelected),
-                            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        )
-                }
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(rowRim, lineWidth: isSelected ? 1.15 : 1)
-            }
+        GeometryReader { proxy in
+            FadeMarqueeText(
+                text: text,
+                font: font,
+                constrainedWidth: max(0, proxy.size.width)
+            )
+            .foregroundStyle(.primary)
+            .frame(width: proxy.size.width, height: height, alignment: .leading)
         }
-    }
-
-    private var rowFill: Color {
-        if isSelected {
-            return Color(nsColor: .selectedContentBackgroundColor)
-        }
-        if isMarked {
-            return Color.accentColor
-        }
-        return Color(nsColor: .windowBackgroundColor)
-    }
-
-    private var rowRim: Color {
-        if isSelected {
-            return Color(nsColor: .selectedContentBackgroundColor).opacity(0.45)
-        }
-        if isMarked {
-            return Color.accentColor.opacity(0.28)
-        }
-        return Color(nsColor: .separatorColor).opacity(0.16)
+        .frame(minWidth: 0, maxWidth: .infinity, minHeight: height, maxHeight: height, alignment: .leading)
     }
 }
 
@@ -528,6 +695,7 @@ private struct ActionRow: View {
 
             Text(action.displayName)
                 .font(.system(size: 14, weight: .medium))
+                .lineLimit(1)
 
             Spacer(minLength: 8)
 
@@ -743,44 +911,124 @@ private struct QuickLookPreviewSurface: View {
     @State private var nativePreviewFailed = false
 
     var body: some View {
-        if preview.mode == .nativeThumbnail && !nativePreviewFailed {
-            nativePreview
-        } else {
-            metadataFallback
+        GeometryReader { proxy in
+            let surfaceSize = FileBrowserPreviewLayoutPolicy.surfaceSize(
+                for: resolvedMode,
+                availableSize: proxy.size
+            )
+            let contentSize = FileBrowserPreviewLayoutPolicy.contentSize(surfaceSize: surfaceSize)
+
+            previewContent(size: contentSize)
+                .padding(FileBrowserPreviewLayoutPolicy.surfacePadding)
+                .frame(width: surfaceSize.width, height: surfaceSize.height)
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .strokeBorder(Color(nsColor: .separatorColor).opacity(0.30), lineWidth: 1)
+                }
+                .shadow(color: .black.opacity(0.28), radius: 34, x: 0, y: 18)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                .onChange(of: preview.url) {
+                    nativePreviewFailed = false
+                }
+            }
+        }
+
+    private var resolvedMode: FileBrowserPreviewMode {
+        if preview.mode == .nativeThumbnail, nativePreviewFailed {
+            return .metadataFallback
+        }
+        return preview.mode
+    }
+
+    @ViewBuilder
+    private func previewContent(size: CGSize) -> some View {
+        switch resolvedMode {
+        case .nativeThumbnail:
+            nativePreview(size: size)
+        case .video:
+            videoPreview(size: size)
+        case .codeText:
+            codePreview(size: size)
+        case .metadataFallback:
+            metadataPreview(size: size)
         }
     }
 
-    private var nativePreview: some View {
-        VStack(spacing: 14) {
-            NativeQuickLookThumbnailView(url: preview.url, model: model, didFail: $nativePreviewFailed)
-                .frame(width: 360, height: 210)
+    private func nativePreview(size: CGSize) -> some View {
+        let previewAreaHeight = FileBrowserPreviewLayoutPolicy.previewAreaHeight(
+            for: .nativeThumbnail,
+            contentSize: size
+        )
 
-            Text(preview.url.lastPathComponent)
-                .font(.headline)
-                .lineLimit(1)
+        return ZStack(alignment: .bottomLeading) {
+            NativeQuickLookThumbnailView(
+                url: preview.url,
+                thumbnailSize: CGSize(width: size.width, height: previewAreaHeight),
+                model: model,
+                didFail: $nativePreviewFailed
+            )
+                .frame(width: size.width, height: previewAreaHeight)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(Color(nsColor: .separatorColor).opacity(0.24), lineWidth: 1)
+                }
 
-            FadeMarqueeText(text: preview.url.path, font: .caption)
-                .foregroundStyle(.secondary)
-                .frame(height: 16)
+            LinearGradient(
+                colors: [.black.opacity(0), .black.opacity(0.68)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 118)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .allowsHitTesting(false)
+
+            VStack(alignment: .leading, spacing: 5) {
+                previewTitle(width: max(0, titleWidth(for: size) - 28))
+                previewPath(width: max(0, titleWidth(for: size) - 28))
+            }
+            .padding(14)
         }
-        .padding(24)
-        .frame(width: 420, height: 300)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.30), lineWidth: 1)
-        }
-        .shadow(color: .black.opacity(0.28), radius: 34, x: 0, y: 18)
     }
 
-    private var metadataFallback: some View {
-        VStack(spacing: 14) {
+    private func videoPreview(size: CGSize) -> some View {
+        VStack(spacing: 12) {
+            AutoPlayingVideoPreview(url: preview.url)
+                .frame(width: size.width, height: FileBrowserPreviewLayoutPolicy.previewAreaHeight(for: .video, contentSize: size))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(Color(nsColor: .separatorColor).opacity(0.24), lineWidth: 1)
+                }
+
+            previewTitle(width: titleWidth(for: size))
+            previewPath(width: titleWidth(for: size))
+        }
+    }
+
+    private func codePreview(size: CGSize) -> some View {
+        VStack(spacing: 12) {
+            CodeTextFilePreview(url: preview.url)
+                .frame(width: size.width, height: FileBrowserPreviewLayoutPolicy.previewAreaHeight(for: .codeText, contentSize: size))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(Color(nsColor: .separatorColor).opacity(0.24), lineWidth: 1)
+                }
+
+            previewTitle(width: titleWidth(for: size))
+            previewPath(width: titleWidth(for: size))
+        }
+    }
+
+    private func metadataPreview(size: CGSize) -> some View {
+        VStack(spacing: 12) {
             FileIconView(url: preview.url, model: model)
-                .frame(width: 96, height: 96)
+                .frame(width: 72, height: 72)
 
-            Text(preview.url.lastPathComponent)
-                .font(.headline)
-                .lineLimit(1)
+            previewTitle(width: titleWidth(for: size))
 
             Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 7) {
                 metadataRow("Kind", entry?.kind.displayName ?? "Unknown")
@@ -790,18 +1038,31 @@ private struct QuickLookPreviewSurface: View {
             }
             .font(.caption)
 
-            FadeMarqueeText(text: preview.url.path, font: .caption)
-                .foregroundStyle(.secondary)
-                .frame(height: 16)
+            previewPath(width: titleWidth(for: size))
         }
-        .padding(24)
-        .frame(width: 420, height: 300)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.30), lineWidth: 1)
-        }
-        .shadow(color: .black.opacity(0.28), radius: 34, x: 0, y: 18)
+    }
+
+    private func previewTitle(width: CGFloat) -> some View {
+        FadeMarqueeText(
+            text: preview.url.lastPathComponent,
+            font: .headline,
+            constrainedWidth: width
+        )
+        .frame(width: width, height: 22, alignment: .leading)
+    }
+
+    private func previewPath(width: CGFloat) -> some View {
+        FadeMarqueeText(
+            text: preview.url.path,
+            font: .caption,
+            constrainedWidth: width
+        )
+        .foregroundStyle(.secondary)
+        .frame(width: width, height: 16, alignment: .leading)
+    }
+
+    private func titleWidth(for size: CGSize) -> CGFloat {
+        max(0, size.width)
     }
 
     private var formattedSize: String {
@@ -832,8 +1093,120 @@ private struct QuickLookPreviewSurface: View {
 }
 
 @available(macOS 26.0, *)
+private struct AutoPlayingVideoPreview: View {
+    let url: URL
+    @State private var player: AVPlayer?
+
+    var body: some View {
+        VideoPlayer(player: player)
+            .background(Color.black)
+            .onAppear {
+                startPlayback()
+            }
+            .onDisappear {
+                player?.pause()
+            }
+            .onChange(of: url) {
+                startPlayback()
+            }
+    }
+
+    private func startPlayback() {
+        let nextPlayer = AVPlayer(url: url)
+        player?.pause()
+        player = nextPlayer
+        nextPlayer.play()
+    }
+}
+
+@available(macOS 26.0, *)
+private struct CodeTextFilePreview: View {
+    let url: URL
+    @State private var text = ""
+    @State private var errorMessage: String?
+
+    var body: some View {
+        ScrollView([.vertical, .horizontal]) {
+            Text(errorMessage ?? text)
+                .font(.system(size: 12, weight: .regular, design: .monospaced))
+                .foregroundStyle(Color(nsColor: errorMessage == nil
+                    ? FileBrowserCodePreviewTheme.foreground
+                    : FileBrowserCodePreviewTheme.secondaryForeground))
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(14)
+        }
+        .background(Color(nsColor: FileBrowserCodePreviewTheme.background))
+        .task(id: url) {
+            text = "Loading preview..."
+            errorMessage = nil
+            do {
+                let loadedText = try await Task.detached(priority: .utility) {
+                    try FileBrowserTextPreviewLoader.loadSnippet(from: url)
+                }.value
+                guard !Task.isCancelled else { return }
+                text = loadedText
+                errorMessage = nil
+            } catch {
+                guard !Task.isCancelled else { return }
+                text = ""
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+}
+
+enum FileBrowserTextPreviewLoader {
+    static let maxPreviewBytes = 64 * 1024
+    static let maxRenderedLineLength = 240
+
+    static func loadSnippet(from url: URL) throws -> String {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer {
+            try? handle.close()
+        }
+
+        let data = try handle.read(upToCount: maxPreviewBytes + 1) ?? Data()
+        let isTruncated = data.count > maxPreviewBytes
+        let previewData = data.prefix(maxPreviewBytes)
+        let text = wrapLongLines(String(decoding: previewData, as: UTF8.self))
+
+        if isTruncated {
+            return text + "\n\n... preview truncated ..."
+        }
+
+        return text
+    }
+
+    static func wrapLongLines(_ text: String) -> String {
+        var output = ""
+        output.reserveCapacity(text.count + text.count / maxRenderedLineLength)
+        var lineLength = 0
+
+        for character in text {
+            if character == "\n" {
+                output.append(character)
+                lineLength = 0
+                continue
+            }
+
+            if lineLength >= maxRenderedLineLength {
+                output.append("\n")
+                lineLength = 0
+            }
+
+            output.append(character)
+            lineLength += 1
+        }
+
+        return output
+    }
+}
+
+@available(macOS 26.0, *)
 private struct NativeQuickLookThumbnailView: NSViewRepresentable {
     let url: URL
+    let thumbnailSize: CGSize
     @ObservedObject var model: FileBrowserModel
     @Binding var didFail: Bool
 
@@ -847,7 +1220,13 @@ private struct NativeQuickLookThumbnailView: NSViewRepresentable {
     }
 
     func updateNSView(_ imageView: NSImageView, context: Context) {
-        context.coordinator.loadThumbnail(for: url, model: model, into: imageView, didFail: $didFail)
+        context.coordinator.loadThumbnail(
+            for: url,
+            thumbnailSize: thumbnailSize,
+            model: model,
+            into: imageView,
+            didFail: $didFail
+        )
     }
 
     func makeCoordinator() -> Coordinator {
@@ -856,22 +1235,25 @@ private struct NativeQuickLookThumbnailView: NSViewRepresentable {
 
     final class Coordinator {
         private var representedURL: URL?
+        private var representedSize = CGSize.zero
 
         @MainActor
         func loadThumbnail(
             for url: URL,
+            thumbnailSize: CGSize,
             model: FileBrowserModel,
             into imageView: NSImageView,
             didFail: Binding<Bool>
         ) {
-            guard representedURL != url else { return }
+            guard representedURL != url || representedSize != thumbnailSize else { return }
             representedURL = url
+            representedSize = thumbnailSize
             imageView.image = nil
             didFail.wrappedValue = false
 
             let scale = NSScreen.main?.backingScaleFactor ?? 2
-            model.loadPreviewThumbnail(for: url, size: CGSize(width: 720, height: 420), scale: scale) { image in
-                guard self.representedURL == url else { return }
+            model.loadPreviewThumbnail(for: url, size: thumbnailSize, scale: scale) { image in
+                guard self.representedURL == url, self.representedSize == thumbnailSize else { return }
                 if let image {
                     imageView.image = image
                 } else {
@@ -890,7 +1272,11 @@ private struct FileIconView: View {
 
     var body: some View {
         ZStack {
-            if let icon {
+            if let symbol = FileBrowserIconPolicy.systemSymbolOverride(for: url) {
+                Image(systemName: symbol)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(.secondary)
+            } else if let icon {
                 Image(nsImage: icon)
                     .resizable()
                     .scaledToFit()
@@ -902,6 +1288,10 @@ private struct FileIconView: View {
             }
         }
         .task(id: url) {
+            guard FileBrowserIconPolicy.systemSymbolOverride(for: url) == nil else {
+                icon = nil
+                return
+            }
             icon = model.icon(for: url)
         }
     }
