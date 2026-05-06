@@ -7,8 +7,7 @@ final class FileBrowserMotionPolicyTests: XCTestCase {
         XCTAssertLessThanOrEqual(FileBrowserMotionPolicy.wobbleOscillations, 1.25)
     }
 
-    func testNavigationRowsDoNotHoldOnAnEmptyPause() {
-        XCTAssertLessThanOrEqual(FileBrowserMotionPolicy.rowSwapOutgoingDelayNanoseconds, 200_000_000)
-        XCTAssertGreaterThanOrEqual(FileBrowserMotionPolicy.rowSwapIncomingSettleDelayNanoseconds, 260_000_000)
+    func testListReconstructionUsesAppsStyleShortAnimation() {
+        XCTAssertLessThanOrEqual(FileBrowserMotionPolicy.listReconstructionAnimationSeconds, 0.22)
     }
 }

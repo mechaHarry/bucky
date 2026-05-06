@@ -5,6 +5,7 @@ final class SettingsViewModel: ObservableObject {
     @Published var hotKeyTitle = ""
     @Published var launchAtStartup = false
     @Published var animationTiming: LauncherAnimationTiming = .defaultValue
+    @Published var fileBrowserStartDirectoryText = ""
     @Published var inclusionPaths: [String] = []
     @Published var exclusionPaths: [String] = []
     @Published var selectedInclusionPath: String?
@@ -14,6 +15,7 @@ final class SettingsViewModel: ObservableObject {
 
     var startHotKeyRecordingAction: (() -> Void)?
     var presentIncludedAppPickerAction: (() -> Void)?
+    var presentFileBrowserStartDirectoryPickerAction: (() -> Void)?
 
     private let settingsStore: SettingsStore
     private let inclusionStore: InclusionStore
@@ -52,6 +54,7 @@ final class SettingsViewModel: ObservableObject {
         hotKeyTitle = settingsStore.settings.hotKey.displayName
         launchAtStartup = settingsStore.settings.launchAtStartup
         animationTiming = settingsStore.settings.animationTiming
+        fileBrowserStartDirectoryText = settingsStore.settings.fileBrowserStartDirectory?.path ?? "~/"
         inclusionPaths = inclusionStore.sortedPaths()
         exclusionPaths = exclusionStore.sortedPaths()
         selectedInclusionPath = inclusionPaths.contains(selectedInclusionPath ?? "") ? selectedInclusionPath : nil
@@ -92,6 +95,16 @@ final class SettingsViewModel: ObservableObject {
     func setAnimationTiming(_ timing: LauncherAnimationTiming) {
         settingsStore.updateAnimationTiming(timing)
         animationTiming = timing
+        settingsChangedHandler()
+    }
+
+    func requestFileBrowserStartDirectoryPicker() {
+        presentFileBrowserStartDirectoryPickerAction?()
+    }
+
+    func setFileBrowserStartDirectory(_ directory: URL?) {
+        settingsStore.updateFileBrowserStartDirectory(directory)
+        fileBrowserStartDirectoryText = directory?.path ?? "~/"
         settingsChangedHandler()
     }
 
@@ -141,6 +154,8 @@ struct SettingsView: View {
             )
 
             animationTimingRow
+
+            fileBrowserStartDirectoryRow
 
             pathSection(
                 title: "Included apps",
@@ -222,6 +237,34 @@ struct SettingsView: View {
                 model.beginHotKeyRecording()
             }
             .frame(minWidth: 160)
+        }
+    }
+
+    private var fileBrowserStartDirectoryRow: some View {
+        HStack(spacing: 12) {
+            Text("Files start folder")
+                .font(.system(size: 13, weight: .semibold))
+
+            Spacer()
+
+            Text(model.fileBrowserStartDirectoryText)
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(maxWidth: 230, alignment: .trailing)
+
+            Button {
+                model.setFileBrowserStartDirectory(nil)
+            } label: {
+                Label("Home", systemImage: "house")
+            }
+
+            Button {
+                model.requestFileBrowserStartDirectoryPicker()
+            } label: {
+                Label("Choose", systemImage: "folder")
+            }
         }
     }
 

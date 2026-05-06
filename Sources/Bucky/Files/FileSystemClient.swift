@@ -18,6 +18,10 @@ struct FileSystemClient {
         return parent
     }
 
+    func isDirectory(_ url: URL) -> Bool {
+        (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+    }
+
     func entries(in directory: URL, sort: FileBrowserSort) throws -> [FileBrowserEntry] {
         let resourceKeys: Set<URLResourceKey> = [
             .isDirectoryKey,

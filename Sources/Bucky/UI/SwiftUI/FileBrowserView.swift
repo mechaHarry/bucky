@@ -6,12 +6,6 @@ struct FileBrowserView: View {
     @ObservedObject var model: FileBrowserModel
     @State private var transferGlow = false
     @State private var wobblePhase: CGFloat = 0
-    @State private var displayedEntries: [FileBrowserEntry] = []
-    @State private var pendingDisplayedEntries: [FileBrowserEntry] = []
-    @State private var activeNavigationTransitionID: Int?
-    @State private var activeNavigationDirection: FileBrowserNavigationDirection?
-    @State private var rowSwapStartedAt: Date?
-    @State private var rowSwapTask: Task<Void, Never>?
 
     var body: some View {
         ZStack(alignment: .trailing) {
@@ -57,11 +51,6 @@ struct FileBrowserView: View {
                 wobblePhase += 1
             }
         }
-        .onDisappear {
-            rowSwapTask?.cancel()
-            rowSwapTask = nil
-            rowSwapStartedAt = nil
-        }
         .animation(.easeInOut(duration: 0.18), value: model.focusState)
     }
 
@@ -71,6 +60,8 @@ struct FileBrowserView: View {
                 .frame(width: 150)
 
             currentDirectoryColumn
+                .opacity(model.focusState == .pinnedItems ? 0.46 : 1)
+                .blur(radius: model.focusState == .pinnedItems ? 2.0 : 0)
         }
         .padding(10)
         .overlay {
@@ -92,22 +83,15 @@ struct FileBrowserView: View {
                 .labelStyle(.titleAndIcon)
 
             if model.pinnedDirectories.isEmpty {
-                placeholder("Pinned folders will appear here")
+                placeholder("Pinned items will appear here")
             } else {
-                ForEach(model.pinnedDirectories, id: \.self) { url in
-                    HStack(spacing: 8) {
-                        FadeMarqueeText(text: url.lastPathComponent, font: .system(size: 13, weight: .medium))
-                        FileIconView(url: url, model: model)
-                            .frame(width: 18, height: 18)
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 7)
-                    .background(.quaternary.opacity(0.18), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                ForEach(Array(model.pinnedDirectories.enumerated()), id: \.element) { index, url in
+                    FileBrowserPinnedRow(
+                        url: url,
+                        isSelected: model.focusState == .pinnedItems && index == model.focusedPinnedIndex,
+                        model: model
+                    )
                     .help(url.path)
-                    .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .onTapGesture {
-                        model.openPinnedDirectory(url)
-                    }
                 }
             }
 
@@ -140,7 +124,7 @@ struct FileBrowserView: View {
                 ZStack {
                     ScrollView(.vertical, showsIndicators: false) {
                         LazyVStack(spacing: 5) {
-                            ForEach(Array(displayedEntries.enumerated()), id: \.element.url) { index, entry in
+                            ForEach(Array(model.entries.enumerated()), id: \.element.url) { index, entry in
                                 FileBrowserRow(
                                     entry: entry,
                                     isSelected: entry.url == model.selectedEntry?.url,
@@ -148,46 +132,26 @@ struct FileBrowserView: View {
                                     model: model
                                 )
                                 .id(entry.url)
-                                .transition(rowTransition)
-                                .animation(rowAnimation(for: index), value: model.navigationTransition?.id)
-                                .animation(rowAnimation(for: index), value: displayedEntries.map(\.url))
+                                .transition(.opacity.combined(with: .move(edge: .top)))
+                                .animation(
+                                    .smooth(duration: FileBrowserMotionPolicy.listReconstructionAnimationSeconds),
+                                    value: model.entries.map(\.url)
+                                )
                             }
                         }
                         .padding(.vertical, 1)
                     }
                     .scrollIndicators(.hidden)
 
-                    if displayedEntries.isEmpty, activeNavigationTransitionID == nil {
+                    if model.entries.isEmpty {
                         placeholder(model.isLoadingEntries ? "Loading files" : "No readable files")
                             .transition(.opacity)
                     }
                 }
                 .onAppear {
-                    syncDisplayedEntries()
                     scrollSelectedEntry(in: proxy)
                 }
-                .onChange(of: model.navigationTransition?.id) { _, id in
-                    guard id != nil, let transition = model.navigationTransition else { return }
-                    beginNavigationRowSwap(transition)
-                    if !model.isLoadingEntries {
-                        stageNavigationEntries(model.entries)
-                    }
-                }
                 .onChange(of: model.entries.map(\.url)) { _, _ in
-                    if activeNavigationTransitionID != nil {
-                        stageNavigationEntries(model.entries)
-                    } else {
-                        syncDisplayedEntries()
-                    }
-                }
-                .onChange(of: model.isLoadingEntries) { _, _ in
-                    if activeNavigationTransitionID != nil {
-                        stageNavigationEntries(model.entries)
-                    } else {
-                        syncDisplayedEntries()
-                    }
-                }
-                .onChange(of: displayedEntries.map(\.url)) { _, _ in
                     scrollSelectedEntry(in: proxy)
                 }
                 .onChange(of: model.selectionScrollEvent?.id) { _, _ in
@@ -347,94 +311,6 @@ struct FileBrowserView: View {
         return false
     }
 
-    private var rowTransition: AnyTransition {
-        switch activeNavigationDirection {
-        case .deeper:
-            return .asymmetric(
-                insertion: .move(edge: .trailing).combined(with: .opacity),
-                removal: .move(edge: .leading).combined(with: .opacity)
-            )
-        case .parent:
-            return .asymmetric(
-                insertion: .move(edge: .leading).combined(with: .opacity),
-                removal: .move(edge: .trailing).combined(with: .opacity)
-            )
-        case nil:
-            return .opacity
-        }
-    }
-
-    private func rowAnimation(for index: Int) -> Animation {
-        .interactiveSpring(
-            response: FileBrowserMotionPolicy.rowSpringResponse,
-            dampingFraction: FileBrowserMotionPolicy.rowSpringDampingFraction,
-            blendDuration: FileBrowserMotionPolicy.rowSpringBlendDuration
-        )
-        .delay(Double(min(index, 18)) * FileBrowserMotionPolicy.rowStaggerDelaySeconds)
-    }
-
-    private var rowSwapOutgoingDelayNanoseconds: UInt64 {
-        FileBrowserMotionPolicy.rowSwapOutgoingDelayNanoseconds
-    }
-
-    private func beginNavigationRowSwap(_ transition: FileBrowserNavigationTransition) {
-        rowSwapTask?.cancel()
-        activeNavigationTransitionID = transition.id
-        activeNavigationDirection = transition.direction
-        rowSwapStartedAt = Date()
-        pendingDisplayedEntries = []
-        withAnimation(.easeInOut(duration: FileBrowserMotionPolicy.rowSwapOutgoingAnimationSeconds)) {
-            displayedEntries = []
-        }
-    }
-
-    private func stageNavigationEntries(_ entries: [FileBrowserEntry]) {
-        pendingDisplayedEntries = entries
-        guard activeNavigationTransitionID != nil, !model.isLoadingEntries else { return }
-        scheduleIncomingRows()
-    }
-
-    private func scheduleIncomingRows() {
-        let transitionID = activeNavigationTransitionID
-        let incomingEntries = pendingDisplayedEntries
-        let incomingDelay = rowSwapRemainingDelayNanoseconds
-        rowSwapTask?.cancel()
-        rowSwapTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: incomingDelay)
-            guard !Task.isCancelled, activeNavigationTransitionID == transitionID else { return }
-            withAnimation(.interactiveSpring(
-                response: FileBrowserMotionPolicy.rowSpringResponse,
-                dampingFraction: FileBrowserMotionPolicy.rowSpringDampingFraction,
-                blendDuration: FileBrowserMotionPolicy.rowSpringBlendDuration
-            )) {
-                displayedEntries = incomingEntries
-            }
-            try? await Task.sleep(nanoseconds: FileBrowserMotionPolicy.rowSwapIncomingSettleDelayNanoseconds)
-            guard !Task.isCancelled, activeNavigationTransitionID == transitionID else { return }
-            pendingDisplayedEntries = []
-            activeNavigationTransitionID = nil
-            activeNavigationDirection = nil
-            rowSwapStartedAt = nil
-            rowSwapTask = nil
-        }
-    }
-
-    private var rowSwapRemainingDelayNanoseconds: UInt64 {
-        guard let rowSwapStartedAt else { return rowSwapOutgoingDelayNanoseconds }
-        let elapsed = Date().timeIntervalSince(rowSwapStartedAt)
-        let target = TimeInterval(rowSwapOutgoingDelayNanoseconds) / 1_000_000_000
-        let remaining = max(0, target - elapsed)
-        return UInt64(remaining * 1_000_000_000)
-    }
-
-    private func syncDisplayedEntries() {
-        if model.isLoadingEntries, model.entries.isEmpty {
-            displayedEntries = []
-        } else {
-            displayedEntries = model.entries
-        }
-    }
-
     private func scrollSelectedEntry(in proxy: ScrollViewProxy) {
         guard let url = model.selectedEntry?.url else { return }
         scrollEntry(url, anchor: .top, in: proxy, animated: true)
@@ -451,7 +327,7 @@ struct FileBrowserView: View {
         in proxy: ScrollViewProxy,
         animated: Bool
     ) {
-        guard displayedEntries.contains(where: { $0.url == url }) else { return }
+        guard model.entries.contains(where: { $0.url == url }) else { return }
         DispatchQueue.main.async {
             if animated {
                 withAnimation(.easeInOut(duration: 0.20)) {
@@ -537,7 +413,10 @@ private struct FileBrowserRow: View {
     @ObservedObject var model: FileBrowserModel
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
+            FileIconView(url: entry.url, model: model)
+                .frame(width: 30, height: 30)
+
             FadeMarqueeText(text: entry.name, font: .system(size: 14, weight: .medium))
                 .foregroundStyle(.primary)
 
@@ -548,29 +427,80 @@ private struct FileBrowserRow: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Color.accentColor)
             }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(minHeight: 42)
+        .background {
+            FileBrowserGlassRowBackground(isSelected: isSelected, isMarked: isMarked)
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+}
 
-            FileIconView(url: entry.url, model: model)
-                .frame(width: 23, height: 23)
+@available(macOS 26.0, *)
+private struct FileBrowserPinnedRow: View {
+    let url: URL
+    let isSelected: Bool
+    @ObservedObject var model: FileBrowserModel
+
+    var body: some View {
+        HStack(spacing: 8) {
+            FileIconView(url: url, model: model)
+                .frame(width: 22, height: 22)
+
+            FadeMarqueeText(text: url.lastPathComponent, font: .system(size: 13, weight: .medium))
+                .foregroundStyle(.primary)
         }
         .padding(.horizontal, 9)
-        .padding(.vertical, 7)
-        .frame(minHeight: 34)
-        .background(rowFill, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .strokeBorder(rowRim, lineWidth: isSelected ? 1.15 : 1)
+        .padding(.vertical, 8)
+        .frame(minHeight: 38)
+        .background {
+            FileBrowserGlassRowBackground(isSelected: isSelected, isMarked: false)
         }
-        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+}
+
+@available(macOS 26.0, *)
+private struct FileBrowserGlassRowBackground: View {
+    let isSelected: Bool
+    let isMarked: Bool
+
+    var body: some View {
+        GlassEffectContainer(spacing: 0) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Color.clear)
+                    .glassEffect(
+                        .regular.tint(Color(nsColor: .windowBackgroundColor).opacity(0.035)).interactive(false),
+                        in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    )
+
+                if isSelected || isMarked {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(Color.clear)
+                        .glassEffect(
+                            .regular.tint(rowFill.opacity(isSelected ? 0.18 : 0.11)).interactive(isSelected),
+                            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        )
+                }
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(rowRim, lineWidth: isSelected ? 1.15 : 1)
+            }
+        }
     }
 
     private var rowFill: Color {
         if isSelected {
-            return Color(nsColor: .selectedContentBackgroundColor).opacity(0.26)
+            return Color(nsColor: .selectedContentBackgroundColor)
         }
         if isMarked {
-            return Color.accentColor.opacity(0.12)
+            return Color.accentColor
         }
-        return Color(nsColor: .windowBackgroundColor).opacity(0.12)
+        return Color(nsColor: .windowBackgroundColor)
     }
 
     private var rowRim: Color {

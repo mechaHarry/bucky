@@ -62,6 +62,18 @@ final class FileSystemClientTests: XCTestCase {
         XCTAssertNil(client.parentURL(for: URL(fileURLWithPath: "/")))
     }
 
+    func testIsDirectoryDistinguishesDirectoriesFromFiles() throws {
+        let directory = temporaryDirectory.appendingPathComponent("Folder", isDirectory: true)
+        let file = temporaryDirectory.appendingPathComponent("notes.txt")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try "notes".write(to: file, atomically: true, encoding: .utf8)
+
+        let client = FileSystemClient()
+
+        XCTAssertTrue(client.isDirectory(directory))
+        XCTAssertFalse(client.isDirectory(file))
+    }
+
     private func entry(named name: String, createdAt: Date? = nil, modifiedAt: Date? = nil) -> FileBrowserEntry {
         FileBrowserEntry(
             url: temporaryDirectory.appendingPathComponent(name),

@@ -46,18 +46,18 @@ final class LiquidGlassLauncherModel: ObservableObject {
         exclusionStore: ExclusionStore,
         calculationHistoryStore: CalculationHistoryStore,
         fileBrowserModel: FileBrowserModel? = nil,
-        fileBrowserModelFactory: @escaping () -> FileBrowserModel = {
-            MainActor.assumeIsolated {
-                FileBrowserModel()
-            }
-        }
+        fileBrowserModelFactory: (() -> FileBrowserModel)? = nil
     ) {
         self.settingsStore = settingsStore
         self.inclusionStore = inclusionStore
         self.exclusionStore = exclusionStore
         self.calculationHistoryStore = calculationHistoryStore
         self.activatedFileBrowserModel = fileBrowserModel
-        self.fileBrowserModelFactory = fileBrowserModelFactory
+        self.fileBrowserModelFactory = fileBrowserModelFactory ?? {
+            MainActor.assumeIsolated {
+                FileBrowserModel(startDirectory: settingsStore.settings.fileBrowserStartDirectory)
+            }
+        }
         animationTiming = settingsStore.settings.animationTiming
     }
 
@@ -174,8 +174,12 @@ final class LiquidGlassLauncherModel: ObservableObject {
         case .clearHistory:
             clearHistory()
         case .togglePin:
+            if mode == .files {
+                return handleFileBrowserCommand(command)
+            }
             isPinned.toggle()
-        case .left, .right, .space, .shiftSpace, .beginSpaceHold, .endSpaceHold, .alphaNumeric:
+        case .left, .right, .prepareSpaceInteraction, .space, .shiftSpace, .beginSpaceHold, .endSpaceHold,
+                .alphaNumeric, .shiftAlphaNumeric, .beginPinnedFocus, .endPinnedFocus, .historyBack, .historyForward:
             guard mode == .files else { return false }
             return handleFileBrowserCommand(command)
         }

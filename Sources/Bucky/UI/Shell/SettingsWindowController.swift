@@ -53,6 +53,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         model.presentIncludedAppPickerAction = { [weak self] in
             self?.presentIncludedAppPicker()
         }
+        model.presentFileBrowserStartDirectoryPickerAction = { [weak self] in
+            self?.presentFileBrowserStartDirectoryPicker()
+        }
 
         model.refresh()
     }
@@ -134,6 +137,23 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK else { return }
             self?.model.addIncludedApps(panel.urls)
+        }
+    }
+
+    private func presentFileBrowserStartDirectoryPicker() {
+        guard let window else { return }
+
+        let panel = NSOpenPanel()
+        panel.title = "Choose Files Start Folder"
+        panel.prompt = "Choose"
+        panel.allowsMultipleSelection = false
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = false
+
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let url = panel.urls.first else { return }
+            self?.model.setFileBrowserStartDirectory(url)
         }
     }
 

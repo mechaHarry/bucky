@@ -242,6 +242,22 @@ final class FileBrowserModelTests: XCTestCase {
         XCTAssertEqual(model.selectedEntry?.name, "_Cisco")
     }
 
+    func testShiftFirstCharacterCyclingMovesToPreviousMatch() {
+        let model = makeModel(entries: entries(["alpha.txt", "_Cisco", "Cisco", "cisco"]))
+
+        model.handle(.bottom)
+        XCTAssertEqual(model.selectedEntry?.name, "cisco")
+
+        model.handle(.shiftAlphaNumeric("c"))
+        XCTAssertEqual(model.selectedEntry?.name, "Cisco")
+
+        model.handle(.shiftAlphaNumeric("c"))
+        XCTAssertEqual(model.selectedEntry?.name, "_Cisco")
+
+        model.handle(.shiftAlphaNumeric("c"))
+        XCTAssertEqual(model.selectedEntry?.name, "cisco")
+    }
+
     func testAlphaNumericInputIsIgnoredWhileRenaming() {
         let model = makeModel(entries: entries(["alpha.txt", "beta.txt", "gamma.txt"]))
 
@@ -262,6 +278,18 @@ final class FileBrowserModelTests: XCTestCase {
         model.handle(.shiftSpace)
 
         XCTAssertEqual(model.selectedURLs.map(\.lastPathComponent), ["one.txt", "two.txt", "three.txt"])
+    }
+
+    func testPreparedSpaceTapTogglesRowFocusedWhenSpaceStarted() {
+        let model = makeModel(entries: entries(["one.txt", "two.txt", "three.txt"]))
+
+        model.handle(.down)
+        model.handle(.prepareSpaceInteraction)
+        model.handle(.down)
+        model.handle(.space)
+
+        XCTAssertEqual(model.selectedURLs.map(\.lastPathComponent), ["two.txt"])
+        XCTAssertEqual(model.selectedEntry?.name, "three.txt")
     }
 
     func testRightOnFileSetsPaneWobble() {
@@ -776,6 +804,67 @@ final class FileBrowserModelTests: XCTestCase {
         XCTAssertEqual(store.state.pinnedDirectories, [])
     }
 
+    func testCommandPinTogglesSelectedFileOrDirectory() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let model = makeModel(entries: entries(["notes.txt", "Projects/"], in: home), home: home)
+
+        model.handle(.togglePin)
+        XCTAssertEqual(model.pinnedDirectories.map(\.lastPathComponent), ["notes.txt"])
+
+        model.handle(.down)
+        model.handle(.togglePin)
+        XCTAssertEqual(model.pinnedDirectories.map(\.lastPathComponent), ["notes.txt", "Projects"])
+
+        model.handle(.togglePin)
+        XCTAssertEqual(model.pinnedDirectories.map(\.lastPathComponent), ["notes.txt"])
+    }
+
+    func testOptionFocusNavigatesPinnedItemsAndReleaseReturnsToBrowseWithoutOpening() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let projects = home.appendingPathComponent("Projects", isDirectory: true)
+        let archive = home.appendingPathComponent("_Archive", isDirectory: true)
+        let model = makeModel(home: home, entriesByDirectory: [
+            home: [directoryEntry(projects), directoryEntry(archive)],
+            projects: [],
+            archive: []
+        ])
+
+        model.togglePin(projects)
+        model.togglePin(archive)
+
+        model.handle(.beginPinnedFocus)
+        XCTAssertEqual(model.focusState, .pinnedItems)
+        XCTAssertEqual(model.focusedPinnedURL, projects)
+
+        model.handle(.alphaNumeric("a"))
+        XCTAssertEqual(model.focusedPinnedURL, archive)
+
+        model.handle(.endPinnedFocus)
+        XCTAssertEqual(model.focusState, .browse)
+        XCTAssertEqual(model.currentDirectory, home)
+    }
+
+    func testReturnWhilePinnedFocusOpensFocusedPinnedDirectory() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let projects = home.appendingPathComponent("Projects", isDirectory: true)
+        let archive = home.appendingPathComponent("Archive", isDirectory: true)
+        let model = makeModel(home: home, entriesByDirectory: [
+            home: [],
+            projects: entries(["README.md"], in: projects),
+            archive: entries(["notes.txt"], in: archive)
+        ])
+
+        model.togglePin(projects)
+        model.togglePin(archive)
+        model.handle(.beginPinnedFocus)
+        model.handle(.down)
+        model.handle(.open)
+
+        XCTAssertEqual(model.currentDirectory, archive)
+        XCTAssertEqual(model.entries.map(\.name), ["notes.txt"])
+        XCTAssertEqual(model.focusState, .browse)
+    }
+
     func testRightRestoresRememberedTraversalChainAfterMovingLeft() {
         let home = URL(fileURLWithPath: "/Users/test")
         let child = home.appendingPathComponent("Projects", isDirectory: true)
@@ -927,6 +1016,46 @@ final class FileBrowserModelTests: XCTestCase {
         XCTAssertEqual(model.selectedEntry?.url, beta)
     }
 
+    func testTraversalChainRestoresDeepestSelectedEntryAcrossNewModel() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let projects = home.appendingPathComponent("Projects", isDirectory: true)
+        let docs = projects.appendingPathComponent("Docs", isDirectory: true)
+        let beta = docs.appendingPathComponent("beta.txt")
+        let entriesByDirectory: [URL: [FileBrowserEntry]] = [
+            home: [directoryEntry(projects)],
+            projects: [directoryEntry(docs)],
+            docs: [
+                fileEntry(docs.appendingPathComponent("alpha.txt")),
+                fileEntry(beta)
+            ]
+        ]
+        let client = StubFileSystemClient(home: home, entriesByDirectory: entriesByDirectory)
+        let store = InMemoryFileBrowserStore(state: .defaultValue)
+        let model = FileBrowserModel(
+            fileSystem: client,
+            store: store,
+            directoryStream: ImmediateDirectoryStream(fileSystem: client)
+        )
+
+        model.handle(.right)
+        model.handle(.right)
+        model.handle(.down)
+        model.handle(.left)
+        model.handle(.left)
+
+        let restoredModel = FileBrowserModel(
+            fileSystem: client,
+            store: InMemoryFileBrowserStore(state: store.state),
+            directoryStream: ImmediateDirectoryStream(fileSystem: client)
+        )
+
+        restoredModel.handle(.right)
+        restoredModel.handle(.right)
+
+        XCTAssertEqual(restoredModel.currentDirectory, docs)
+        XCTAssertEqual(restoredModel.selectedEntry?.url, beta)
+    }
+
     func testRightAfterMovingAwayFromRememberedChildUsesSelectedRow() {
         let home = URL(fileURLWithPath: "/Users/test")
         let remembered = home.appendingPathComponent("Projects", isDirectory: true)
@@ -952,6 +1081,33 @@ final class FileBrowserModelTests: XCTestCase {
         model.handle(.right)
 
         XCTAssertEqual(model.currentDirectory, other)
+    }
+
+    func testDirectoryHistoryBackAndForwardCrossesUnrelatedPinnedDirectories() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let projects = home.appendingPathComponent("Projects", isDirectory: true)
+        let archive = URL(fileURLWithPath: "/Volumes/External/Archive", isDirectory: true)
+        let model = makeModel(home: home, entriesByDirectory: [
+            home: [],
+            projects: entries(["project.txt"], in: projects),
+            archive: entries(["archive.txt"], in: archive)
+        ])
+
+        model.openPinnedDirectory(projects)
+        model.openPinnedDirectory(archive)
+        XCTAssertEqual(model.currentDirectory, archive)
+
+        model.handle(.historyBack)
+        XCTAssertEqual(model.currentDirectory, projects)
+
+        model.handle(.historyBack)
+        XCTAssertEqual(model.currentDirectory, home)
+
+        model.handle(.historyForward)
+        XCTAssertEqual(model.currentDirectory, projects)
+
+        model.handle(.historyForward)
+        XCTAssertEqual(model.currentDirectory, archive)
     }
 
     func testSetSortReloadsEntriesAndPersistsSelection() {

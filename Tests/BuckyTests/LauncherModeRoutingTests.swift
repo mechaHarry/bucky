@@ -222,6 +222,19 @@ final class LauncherModeRoutingTests: XCTestCase {
 
     @MainActor
     @available(macOS 26.0, *)
+    func testCommandPInFilesPinsSelectedPathInsteadOfWindow() {
+        let model = makeFileLauncherModel(entries: ["alpha.txt", "beta.txt"])
+
+        model.show(mode: .files)
+        _ = model.handle(command: .down)
+        _ = model.handle(command: .togglePin)
+
+        XCTAssertFalse(model.isPinned)
+        XCTAssertEqual(model.fileBrowserModel.pinnedDirectories.map(\.lastPathComponent), ["beta.txt"])
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
     func testDirectModeSwitchCanCancelActiveFileSpaceHold() {
         let model = makeFileLauncherModel(entries: ["alpha.txt"])
         model.modeWillSwitchAction = { oldMode, nextMode in

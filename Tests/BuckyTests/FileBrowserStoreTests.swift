@@ -30,13 +30,19 @@ final class FileBrowserStoreTests: XCTestCase {
         XCTAssertEqual(store.state, .defaultValue)
     }
 
-    func testSaveAndReloadPersistsPinsLastDirectorySortAndTraversalChain() {
+    func testSaveAndReloadPersistsPinsLastDirectorySortTraversalChainAndRememberedSelections() {
         let store = FileBrowserStore(fileURL: fileURL)
         let state = FileBrowserPersistedState(
             pinnedDirectories: [URL(fileURLWithPath: "/Users/harriche")],
             lastDirectory: URL(fileURLWithPath: "/Users/harriche/Projects"),
             sort: .dateModified,
-            traversalChain: [URL(fileURLWithPath: "/Users"), URL(fileURLWithPath: "/Users/harriche")]
+            traversalChain: [URL(fileURLWithPath: "/Users"), URL(fileURLWithPath: "/Users/harriche")],
+            rememberedSelections: [
+                FileBrowserRememberedSelection(
+                    directory: URL(fileURLWithPath: "/Users/harriche/Projects"),
+                    selection: URL(fileURLWithPath: "/Users/harriche/Projects/README.md")
+                )
+            ]
         )
 
         store.update(state)

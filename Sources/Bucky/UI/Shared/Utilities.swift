@@ -183,6 +183,19 @@ extension NSEvent {
         return character
     }
 
+    var fileNavigationAlphaNumericCharacter: (character: Character, isReverse: Bool)? {
+        let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard flags.intersection([.command, .control]).isEmpty,
+              flags.subtracting([.shift, .option]).isEmpty,
+              let charactersIgnoringModifiers,
+              let character = charactersIgnoringModifiers.first,
+              character.isLetter || character.isNumber else {
+            return nil
+        }
+
+        return (character, flags.contains(.shift))
+    }
+
     var isCommandR: Bool {
         let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
         return flags == .command && charactersIgnoringModifiers?.lowercased() == "r"
@@ -210,6 +223,16 @@ extension NSEvent {
         return flags.contains(.command)
             && flags.intersection([.shift, .option, .control]).isEmpty
             && keyCode == UInt16(kVK_DownArrow)
+    }
+
+    var isCommandLeftBracket: Bool {
+        let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
+        return flags == .command && charactersIgnoringModifiers == "["
+    }
+
+    var isCommandRightBracket: Bool {
+        let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
+        return flags == .command && charactersIgnoringModifiers == "]"
     }
 
 }
