@@ -193,6 +193,27 @@ struct ModeSwitcherLayoutPolicy {
     }
 }
 
+enum ModeSwitcherTextFieldFocusPolicy {
+    static func shouldRequestFirstResponder(
+        isFocused: Bool,
+        hasWindow: Bool,
+        hasCurrentEditor: Bool
+    ) -> Bool {
+        isFocused && hasWindow && !hasCurrentEditor
+    }
+
+    static func shouldResignFirstResponder(
+        isFocused: Bool,
+        hasCurrentEditor: Bool
+    ) -> Bool {
+        !isFocused && hasCurrentEditor
+    }
+
+    static func shouldPublishFocusEnd(isFocusRequested: Bool) -> Bool {
+        !isFocusRequested
+    }
+}
+
 @available(macOS 26.0, *)
 private struct TextInputModePill: View {
     @ObservedObject var model: LiquidGlassLauncherModel
@@ -262,9 +283,12 @@ private struct CenteredLauncherTextField: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> NSTextField {
-        let field = NSTextField(frame: .zero)
+        let field = CenteredLauncherNSTextField(frame: .zero)
         field.cell = CenteredLauncherTextFieldCell()
         field.delegate = context.coordinator
+        field.onMovedToWindow = { [weak coordinator = context.coordinator] field in
+            coordinator?.syncFocus(for: field)
+        }
         field.isBordered = false
         field.isBezeled = false
         field.drawsBackground = false
@@ -292,7 +316,7 @@ private struct CenteredLauncherTextField: NSViewRepresentable {
         field.font = Self.textFont
         field.textColor = .labelColor
         applyPlaceholder(to: field)
-        syncFocus(for: field)
+        context.coordinator.syncFocus(for: field)
     }
 
     private func applyPlaceholder(to field: NSTextField) {
@@ -303,25 +327,6 @@ private struct CenteredLauncherTextField: NSViewRepresentable {
                 .foregroundColor: NSColor.placeholderTextColor
             ]
         )
-    }
-
-    private func syncFocus(for field: NSTextField) {
-        guard let window = field.window else { return }
-
-        if isFocused.wrappedValue {
-            guard field.currentEditor() == nil else { return }
-            DispatchQueue.main.async { [weak field, weak window] in
-                guard let field,
-                      let window,
-                      field.window === window,
-                      field.currentEditor() == nil else {
-                    return
-                }
-                window.makeFirstResponder(field)
-            }
-        } else if field.currentEditor() != nil {
-            window.makeFirstResponder(nil)
-        }
     }
 
     private static let textFont: NSFont = {
@@ -358,6 +363,11 @@ private struct CenteredLauncherTextField: NSViewRepresentable {
         }
 
         func controlTextDidEndEditing(_ notification: Notification) {
+            guard ModeSwitcherTextFieldFocusPolicy.shouldPublishFocusEnd(
+                isFocusRequested: isFocused.wrappedValue
+            ) else {
+                return
+            }
             isFocused.wrappedValue = false
         }
 
@@ -373,6 +383,46 @@ private struct CenteredLauncherTextField: NSViewRepresentable {
             }
             return false
         }
+
+        func syncFocus(for field: NSTextField) {
+            let hasWindow = field.window != nil
+            let hasCurrentEditor = field.currentEditor() != nil
+
+            if ModeSwitcherTextFieldFocusPolicy.shouldRequestFirstResponder(
+                isFocused: isFocused.wrappedValue,
+                hasWindow: hasWindow,
+                hasCurrentEditor: hasCurrentEditor
+            ) {
+                DispatchQueue.main.async { [weak self, weak field] in
+                    guard let self,
+                          let field,
+                          let window = field.window,
+                          ModeSwitcherTextFieldFocusPolicy.shouldRequestFirstResponder(
+                              isFocused: self.isFocused.wrappedValue,
+                              hasWindow: true,
+                              hasCurrentEditor: field.currentEditor() != nil
+                          ) else {
+                        return
+                    }
+                    window.makeFirstResponder(field)
+                }
+            } else if let window = field.window,
+                      ModeSwitcherTextFieldFocusPolicy.shouldResignFirstResponder(
+                          isFocused: isFocused.wrappedValue,
+                          hasCurrentEditor: hasCurrentEditor
+                      ) {
+                window.makeFirstResponder(nil)
+            }
+        }
+    }
+}
+
+private final class CenteredLauncherNSTextField: NSTextField {
+    var onMovedToWindow: ((CenteredLauncherNSTextField) -> Void)?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        onMovedToWindow?(self)
     }
 }
 

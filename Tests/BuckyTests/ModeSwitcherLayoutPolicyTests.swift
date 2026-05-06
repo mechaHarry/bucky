@@ -60,6 +60,29 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
         XCTAssertEqual(frame.midY, 15)
     }
 
+    func testTextInputFieldRequestsFocusWhenWindowArrivesAfterSwiftUIFocus() {
+        XCTAssertTrue(ModeSwitcherTextFieldFocusPolicy.shouldRequestFirstResponder(
+            isFocused: true,
+            hasWindow: true,
+            hasCurrentEditor: false
+        ))
+        XCTAssertFalse(ModeSwitcherTextFieldFocusPolicy.shouldRequestFirstResponder(
+            isFocused: true,
+            hasWindow: false,
+            hasCurrentEditor: false
+        ))
+        XCTAssertFalse(ModeSwitcherTextFieldFocusPolicy.shouldRequestFirstResponder(
+            isFocused: true,
+            hasWindow: true,
+            hasCurrentEditor: true
+        ))
+    }
+
+    func testTextInputFieldDoesNotClearSwiftUIFocusWhenAppKitTemporarilyEndsEditing() {
+        XCTAssertFalse(ModeSwitcherTextFieldFocusPolicy.shouldPublishFocusEnd(isFocusRequested: true))
+        XCTAssertTrue(ModeSwitcherTextFieldFocusPolicy.shouldPublishFocusEnd(isFocusRequested: false))
+    }
+
     func testFilesPathMarqueeUsesFixedPathWidthInsidePill() {
         let pathWidth = ModeSwitcherLayoutPolicy.filesPathTextWidth(
             in: 420,
