@@ -29,7 +29,7 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
             ModeSwitcherLayoutPolicy.activeTextPillInputHeight,
             ModeSwitcherLayoutPolicy.activeTextPillControlHeight
         )
-        XCTAssertEqual(ModeSwitcherLayoutPolicy.activeTextPillInputVerticalOffset, 0)
+        XCTAssertEqual(ModeSwitcherLayoutPolicy.activeTextPillInputVerticalOffset, 2)
         XCTAssertLessThan(ModeSwitcherLayoutPolicy.activeTextPillControlHeight, ModeSwitcherLayoutPolicy.activePillHeight)
     }
 
@@ -43,44 +43,26 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
     }
 
     func testTextInputModesUseAppsVerticalAlignment() {
-        XCTAssertEqual(ModeSwitcherLayoutPolicy.activeTextPillInputVerticalOffset, 0)
+        XCTAssertEqual(ModeSwitcherLayoutPolicy.activeTextPillInputVerticalOffset, 2)
         XCTAssertEqual(ModeSwitcherLayoutPolicy.activeTextPillIconVerticalOffset(for: .applications), 0)
         XCTAssertEqual(ModeSwitcherLayoutPolicy.activeTextPillIconVerticalOffset(for: .calculator), 0)
         XCTAssertEqual(ModeSwitcherLayoutPolicy.activeTextPillIconVerticalOffset(for: .dictionary), 0)
     }
 
-    func testTextInputFieldEditorIsVerticallyCenteredInsideControlBounds() {
-        let frame = ModeSwitcherLayoutPolicy.activeTextPillEditorFrame(
-            in: CGRect(x: 0, y: 0, width: 300, height: 30),
-            editorHeight: 24
-        )
+    func testModeSwitcherTextInputUsesSwiftUITextFieldFocusPath() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Sources/Bucky/UI/SwiftUI/ModeSwitcherView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
 
-        XCTAssertEqual(frame.origin.y, 3)
-        XCTAssertEqual(frame.height, 24)
-        XCTAssertEqual(frame.midY, 15)
-    }
-
-    func testTextInputFieldRequestsFocusWhenWindowArrivesAfterSwiftUIFocus() {
-        XCTAssertTrue(ModeSwitcherTextFieldFocusPolicy.shouldRequestFirstResponder(
-            isFocused: true,
-            hasWindow: true,
-            hasCurrentEditor: false
-        ))
-        XCTAssertFalse(ModeSwitcherTextFieldFocusPolicy.shouldRequestFirstResponder(
-            isFocused: true,
-            hasWindow: false,
-            hasCurrentEditor: false
-        ))
-        XCTAssertFalse(ModeSwitcherTextFieldFocusPolicy.shouldRequestFirstResponder(
-            isFocused: true,
-            hasWindow: true,
-            hasCurrentEditor: true
-        ))
-    }
-
-    func testTextInputFieldDoesNotClearSwiftUIFocusWhenAppKitTemporarilyEndsEditing() {
-        XCTAssertFalse(ModeSwitcherTextFieldFocusPolicy.shouldPublishFocusEnd(isFocusRequested: true))
-        XCTAssertTrue(ModeSwitcherTextFieldFocusPolicy.shouldPublishFocusEnd(isFocusRequested: false))
+        XCTAssertTrue(source.contains("TextField(mode.placeholder, text: $model.query)"))
+        XCTAssertTrue(source.contains(".focused($isSearchFocused)"))
+        XCTAssertFalse(source.contains("NSViewRepresentable"))
+        XCTAssertFalse(source.contains("NSTextField"))
+        XCTAssertFalse(source.contains("CenteredLauncherNSTextField"))
+        XCTAssertFalse(source.contains("NSTextFieldDelegate"))
     }
 
     func testFilesPathMarqueeUsesFixedPathWidthInsidePill() {
