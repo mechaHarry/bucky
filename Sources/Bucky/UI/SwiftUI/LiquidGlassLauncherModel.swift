@@ -557,12 +557,26 @@ final class LiquidGlassLauncherModel: ObservableObject {
         _ command: LauncherCommand,
         anchor: SelectionScrollAnchor = .nearest
     ) -> Bool {
+        let shouldHideAfterOpenAction = shouldHideAfterFocusedFileOpen(command)
         MainActor.assumeIsolated {
             fileBrowserModel.handle(command)
             selectedIndex = fileBrowserModel.selectedIndex
         }
+        if shouldHideAfterOpenAction,
+           MainActor.assumeIsolated({ fileBrowserModel.focusState == .browse && fileBrowserModel.statusMessage == nil }) {
+            hideAction?()
+        }
         requestSelectionScroll(anchor: anchor)
         return true
+    }
+
+    private func shouldHideAfterFocusedFileOpen(_ command: LauncherCommand) -> Bool {
+        guard case .open = command else { return false }
+        return MainActor.assumeIsolated {
+            fileBrowserModel.focusState == .previewActions
+                && fileBrowserModel.focusableActions.indices.contains(fileBrowserModel.focusedActionIndex)
+                && fileBrowserModel.focusableActions[fileBrowserModel.focusedActionIndex] == .open
+        }
     }
 
     private func moveSelection(by delta: Int) {

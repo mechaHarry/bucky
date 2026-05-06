@@ -34,12 +34,6 @@ struct FileBrowserView: View {
                     .transition(.opacity)
             }
 
-            if case let .quickLook(preview) = model.focusState {
-                QuickLookPreviewSurface(model: model, preview: preview, entry: model.entry(for: preview.url))
-                    .id(preview.url)
-                    .transition(.scale(scale: 0.96).combined(with: .opacity))
-            }
-
             focusedOverlay
 
             if let statusMessage = model.statusMessage {
@@ -904,7 +898,7 @@ private struct ConflictResolutionRow: View {
 }
 
 @available(macOS 26.0, *)
-private struct QuickLookPreviewSurface: View {
+struct QuickLookPreviewSurface: View {
     @ObservedObject var model: FileBrowserModel
     let preview: FileBrowserPreview
     let entry: FileBrowserEntry?

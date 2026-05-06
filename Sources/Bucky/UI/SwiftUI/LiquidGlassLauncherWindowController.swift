@@ -8,6 +8,8 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     private let model: LiquidGlassLauncherModel
     private var localKeyMonitor: Any?
     private var applicationActivationObserver: NSObjectProtocol?
+    private var quickLookPreviewPanel: NSPanel?
+    private var quickLookPreviewHost: NSHostingController<QuickLookPreviewSurface>?
     private var spaceKeyRouter = LauncherSpaceKeyRouter()
     private var pendingSpaceHoldTimer: Timer?
     private var isOptionPinnedFocusActive = false
@@ -60,6 +62,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     deinit {
         cancelSpaceHoldState(deliverEndHold: true)
         cancelOptionPinnedFocus()
+        closeQuickLookPreviewPanel()
         if let localKeyMonitor {
             NSEvent.removeMonitor(localKeyMonitor)
         }
@@ -124,6 +127,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         }
 
         beginVisibilityTransition(.hiding)
+        closeQuickLookPreviewPanel()
         cancelSpaceHoldState(deliverEndHold: true)
         cancelOptionPinnedFocus()
         model.cancelPendingCalculationHistory()
@@ -288,6 +292,9 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
 
     private func handleLauncherCommand(_ command: LauncherCommand) -> Bool {
         let handled = model.handle(command: command)
+        if handled {
+            syncQuickLookPreviewPanel()
+        }
         if handled, LauncherWindowRepositionPolicy.shouldReposition(after: command) {
             positionWindow(animated: true)
         }
@@ -411,6 +418,73 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
 
         guard window.frame != frame else { return }
         window.setFrame(frame, display: true, animate: animated)
+    }
+
+    private func syncQuickLookPreviewPanel() {
+        guard model.mode == .files,
+              case let .quickLook(preview) = fileBrowserFocusState else {
+            closeQuickLookPreviewPanel()
+            return
+        }
+
+        let previewPayload = MainActor.assumeIsolated {
+            let fileBrowserModel = model.fileBrowserModel
+            return (
+                model: fileBrowserModel,
+                entry: fileBrowserModel.entry(for: preview.url)
+            )
+        }
+        let rootView = QuickLookPreviewSurface(
+            model: previewPayload.model,
+            preview: preview,
+            entry: previewPayload.entry
+        )
+
+        if let quickLookPreviewHost {
+            quickLookPreviewHost.rootView = rootView
+        } else {
+            let host = NSHostingController(rootView: rootView)
+            let panel = NSPanel(
+                contentRect: .zero,
+                styleMask: [.borderless, .nonactivatingPanel],
+                backing: .buffered,
+                defer: false
+            )
+            panel.contentViewController = host
+            panel.backgroundColor = .clear
+            panel.isOpaque = false
+            panel.hasShadow = false
+            panel.hidesOnDeactivate = false
+            panel.isReleasedWhenClosed = false
+            panel.ignoresMouseEvents = true
+            panel.level = NSWindow.Level(rawValue: window.level.rawValue + 1)
+            panel.collectionBehavior = [.transient, .moveToActiveSpace, .fullScreenAuxiliary]
+            quickLookPreviewHost = host
+            quickLookPreviewPanel = panel
+        }
+
+        positionQuickLookPreviewPanel(for: preview.mode)
+        quickLookPreviewPanel?.orderFront(nil)
+    }
+
+    private func positionQuickLookPreviewPanel(for mode: FileBrowserPreviewMode) {
+        guard let quickLookPreviewPanel,
+              let screen = window.screen ?? primaryDisplayScreen() ?? NSScreen.main ?? NSScreen.screens.first else {
+            return
+        }
+
+        let frame = FileBrowserPreviewWindowFramePolicy.frame(
+            for: mode,
+            visibleFrame: screen.visibleFrame
+        )
+        guard quickLookPreviewPanel.frame != frame else { return }
+        quickLookPreviewPanel.setFrame(frame, display: true, animate: false)
+    }
+
+    private func closeQuickLookPreviewPanel() {
+        quickLookPreviewPanel?.orderOut(nil)
+        quickLookPreviewPanel = nil
+        quickLookPreviewHost = nil
     }
 
     private func restoreFocusAfterExternalPromptIfNeeded() {
