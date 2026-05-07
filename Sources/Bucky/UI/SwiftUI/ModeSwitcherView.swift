@@ -143,8 +143,9 @@ struct ModeSwitcherLayoutPolicy {
     static var activeTextPillHorizontalInset: CGFloat { activePillHeight / 3 }
     static var activeTextPillVerticalInset: CGFloat { activePillHeight * 3 / 16 }
     static var activeTextPillControlHeight: CGFloat { activePillHeight - activeTextPillVerticalInset * 2 }
-    static var activeTextPillIconWidth: CGFloat { activePillHeight * 11 / 24 }
+    static var activeTextPillIconWidth: CGFloat { activePillHeight / 2 }
     static var activeTextPillIconHeight: CGFloat { activeTextPillControlHeight }
+    static var activeTextPillIconGlyphSize: CGFloat { activePillHeight / 2 }
     static var activeTextPillInputHeight: CGFloat { activeTextPillControlHeight }
     static let filesPillLeadingPadding: CGFloat = 16
     static let filesPillTrailingPadding: CGFloat = 12
@@ -182,14 +183,7 @@ private struct TextInputModePill: View {
 
     var body: some View {
         HStack(spacing: ModeSwitcherLayoutPolicy.activeTextPillSpacing) {
-            Image(systemName: symbol)
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .frame(
-                    width: ModeSwitcherLayoutPolicy.activeTextPillIconWidth,
-                    height: ModeSwitcherLayoutPolicy.activeTextPillIconHeight,
-                    alignment: .center
-                )
+            ActiveTextPillIcon(symbol: symbol)
 
             TextField(mode.placeholder, text: $model.query)
                 .textFieldStyle(.plain)
@@ -225,6 +219,29 @@ private struct TextInputModePill: View {
         )
         .contentShape(Capsule())
         .glassEffect(.regular.interactive(), in: Capsule())
+    }
+}
+
+private struct ActiveTextPillIcon: View {
+    let symbol: String
+
+    var body: some View {
+        Image(systemName: symbol)
+            .resizable()
+            .scaledToFit()
+            .fontWeight(.semibold)
+            .symbolRenderingMode(.monochrome)
+            .foregroundStyle(.secondary)
+            .frame(
+                width: ModeSwitcherLayoutPolicy.activeTextPillIconGlyphSize,
+                height: ModeSwitcherLayoutPolicy.activeTextPillIconGlyphSize,
+                alignment: .center
+            )
+            .frame(
+                width: ModeSwitcherLayoutPolicy.activeTextPillIconWidth,
+                height: ModeSwitcherLayoutPolicy.activeTextPillIconHeight,
+                alignment: .center
+            )
     }
 }
 
