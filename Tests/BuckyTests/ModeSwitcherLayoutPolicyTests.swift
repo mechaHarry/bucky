@@ -33,6 +33,14 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
             ModeSwitcherLayoutPolicy.activeTextPillInputHeight,
             ModeSwitcherLayoutPolicy.activeTextPillControlHeight
         )
+        XCTAssertLessThanOrEqual(
+            ModeSwitcherLayoutPolicy.activeTextPillIconGlyphSize,
+            ModeSwitcherLayoutPolicy.activeTextPillIconWidth
+        )
+        XCTAssertLessThanOrEqual(
+            ModeSwitcherLayoutPolicy.activeTextPillIconGlyphSize,
+            ModeSwitcherLayoutPolicy.activeTextPillIconHeight
+        )
         XCTAssertGreaterThan(ModeSwitcherLayoutPolicy.activeTextPillVerticalInset, 0)
         XCTAssertLessThan(ModeSwitcherLayoutPolicy.activeTextPillControlHeight, ModeSwitcherLayoutPolicy.activePillHeight)
     }
@@ -65,6 +73,15 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
         XCTAssertFalse(source.contains("activeTextPillInputVerticalOffset"))
         XCTAssertFalse(source.contains("activeTextPillIconVerticalOffset"))
         XCTAssertFalse(source.contains(".offset(y:"))
+    }
+
+    func testActiveTextPillNormalizesVariableSymbolArtwork() throws {
+        let source = try modeSwitcherSource()
+
+        XCTAssertTrue(source.contains("private struct ActiveTextPillIcon"))
+        XCTAssertTrue(source.contains(".resizable()"))
+        XCTAssertTrue(source.contains(".scaledToFit()"))
+        XCTAssertTrue(source.contains("ModeSwitcherLayoutPolicy.activeTextPillIconGlyphSize"))
     }
 
     func testModeSwitcherTextInputUsesSwiftUITextFieldFocusPath() throws {
