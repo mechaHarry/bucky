@@ -126,10 +126,23 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
         XCTAssertFalse(source.contains("TextInputModePill(\n                model: model,\n                mode: mode,\n                symbol: symbol(for: mode),\n                isSearchFocused: $isSearchFocused\n            )\n            .glassEffectID"))
     }
 
+    func testActiveTextPillOwnsForegroundLegibilityOutsideGlass() throws {
+        let source = try modeSwitcherSource()
+
+        XCTAssertTrue(source.contains("private struct ActiveTextPillPlaceholder"))
+        XCTAssertTrue(source.contains("TextField(\"\", text: $text)"))
+        XCTAssertTrue(source.contains("Text(placeholder)"))
+        XCTAssertTrue(source.contains(".foregroundStyle(.primary)"))
+        XCTAssertTrue(source.contains(".allowsHitTesting(false)"))
+        XCTAssertTrue(source.contains(".foregroundStyle(.primary)\n            .frame(\n                width: ModeSwitcherLayoutPolicy.activeTextPillIconGlyphSize"))
+        XCTAssertFalse(source.contains(".foregroundStyle(.secondary)\n            .frame(\n                width: ModeSwitcherLayoutPolicy.activeTextPillIconGlyphSize"))
+        XCTAssertFalse(source.contains("TextField(placeholder, text: $text)"))
+    }
+
     func testModeSwitcherTextInputUsesSwiftUITextFieldFocusPath() throws {
         let source = try modeSwitcherSource()
 
-        XCTAssertTrue(source.contains("TextField(placeholder, text: $text)"))
+        XCTAssertTrue(source.contains("TextField(\"\", text: $text)"))
         XCTAssertTrue(source.contains(".focused($isFocused)"))
         XCTAssertFalse(source.contains("NSViewRepresentable"))
         XCTAssertFalse(source.contains("NSTextField"))
