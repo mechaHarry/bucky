@@ -22,6 +22,10 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
 
     func testTextPillIconAndInputShareStableVerticalMetrics() {
         XCTAssertEqual(
+            ModeSwitcherLayoutPolicy.activeTextPillControlHeight,
+            ModeSwitcherLayoutPolicy.activePillHeight - ModeSwitcherLayoutPolicy.activeTextPillVerticalInset * 2
+        )
+        XCTAssertEqual(
             ModeSwitcherLayoutPolicy.activeTextPillIconHeight,
             ModeSwitcherLayoutPolicy.activeTextPillControlHeight
         )
@@ -29,7 +33,7 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
             ModeSwitcherLayoutPolicy.activeTextPillInputHeight,
             ModeSwitcherLayoutPolicy.activeTextPillControlHeight
         )
-        XCTAssertEqual(ModeSwitcherLayoutPolicy.activeTextPillInputVerticalOffset, 2)
+        XCTAssertGreaterThan(ModeSwitcherLayoutPolicy.activeTextPillVerticalInset, 0)
         XCTAssertLessThan(ModeSwitcherLayoutPolicy.activeTextPillControlHeight, ModeSwitcherLayoutPolicy.activePillHeight)
     }
 
@@ -39,23 +43,32 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
             .calculator,
             .dictionary
         ])
-        XCTAssertEqual(ModeSwitcherLayoutPolicy.activeTextPillSpacing, 12)
+        XCTAssertEqual(
+            ModeSwitcherLayoutPolicy.activeTextPillSpacing,
+            ModeSwitcherLayoutPolicy.activePillHeight / 4
+        )
+        XCTAssertEqual(
+            ModeSwitcherLayoutPolicy.activeTextPillHorizontalInset,
+            ModeSwitcherLayoutPolicy.activePillHeight / 3
+        )
+        XCTAssertEqual(
+            ModeSwitcherLayoutPolicy.launcherHeaderTopInset,
+            ModeSwitcherLayoutPolicy.activePillHeight / 12
+        )
     }
 
-    func testTextInputModesUseAppsVerticalAlignment() {
-        XCTAssertEqual(ModeSwitcherLayoutPolicy.activeTextPillInputVerticalOffset, 2)
-        XCTAssertEqual(ModeSwitcherLayoutPolicy.activeTextPillIconVerticalOffset(for: .applications), 0)
-        XCTAssertEqual(ModeSwitcherLayoutPolicy.activeTextPillIconVerticalOffset(for: .calculator), 0)
-        XCTAssertEqual(ModeSwitcherLayoutPolicy.activeTextPillIconVerticalOffset(for: .dictionary), 0)
+    func testTextInputModesUseMarginsInsteadOfVerticalOffsets() throws {
+        let source = try modeSwitcherSource()
+
+        XCTAssertTrue(source.contains(".padding(.horizontal, ModeSwitcherLayoutPolicy.activeTextPillHorizontalInset)"))
+        XCTAssertTrue(source.contains(".padding(.vertical, ModeSwitcherLayoutPolicy.activeTextPillVerticalInset)"))
+        XCTAssertFalse(source.contains("activeTextPillInputVerticalOffset"))
+        XCTAssertFalse(source.contains("activeTextPillIconVerticalOffset"))
+        XCTAssertFalse(source.contains(".offset(y:"))
     }
 
     func testModeSwitcherTextInputUsesSwiftUITextFieldFocusPath() throws {
-        let sourceURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("Sources/Bucky/UI/SwiftUI/ModeSwitcherView.swift")
-        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let source = try modeSwitcherSource()
 
         XCTAssertTrue(source.contains("TextField(mode.placeholder, text: $model.query)"))
         XCTAssertTrue(source.contains(".focused($isSearchFocused)"))
@@ -73,5 +86,14 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
 
         XCTAssertEqual(ModeSwitcherLayoutPolicy.filesPathMarqueeWidth(in: 420), pathWidth)
         XCTAssertLessThan(pathWidth, 420)
+    }
+
+    private func modeSwitcherSource() throws -> String {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Sources/Bucky/UI/SwiftUI/ModeSwitcherView.swift")
+        return try String(contentsOf: sourceURL, encoding: .utf8)
     }
 }

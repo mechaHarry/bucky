@@ -83,8 +83,9 @@ struct LiquidGlassLauncherView: View {
 
     private var header: some View {
         ModeSwitcherView(model: model, isSearchFocused: $isSearchFocused)
-            .padding(.horizontal, 2)
-            .padding(.vertical, 2)
+            .padding(.top, ModeSwitcherLayoutPolicy.launcherHeaderTopInset)
+            .padding(.horizontal, ModeSwitcherLayoutPolicy.launcherHeaderHorizontalInset)
+            .padding(.bottom, ModeSwitcherLayoutPolicy.launcherHeaderBottomInset)
     }
 
     private var headerControls: some View {
