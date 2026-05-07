@@ -276,30 +276,50 @@ private struct ActiveTextPillInput: View {
     let onSubmit: () -> Void
 
     var body: some View {
-        TextField(placeholder, text: $text)
-            .textFieldStyle(.plain)
+        ZStack(alignment: .leading) {
+            if text.isEmpty {
+                ActiveTextPillPlaceholder(placeholder: placeholder)
+            }
+
+            TextField("", text: $text)
+                .textFieldStyle(.plain)
+                .font(.system(size: 22, weight: .semibold, design: .rounded))
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: ModeSwitcherLayoutPolicy.activeTextPillTextFieldHeight,
+                    maxHeight: ModeSwitcherLayoutPolicy.activeTextPillTextFieldHeight,
+                    alignment: .center
+                )
+                .focused($isFocused)
+                .onChange(of: text) {
+                    onQueryChange()
+                }
+                .onSubmit {
+                    onSubmit()
+                }
+        }
+        .frame(
+            maxWidth: .infinity,
+            minHeight: ModeSwitcherLayoutPolicy.activeTextPillInputHeight,
+            maxHeight: ModeSwitcherLayoutPolicy.activeTextPillInputHeight,
+            alignment: .center
+        )
+        .layoutPriority(1)
+    }
+}
+
+private struct ActiveTextPillPlaceholder: View {
+    let placeholder: String
+
+    var body: some View {
+        Text(placeholder)
             .font(.system(size: 22, weight: .semibold, design: .rounded))
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(
-                maxWidth: .infinity,
-                minHeight: ModeSwitcherLayoutPolicy.activeTextPillTextFieldHeight,
-                maxHeight: ModeSwitcherLayoutPolicy.activeTextPillTextFieldHeight,
-                alignment: .center
-            )
-            .frame(
-                maxWidth: .infinity,
-                minHeight: ModeSwitcherLayoutPolicy.activeTextPillInputHeight,
-                maxHeight: ModeSwitcherLayoutPolicy.activeTextPillInputHeight,
-                alignment: .center
-            )
-            .layoutPriority(1)
-            .focused($isFocused)
-            .onChange(of: text) {
-                onQueryChange()
-            }
-            .onSubmit {
-                onSubmit()
-            }
+            .foregroundStyle(.primary)
+            .lineLimit(1)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 }
 
@@ -312,7 +332,7 @@ private struct ActiveTextPillIcon: View {
             .scaledToFit()
             .fontWeight(.semibold)
             .symbolRenderingMode(.monochrome)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.primary)
             .frame(
                 width: ModeSwitcherLayoutPolicy.activeTextPillIconGlyphSize,
                 height: ModeSwitcherLayoutPolicy.activeTextPillIconGlyphSize,
