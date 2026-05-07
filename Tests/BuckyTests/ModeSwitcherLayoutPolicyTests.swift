@@ -33,6 +33,10 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
             ModeSwitcherLayoutPolicy.activeTextPillInputHeight,
             ModeSwitcherLayoutPolicy.activeTextPillControlHeight
         )
+        XCTAssertEqual(
+            ModeSwitcherLayoutPolicy.activeTextPillTextFieldHeight,
+            ModeSwitcherLayoutPolicy.activeTextPillControlHeight
+        )
         XCTAssertLessThanOrEqual(
             ModeSwitcherLayoutPolicy.activeTextPillIconGlyphSize,
             ModeSwitcherLayoutPolicy.activeTextPillIconWidth
@@ -40,6 +44,14 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
         XCTAssertLessThanOrEqual(
             ModeSwitcherLayoutPolicy.activeTextPillIconGlyphSize,
             ModeSwitcherLayoutPolicy.activeTextPillIconHeight
+        )
+        XCTAssertGreaterThan(
+            ModeSwitcherLayoutPolicy.activeTextPillInputLeadingInset,
+            ModeSwitcherLayoutPolicy.activeTextPillIconLeadingInset + ModeSwitcherLayoutPolicy.activeTextPillIconWidth
+        )
+        XCTAssertEqual(
+            ModeSwitcherLayoutPolicy.activeTextPillInputTrailingInset(isShowingProgress: false),
+            ModeSwitcherLayoutPolicy.activeTextPillHorizontalInset
         )
         XCTAssertGreaterThan(ModeSwitcherLayoutPolicy.activeTextPillVerticalInset, 0)
         XCTAssertLessThan(ModeSwitcherLayoutPolicy.activeTextPillControlHeight, ModeSwitcherLayoutPolicy.activePillHeight)
@@ -52,8 +64,12 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
             .dictionary
         ])
         XCTAssertEqual(
-            ModeSwitcherLayoutPolicy.activeTextPillSpacing,
-            ModeSwitcherLayoutPolicy.activePillHeight / 4
+            ModeSwitcherLayoutPolicy.activeTextPillIconLeadingInset,
+            ModeSwitcherLayoutPolicy.activeTextPillHorizontalInset
+        )
+        XCTAssertEqual(
+            ModeSwitcherLayoutPolicy.activeTextPillInputLeadingInset,
+            ModeSwitcherLayoutPolicy.activePillHeight + ModeSwitcherLayoutPolicy.activePillHeight / 12
         )
         XCTAssertEqual(
             ModeSwitcherLayoutPolicy.activeTextPillHorizontalInset,
@@ -68,8 +84,10 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
     func testTextInputModesUseMarginsInsteadOfVerticalOffsets() throws {
         let source = try modeSwitcherSource()
 
-        XCTAssertTrue(source.contains(".padding(.horizontal, ModeSwitcherLayoutPolicy.activeTextPillHorizontalInset)"))
-        XCTAssertTrue(source.contains(".padding(.vertical, ModeSwitcherLayoutPolicy.activeTextPillVerticalInset)"))
+        XCTAssertTrue(source.contains(".padding(.leading, ModeSwitcherLayoutPolicy.activeTextPillIconLeadingInset)"))
+        XCTAssertTrue(source.contains(".padding(.leading, ModeSwitcherLayoutPolicy.activeTextPillInputLeadingInset)"))
+        XCTAssertTrue(source.contains("ModeSwitcherLayoutPolicy.activeTextPillInputTrailingInset(isShowingProgress:"))
+        XCTAssertFalse(source.contains("HStack(spacing: ModeSwitcherLayoutPolicy.activeTextPillSpacing)"))
         XCTAssertFalse(source.contains("activeTextPillInputVerticalOffset"))
         XCTAssertFalse(source.contains("activeTextPillIconVerticalOffset"))
         XCTAssertFalse(source.contains(".offset(y:"))
@@ -84,11 +102,21 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
         XCTAssertTrue(source.contains("ModeSwitcherLayoutPolicy.activeTextPillIconGlyphSize"))
     }
 
+    func testActiveTextPillBoxesIconAndTextRelativeToPill() throws {
+        let source = try modeSwitcherSource()
+
+        XCTAssertTrue(source.contains("ZStack(alignment: .leading)"))
+        XCTAssertTrue(source.contains("ActiveTextPillIcon(symbol: symbol)"))
+        XCTAssertTrue(source.contains("ActiveTextPillInput("))
+        XCTAssertTrue(source.contains("private struct ActiveTextPillInput"))
+        XCTAssertTrue(source.contains(".fixedSize(horizontal: false, vertical: true)"))
+    }
+
     func testModeSwitcherTextInputUsesSwiftUITextFieldFocusPath() throws {
         let source = try modeSwitcherSource()
 
-        XCTAssertTrue(source.contains("TextField(mode.placeholder, text: $model.query)"))
-        XCTAssertTrue(source.contains(".focused($isSearchFocused)"))
+        XCTAssertTrue(source.contains("TextField(placeholder, text: $text)"))
+        XCTAssertTrue(source.contains(".focused($isFocused)"))
         XCTAssertFalse(source.contains("NSViewRepresentable"))
         XCTAssertFalse(source.contains("NSTextField"))
         XCTAssertFalse(source.contains("CenteredLauncherNSTextField"))

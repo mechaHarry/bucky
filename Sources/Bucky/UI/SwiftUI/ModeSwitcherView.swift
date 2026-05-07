@@ -139,14 +139,17 @@ struct ModeSwitcherLayoutPolicy {
     static var launcherHeaderTopInset: CGFloat { activePillHeight / 12 }
     static var launcherHeaderHorizontalInset: CGFloat { activePillHeight / 24 }
     static var launcherHeaderBottomInset: CGFloat { activePillHeight / 24 }
-    static var activeTextPillSpacing: CGFloat { activePillHeight / 4 }
     static var activeTextPillHorizontalInset: CGFloat { activePillHeight / 3 }
     static var activeTextPillVerticalInset: CGFloat { activePillHeight * 3 / 16 }
     static var activeTextPillControlHeight: CGFloat { activePillHeight - activeTextPillVerticalInset * 2 }
+    static var activeTextPillIconLeadingInset: CGFloat { activeTextPillHorizontalInset }
     static var activeTextPillIconWidth: CGFloat { activePillHeight / 2 }
     static var activeTextPillIconHeight: CGFloat { activeTextPillControlHeight }
     static var activeTextPillIconGlyphSize: CGFloat { activePillHeight / 2 }
+    static var activeTextPillInputLeadingInset: CGFloat { activePillHeight + activePillHeight / 12 }
     static var activeTextPillInputHeight: CGFloat { activeTextPillControlHeight }
+    static var activeTextPillTextFieldHeight: CGFloat { activeTextPillControlHeight }
+    static var activeTextPillProgressWidth: CGFloat { activeTextPillControlHeight }
     static let filesPillLeadingPadding: CGFloat = 16
     static let filesPillTrailingPadding: CGFloat = 12
     static let filesContentSpacing: CGFloat = 12
@@ -172,6 +175,11 @@ struct ModeSwitcherLayoutPolicy {
         let fixedWidth = filesPathIconWidth + filesPathIconSpacing
         return max(0, filesPathButtonWidth(in: pillWidth) - fixedWidth)
     }
+
+    static func activeTextPillInputTrailingInset(isShowingProgress: Bool) -> CGFloat {
+        activeTextPillHorizontalInset
+            + (isShowingProgress ? activeTextPillProgressWidth + activePillHeight / 4 : 0)
+    }
 }
 
 @available(macOS 26.0, *)
@@ -182,35 +190,44 @@ private struct TextInputModePill: View {
     @FocusState.Binding var isSearchFocused: Bool
 
     var body: some View {
-        HStack(spacing: ModeSwitcherLayoutPolicy.activeTextPillSpacing) {
-            ActiveTextPillIcon(symbol: symbol)
+        let isShowingProgress = model.isIndexing && mode == .applications
 
-            TextField(mode.placeholder, text: $model.query)
-                .textFieldStyle(.plain)
-                .font(.system(size: 22, weight: .semibold, design: .rounded))
-                .frame(
-                    maxWidth: .infinity,
-                    minHeight: ModeSwitcherLayoutPolicy.activeTextPillInputHeight,
-                    maxHeight: ModeSwitcherLayoutPolicy.activeTextPillInputHeight,
-                    alignment: .center
-                )
-                .layoutPriority(1)
-                .focused($isSearchFocused)
-                .onChange(of: model.query) {
+        ZStack(alignment: .leading) {
+            ActiveTextPillIcon(symbol: symbol)
+                .padding(.leading, ModeSwitcherLayoutPolicy.activeTextPillIconLeadingInset)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+
+            ActiveTextPillInput(
+                placeholder: mode.placeholder,
+                text: $model.query,
+                isFocused: $isSearchFocused,
+                onQueryChange: {
                     model.queryDidChange()
-                }
-                .onSubmit {
+                },
+                onSubmit: {
                     _ = model.handle(command: .open)
                 }
+            )
+            .padding(.leading, ModeSwitcherLayoutPolicy.activeTextPillInputLeadingInset)
+            .padding(
+                .trailing,
+                ModeSwitcherLayoutPolicy.activeTextPillInputTrailingInset(isShowingProgress: isShowingProgress)
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
 
-            if model.isIndexing && mode == .applications {
+            if isShowingProgress {
                 ProgressView()
                     .controlSize(.small)
+                    .frame(
+                        width: ModeSwitcherLayoutPolicy.activeTextPillProgressWidth,
+                        height: ModeSwitcherLayoutPolicy.activeTextPillControlHeight,
+                        alignment: .center
+                    )
+                    .padding(.trailing, ModeSwitcherLayoutPolicy.activeTextPillHorizontalInset)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
                     .glassEffectTransition(.materialize)
             }
         }
-        .padding(.horizontal, ModeSwitcherLayoutPolicy.activeTextPillHorizontalInset)
-        .padding(.vertical, ModeSwitcherLayoutPolicy.activeTextPillVerticalInset)
         .frame(
             maxWidth: .infinity,
             minHeight: ModeSwitcherLayoutPolicy.activePillHeight,
@@ -219,6 +236,42 @@ private struct TextInputModePill: View {
         )
         .contentShape(Capsule())
         .glassEffect(.regular.interactive(), in: Capsule())
+    }
+}
+
+@available(macOS 26.0, *)
+private struct ActiveTextPillInput: View {
+    let placeholder: String
+    @Binding var text: String
+    @FocusState.Binding var isFocused: Bool
+    let onQueryChange: () -> Void
+    let onSubmit: () -> Void
+
+    var body: some View {
+        TextField(placeholder, text: $text)
+            .textFieldStyle(.plain)
+            .font(.system(size: 22, weight: .semibold, design: .rounded))
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(
+                maxWidth: .infinity,
+                minHeight: ModeSwitcherLayoutPolicy.activeTextPillTextFieldHeight,
+                maxHeight: ModeSwitcherLayoutPolicy.activeTextPillTextFieldHeight,
+                alignment: .center
+            )
+            .frame(
+                maxWidth: .infinity,
+                minHeight: ModeSwitcherLayoutPolicy.activeTextPillInputHeight,
+                maxHeight: ModeSwitcherLayoutPolicy.activeTextPillInputHeight,
+                alignment: .center
+            )
+            .layoutPriority(1)
+            .focused($isFocused)
+            .onChange(of: text) {
+                onQueryChange()
+            }
+            .onSubmit {
+                onSubmit()
+            }
     }
 }
 
