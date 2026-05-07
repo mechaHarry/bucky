@@ -136,14 +136,16 @@ struct ModeSwitcherView: View {
 
 struct ModeSwitcherLayoutPolicy {
     static let activePillHeight: CGFloat = 48
-    static let activeTextPillSpacing: CGFloat = 12
-    static let activeTextPillControlHeight: CGFloat = 30
-    static let activeTextPillIconWidth: CGFloat = 22
-    static let activeTextPillIconHeight: CGFloat = activeTextPillControlHeight
-    static let activeTextPillInputHeight: CGFloat = activeTextPillControlHeight
-    static let activeTextPillInputVerticalOffset: CGFloat = 2
-    static let activeTextPillCalculatorIconVerticalOffset: CGFloat = 0
-    static let activeTextPillDictionaryIconVerticalOffset: CGFloat = 0
+    static var launcherHeaderTopInset: CGFloat { activePillHeight / 12 }
+    static var launcherHeaderHorizontalInset: CGFloat { activePillHeight / 24 }
+    static var launcherHeaderBottomInset: CGFloat { activePillHeight / 24 }
+    static var activeTextPillSpacing: CGFloat { activePillHeight / 4 }
+    static var activeTextPillHorizontalInset: CGFloat { activePillHeight / 3 }
+    static var activeTextPillVerticalInset: CGFloat { activePillHeight * 3 / 16 }
+    static var activeTextPillControlHeight: CGFloat { activePillHeight - activeTextPillVerticalInset * 2 }
+    static var activeTextPillIconWidth: CGFloat { activePillHeight * 11 / 24 }
+    static var activeTextPillIconHeight: CGFloat { activeTextPillControlHeight }
+    static var activeTextPillInputHeight: CGFloat { activeTextPillControlHeight }
     static let filesPillLeadingPadding: CGFloat = 16
     static let filesPillTrailingPadding: CGFloat = 12
     static let filesContentSpacing: CGFloat = 12
@@ -169,18 +171,6 @@ struct ModeSwitcherLayoutPolicy {
         let fixedWidth = filesPathIconWidth + filesPathIconSpacing
         return max(0, filesPathButtonWidth(in: pillWidth) - fixedWidth)
     }
-
-    static func activeTextPillIconVerticalOffset(for mode: LauncherMode) -> CGFloat {
-        switch mode {
-        case .applications, .files:
-            return 0
-        case .calculator:
-            return activeTextPillCalculatorIconVerticalOffset
-        case .dictionary:
-            return activeTextPillDictionaryIconVerticalOffset
-        }
-    }
-
 }
 
 @available(macOS 26.0, *)
@@ -200,7 +190,6 @@ private struct TextInputModePill: View {
                     height: ModeSwitcherLayoutPolicy.activeTextPillIconHeight,
                     alignment: .center
                 )
-                .offset(y: ModeSwitcherLayoutPolicy.activeTextPillIconVerticalOffset(for: mode))
 
             TextField(mode.placeholder, text: $model.query)
                 .textFieldStyle(.plain)
@@ -212,7 +201,6 @@ private struct TextInputModePill: View {
                     alignment: .center
                 )
                 .layoutPriority(1)
-                .offset(y: ModeSwitcherLayoutPolicy.activeTextPillInputVerticalOffset)
                 .focused($isSearchFocused)
                 .onChange(of: model.query) {
                     model.queryDidChange()
@@ -227,8 +215,8 @@ private struct TextInputModePill: View {
                     .glassEffectTransition(.materialize)
             }
         }
-        .padding(.leading, 16)
-        .padding(.trailing, 18)
+        .padding(.horizontal, ModeSwitcherLayoutPolicy.activeTextPillHorizontalInset)
+        .padding(.vertical, ModeSwitcherLayoutPolicy.activeTextPillVerticalInset)
         .frame(
             maxWidth: .infinity,
             minHeight: ModeSwitcherLayoutPolicy.activePillHeight,
