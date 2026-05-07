@@ -209,25 +209,70 @@ private struct TextInputModePill: View {
     @FocusState.Binding var isSearchFocused: Bool
 
     var body: some View {
-        let isShowingProgress = model.isIndexing && mode == .applications
-
-        ZStack(alignment: .leading) {
-            TextInputPillGlassSurface()
-
-            ActiveTextPillIcon(symbol: symbol)
-                .padding(.leading, ModeSwitcherLayoutPolicy.activeTextPillIconLeadingInset)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-
-            ActiveTextPillInput(
+        TextInputPillGlassSurface {
+            TextInputPillForegroundLayer(
+                symbol: symbol,
                 placeholder: mode.placeholder,
+                isShowingProgress: model.isIndexing && mode == .applications,
                 text: $model.query,
-                isFocused: $isSearchFocused,
+                isSearchFocused: $isSearchFocused,
                 onQueryChange: {
                     model.queryDidChange()
                 },
                 onSubmit: {
                     _ = model.handle(command: .open)
                 }
+            )
+        }
+        .frame(
+            maxWidth: .infinity,
+            minHeight: ModeSwitcherLayoutPolicy.activePillHeight,
+            maxHeight: ModeSwitcherLayoutPolicy.activePillHeight,
+            alignment: .center
+        )
+        .contentShape(Capsule())
+    }
+}
+
+private struct TextInputPillGlassSurface<Foreground: View>: View {
+    private let foreground: Foreground
+
+    init(@ViewBuilder foreground: () -> Foreground) {
+        self.foreground = foreground()
+    }
+
+    var body: some View {
+        Capsule()
+            .fill(Color.clear)
+            .glassEffect(.regular.interactive(), in: Capsule())
+            .overlay(alignment: .leading) {
+                foreground
+            }
+    }
+}
+
+@available(macOS 26.0, *)
+private struct TextInputPillForegroundLayer: View {
+    let symbol: String
+    let placeholder: String
+    let isShowingProgress: Bool
+    @Binding var text: String
+    @FocusState.Binding var isSearchFocused: Bool
+    let onQueryChange: () -> Void
+    let onSubmit: () -> Void
+
+    var body: some View {
+        ZStack(alignment: .leading) {
+            ActiveTextPillIcon(symbol: symbol)
+                .padding(.leading, ModeSwitcherLayoutPolicy.activeTextPillIconLeadingInset)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+
+            ActiveTextPillInput(
+                placeholder: placeholder,
+                text: $text,
+                isFocused: $isSearchFocused,
+                onQueryChange: onQueryChange,
+                onSubmit: onSubmit
             )
             .padding(.leading, ModeSwitcherLayoutPolicy.activeTextPillInputLeadingInset)
             .padding(
@@ -249,21 +294,6 @@ private struct TextInputModePill: View {
                     .glassEffectTransition(.materialize)
             }
         }
-        .frame(
-            maxWidth: .infinity,
-            minHeight: ModeSwitcherLayoutPolicy.activePillHeight,
-            maxHeight: ModeSwitcherLayoutPolicy.activePillHeight,
-            alignment: .center
-        )
-        .contentShape(Capsule())
-    }
-}
-
-private struct TextInputPillGlassSurface: View {
-    var body: some View {
-        Capsule()
-            .fill(Color.clear)
-            .glassEffect(.regular.interactive(), in: Capsule())
     }
 }
 
