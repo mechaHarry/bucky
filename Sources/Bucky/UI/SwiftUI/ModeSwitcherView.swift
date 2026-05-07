@@ -10,18 +10,31 @@ struct ModeSwitcherView: View {
         GlassEffectContainer(spacing: 10) {
             HStack(spacing: 10) {
                 ForEach(LauncherMode.ordered, id: \.self) { mode in
-                    if mode == model.mode {
-                        activePill(for: mode)
-                            .glassEffectID(mode, in: modeGlassNamespace)
-                            .glassEffectTransition(.matchedGeometry)
-                    } else {
-                        modeOrb(for: mode)
-                            .glassEffectID(mode, in: modeGlassNamespace)
-                            .glassEffectTransition(.matchedGeometry)
-                    }
+                    modeSwitcherElement(for: mode)
                 }
             }
             .frame(maxWidth: .infinity)
+        }
+    }
+
+    @ViewBuilder
+    private func modeSwitcherElement(for mode: LauncherMode) -> some View {
+        if mode == model.mode {
+            if ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: mode) {
+                activePill(for: mode)
+                    .glassEffectID(mode, in: modeGlassNamespace)
+                    .glassEffectTransition(.matchedGeometry)
+            } else {
+                activePill(for: mode)
+            }
+        } else {
+            if ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: mode) {
+                modeOrb(for: mode)
+                    .glassEffectID(mode, in: modeGlassNamespace)
+                    .glassEffectTransition(.matchedGeometry)
+            } else {
+                modeOrb(for: mode)
+            }
         }
     }
 
@@ -182,6 +195,12 @@ struct ModeSwitcherLayoutPolicy {
     }
 }
 
+struct ModeSwitcherGlassTransitionPolicy {
+    static func usesMatchedGeometry(for mode: LauncherMode) -> Bool {
+        !mode.acceptsTextInput
+    }
+}
+
 @available(macOS 26.0, *)
 private struct TextInputModePill: View {
     @ObservedObject var model: LiquidGlassLauncherModel
@@ -193,6 +212,8 @@ private struct TextInputModePill: View {
         let isShowingProgress = model.isIndexing && mode == .applications
 
         ZStack(alignment: .leading) {
+            TextInputPillGlassSurface()
+
             ActiveTextPillIcon(symbol: symbol)
                 .padding(.leading, ModeSwitcherLayoutPolicy.activeTextPillIconLeadingInset)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
@@ -235,7 +256,14 @@ private struct TextInputModePill: View {
             alignment: .center
         )
         .contentShape(Capsule())
-        .glassEffect(.regular.interactive(), in: Capsule())
+    }
+}
+
+private struct TextInputPillGlassSurface: View {
+    var body: some View {
+        Capsule()
+            .fill(Color.clear)
+            .glassEffect(.regular.interactive(), in: Capsule())
     }
 }
 
