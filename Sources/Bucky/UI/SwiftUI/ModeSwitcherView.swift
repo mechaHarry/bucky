@@ -6,15 +6,24 @@ struct ModeSwitcherView: View {
     @FocusState.Binding var isSearchFocused: Bool
     @Namespace private var modeGlassNamespace
 
+    @ViewBuilder
     var body: some View {
-        GlassEffectContainer(spacing: 10) {
-            HStack(spacing: 10) {
-                ForEach(LauncherMode.ordered, id: \.self) { mode in
-                    modeSwitcherElement(for: mode)
-                }
+        if ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: model.mode) {
+            GlassEffectContainer(spacing: 10) {
+                modeSwitcherContent
             }
-            .frame(maxWidth: .infinity)
+        } else {
+            modeSwitcherContent
         }
+    }
+
+    private var modeSwitcherContent: some View {
+        HStack(spacing: 10) {
+            ForEach(LauncherMode.ordered, id: \.self) { mode in
+                modeSwitcherElement(for: mode)
+            }
+        }
+        .frame(maxWidth: .infinity)
     }
 
     @ViewBuilder
@@ -199,6 +208,10 @@ struct ModeSwitcherGlassTransitionPolicy {
     static func usesMatchedGeometry(for mode: LauncherMode) -> Bool {
         !mode.acceptsTextInput
     }
+
+    static func usesOuterContainer(for mode: LauncherMode) -> Bool {
+        !mode.acceptsTextInput
+    }
 }
 
 @available(macOS 26.0, *)
@@ -209,45 +222,37 @@ private struct TextInputModePill: View {
     @FocusState.Binding var isSearchFocused: Bool
 
     var body: some View {
-        TextInputPillGlassSurface {
-            TextInputPillForegroundLayer(
-                symbol: symbol,
-                placeholder: mode.placeholder,
-                isShowingProgress: model.isIndexing && mode == .applications,
-                text: $model.query,
-                isSearchFocused: $isSearchFocused,
-                onQueryChange: {
-                    model.queryDidChange()
-                },
-                onSubmit: {
-                    _ = model.handle(command: .open)
-                }
-            )
-        }
+        TextInputPillForegroundLayer(
+            symbol: symbol,
+            placeholder: mode.placeholder,
+            isShowingProgress: model.isIndexing && mode == .applications,
+            text: $model.query,
+            isSearchFocused: $isSearchFocused,
+            onQueryChange: {
+                model.queryDidChange()
+            },
+            onSubmit: {
+                _ = model.handle(command: .open)
+            }
+        )
         .frame(
             maxWidth: .infinity,
             minHeight: ModeSwitcherLayoutPolicy.activePillHeight,
             maxHeight: ModeSwitcherLayoutPolicy.activePillHeight,
             alignment: .center
         )
+        .background {
+            TextInputPillGlassSurface()
+        }
         .contentShape(Capsule())
     }
 }
 
-private struct TextInputPillGlassSurface<Foreground: View>: View {
-    private let foreground: Foreground
-
-    init(@ViewBuilder foreground: () -> Foreground) {
-        self.foreground = foreground()
-    }
-
+private struct TextInputPillGlassSurface: View {
     var body: some View {
         Capsule()
             .fill(Color.clear)
             .glassEffect(.regular.interactive(), in: Capsule())
-            .overlay(alignment: .leading) {
-                foreground
-            }
     }
 }
 
