@@ -180,7 +180,10 @@ struct LiquidGlassLauncherView: View {
     @ViewBuilder
     private var resultContent: some View {
         if model.mode == .files {
-            FileBrowserView(model: model.fileBrowserModel)
+            FileBrowserView(
+                model: model.fileBrowserModel,
+                selectionTint: LauncherModeTintPolicy.selectionColor(for: model.mode)
+            )
                 .transition(.opacity)
         } else if let emptyMessage = model.emptyMessage {
             Text(emptyMessage)
@@ -209,7 +212,10 @@ struct LiquidGlassLauncherView: View {
                         value: toolResultsSnapshotIdentity
                     )
                 case .files:
-                    FileBrowserView(model: model.fileBrowserModel)
+                    FileBrowserView(
+                        model: model.fileBrowserModel,
+                        selectionTint: LauncherModeTintPolicy.selectionColor(for: model.mode)
+                    )
                 }
             }
         }
@@ -220,7 +226,10 @@ struct LiquidGlassLauncherView: View {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .fill(Color.clear)
                 .glassEffect(
-                    .regular.tint(LauncherVisualStyle.panelFill.opacity(model.resultCount == 0 ? 0.018 : 0.032)),
+                    .regular.tint(
+                        LauncherModeTintPolicy.panelColor(for: model.mode)
+                            .opacity(LauncherVisualStyle.panelModeTintOpacity(resultCount: model.resultCount))
+                    ),
                     in: RoundedRectangle(cornerRadius: 24, style: .continuous)
                 )
         }
@@ -252,7 +261,11 @@ struct LiquidGlassLauncherView: View {
         let rowID = ResultRowID.application(item.url)
         let isSelected = index == model.selectedIndex
 
-        return LauncherResultRow(isSelected: isSelected, selectionNamespace: selectionGlassNamespace) {
+        return LauncherResultRow(
+            isSelected: isSelected,
+            selectionTint: LauncherModeTintPolicy.selectionColor(for: model.mode),
+            selectionNamespace: selectionGlassNamespace
+        ) {
             HStack(spacing: 14) {
                 HStack(spacing: 14) {
                     ApplicationIconView(url: item.url, animationTiming: model.animationTiming)
@@ -298,6 +311,7 @@ struct LiquidGlassLauncherView: View {
 
         return LauncherResultRow(
             isSelected: isSelected,
+            selectionTint: LauncherModeTintPolicy.selectionColor(for: model.mode),
             selectionNamespace: selectionGlassNamespace,
             verticalPadding: 11
         ) {
@@ -405,7 +419,10 @@ struct LiquidGlassLauncherView: View {
             RoundedRectangle(cornerRadius: 30, style: .continuous)
                 .fill(Color.clear)
                 .glassEffect(
-                    .regular.tint(LauncherVisualStyle.windowFill.opacity(model.resultCount == 0 ? 0.025 : 0.04)),
+                    .regular.tint(
+                        LauncherModeTintPolicy.panelColor(for: model.mode)
+                            .opacity(LauncherVisualStyle.windowModeTintOpacity(resultCount: model.resultCount))
+                    ),
                     in: RoundedRectangle(cornerRadius: 30, style: .continuous)
                 )
         }
@@ -508,8 +525,6 @@ private enum HeaderGlassEffectID: Hashable, Sendable {
 
 @available(macOS 26.0, *)
 private enum LauncherVisualStyle {
-    static let windowFill = Color(nsColor: .windowBackgroundColor)
-    static let panelFill = Color(nsColor: .underPageBackgroundColor)
     static let rowFill = Color(nsColor: .windowBackgroundColor)
     static let selectionFill = Color(nsColor: .selectedContentBackgroundColor)
     static let activeHeaderControlTint = Color(nsColor: .controlAccentColor)
@@ -517,6 +532,14 @@ private enum LauncherVisualStyle {
     static let panelRim = Color(nsColor: .separatorColor)
     static let selectionRim = Color(nsColor: .selectedContentBackgroundColor)
     static let actionRim = Color(nsColor: .separatorColor)
+
+    static func panelModeTintOpacity(resultCount: Int) -> Double {
+        resultCount == 0 ? 0.026 : 0.045
+    }
+
+    static func windowModeTintOpacity(resultCount: Int) -> Double {
+        resultCount == 0 ? 0.028 : 0.040
+    }
 }
 
 @available(macOS 26.0, *)

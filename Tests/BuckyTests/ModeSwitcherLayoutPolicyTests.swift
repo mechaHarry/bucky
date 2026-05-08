@@ -135,7 +135,7 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
         let source = try modeSwitcherSource()
 
         XCTAssertTrue(source.contains("private struct TextInputPillForegroundLayer"))
-        XCTAssertTrue(source.contains(".background {\n            TextInputPillGlassSurface()\n        }"))
+        XCTAssertTrue(source.contains(".background {\n            TextInputPillGlassSurface(tint: LauncherModeTintPolicy.activeColor(for: mode))\n        }"))
         XCTAssertTrue(source.contains("TextInputPillForegroundLayer("))
         XCTAssertFalse(source.contains(".glassEffect(.regular.interactive(), in: Capsule())\n            .overlay(alignment: .leading)"))
     }
@@ -148,7 +148,7 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
         XCTAssertTrue(source.contains("Text(placeholder)"))
         XCTAssertTrue(source.contains(".foregroundStyle(.primary)"))
         XCTAssertTrue(source.contains(".allowsHitTesting(false)"))
-        XCTAssertTrue(source.contains(".foregroundStyle(.primary)\n            .frame(\n                width: ModeSwitcherLayoutPolicy.activeTextPillIconGlyphSize"))
+        XCTAssertTrue(source.contains("ActiveTextPillIcon(symbol: symbol)\n                .foregroundStyle(tint)"))
         XCTAssertFalse(source.contains(".foregroundStyle(.secondary)\n            .frame(\n                width: ModeSwitcherLayoutPolicy.activeTextPillIconGlyphSize"))
         XCTAssertFalse(source.contains("TextField(placeholder, text: $text)"))
     }
