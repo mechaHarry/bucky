@@ -40,6 +40,11 @@ final class SettingsStore {
         save()
     }
 
+    func updateFileBrowserStartDirectory(_ directory: URL?) {
+        settings.fileBrowserStartDirectory = directory
+        save()
+    }
+
     private func save() {
         do {
             try fileManager.createDirectory(

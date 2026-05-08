@@ -14,8 +14,10 @@ let package = Package(
             name: "Bucky",
             linkerSettings: [
                 .linkedFramework("AppKit"),
+                .linkedFramework("AVKit"),
                 .linkedFramework("Carbon"),
                 .linkedFramework("CoreServices"),
+                .linkedFramework("QuickLookThumbnailing"),
                 .linkedFramework("ServiceManagement"),
                 .linkedFramework("SwiftUI")
             ]

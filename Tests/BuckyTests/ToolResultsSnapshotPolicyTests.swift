@@ -2,23 +2,23 @@ import XCTest
 @testable import Bucky
 
 final class ToolResultsSnapshotPolicyTests: XCTestCase {
-    func testBlankToolsQueryUpdatesImmediately() {
+    func testBlankCalculatorQueryUpdatesImmediately() {
         XCTAssertEqual(
-            ToolResultsSnapshotPolicy.update(for: .tools, query: "   "),
+            ToolResultsSnapshotPolicy.update(for: .calculator, query: "   "),
             .immediate
         )
     }
 
-    func testArithmeticToolsQueryUpdatesImmediately() {
+    func testCalculatorQueriesUpdateImmediately() {
         XCTAssertEqual(
-            ToolResultsSnapshotPolicy.update(for: .tools, query: "2 + 2"),
+            ToolResultsSnapshotPolicy.update(for: .calculator, query: "2 + 2"),
             .immediate
         )
     }
 
-    func testDictionaryToolsQueryUpdatesImmediately() {
+    func testDictionaryQueriesUpdateImmediately() {
         XCTAssertEqual(
-            ToolResultsSnapshotPolicy.update(for: .tools, query: "hello"),
+            ToolResultsSnapshotPolicy.update(for: .dictionary, query: "hello"),
             .immediate
         )
     }
@@ -41,12 +41,12 @@ final class ToolResultsSnapshotPolicyTests: XCTestCase {
         ]
 
         XCTAssertEqual(
-            ToolResultsSnapshotPolicy.animation(for: .tools, items: items),
+            ToolResultsSnapshotPolicy.animation(for: .dictionary, items: items),
             .subtle
         )
     }
 
-    func testApplicationAndCalculationSnapshotsDoNotUseToolSnapshotAnimation() {
+    func testApplicationAndCalculationSnapshotsDoNotUseDictionarySnapshotAnimation() {
         let calculationItems = [
             ToolItem(
                 title: "4",
@@ -61,7 +61,7 @@ final class ToolResultsSnapshotPolicyTests: XCTestCase {
             .none
         )
         XCTAssertEqual(
-            ToolResultsSnapshotPolicy.animation(for: .tools, items: calculationItems),
+            ToolResultsSnapshotPolicy.animation(for: .calculator, items: calculationItems),
             .none
         )
     }

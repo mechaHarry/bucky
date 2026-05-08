@@ -1,0 +1,178 @@
+import SwiftUI
+
+struct LauncherResultListLayoutPolicy {
+    static let rowSpacing: CGFloat = 5
+    static let contentMargin: CGFloat = 10
+    static let rowCornerRadius: CGFloat = 18
+    static let rowSelectionAnimationSeconds = 0.18
+    static let rowReconstructionAnimationSeconds = 0.18
+}
+
+@available(macOS 26.0, *)
+struct LauncherResultList<RowID: Hashable, Content: View>: View {
+    @Binding var scrollTargetID: RowID?
+    let scrollTargetAnchor: UnitPoint?
+    let reconstructionID: AnyHashable?
+    @ViewBuilder let content: () -> Content
+
+    init(
+        scrollTargetID: Binding<RowID?> = .constant(nil),
+        scrollTargetAnchor: UnitPoint? = nil,
+        reconstructionID: AnyHashable? = nil,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self._scrollTargetID = scrollTargetID
+        self.scrollTargetAnchor = scrollTargetAnchor
+        self.reconstructionID = reconstructionID
+        self.content = content
+    }
+
+    var body: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            LazyVStack(spacing: LauncherResultListLayoutPolicy.rowSpacing) {
+                content()
+            }
+            .scrollTargetLayout()
+            .frame(maxWidth: .infinity)
+        }
+        .contentMargins(.horizontal, LauncherResultListLayoutPolicy.contentMargin, for: .scrollContent)
+        .contentMargins(.vertical, LauncherResultListLayoutPolicy.contentMargin, for: .scrollContent)
+        .scrollPosition(id: $scrollTargetID, anchor: scrollTargetAnchor)
+        .scrollIndicators(.hidden)
+        .scrollIndicatorsFlash(trigger: false)
+        .animation(
+            .smooth(duration: LauncherResultListLayoutPolicy.rowReconstructionAnimationSeconds),
+            value: reconstructionID
+        )
+    }
+}
+
+@available(macOS 26.0, *)
+struct LauncherResultRow<Content: View>: View {
+    let isSelected: Bool
+    var isMarked = false
+    var selectionTint = LauncherResultListVisualStyle.selectionFill
+    var markedTint = LauncherResultListVisualStyle.markedFill
+    let selectionNamespace: Namespace.ID
+    var horizontalPadding: CGFloat = 14
+    var verticalPadding: CGFloat = 10
+    var minHeight: CGFloat?
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        content()
+            .padding(.horizontal, horizontalPadding)
+            .padding(.vertical, verticalPadding)
+            .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .leading)
+            .background {
+                LauncherResultRowBackground(
+                    isSelected: isSelected,
+                    isMarked: isMarked,
+                    selectionTint: selectionTint,
+                    markedTint: markedTint,
+                    selectionNamespace: selectionNamespace
+                )
+            }
+            .contentShape(RoundedRectangle(
+                cornerRadius: LauncherResultListLayoutPolicy.rowCornerRadius + 2,
+                style: .continuous
+            ))
+    }
+}
+
+@available(macOS 26.0, *)
+private struct LauncherResultRowBackground: View {
+    let isSelected: Bool
+    let isMarked: Bool
+    let selectionTint: Color
+    let markedTint: Color
+    let selectionNamespace: Namespace.ID
+
+    private var rowSelectionAnimation: Animation {
+        .smooth(duration: LauncherResultListLayoutPolicy.rowSelectionAnimationSeconds)
+    }
+
+    var body: some View {
+        GlassEffectContainer(spacing: 0) {
+            ZStack {
+                rowBase
+
+                if isMarked && !isSelected {
+                    rowHighlight(
+                        tint: markedTint,
+                        opacity: FileBrowserRowFocusIndicatorPolicy.markedSelectionOpacity,
+                        interactive: false
+                    )
+                        .glassEffectTransition(.materialize)
+                }
+
+                if isSelected {
+                    rowHighlight(
+                        tint: selectionTint,
+                        opacity: FileBrowserRowFocusIndicatorPolicy.activeSelectionOpacity,
+                        interactive: true
+                    )
+                        .glassEffectID(LauncherResultRowGlassEffectID.selection, in: selectionNamespace)
+                        .glassEffectTransition(.matchedGeometry)
+                        .overlay {
+                            rowShape
+                                .strokeBorder(selectionTint.opacity(0.42), lineWidth: 1)
+                        }
+                }
+            }
+            .overlay {
+                rowShape
+                    .strokeBorder(rowRim, lineWidth: isSelected ? 1.15 : 1)
+            }
+            .animation(rowSelectionAnimation, value: isSelected)
+            .animation(rowSelectionAnimation, value: isMarked)
+        }
+    }
+
+    private var rowBase: some View {
+        rowShape
+            .fill(Color.clear)
+            .glassEffect(
+                .regular.tint(LauncherResultListVisualStyle.rowFill.opacity(0.035)).interactive(false),
+                in: rowShape
+            )
+    }
+
+    private func rowHighlight(tint: Color, opacity: Double, interactive: Bool) -> some View {
+        rowShape
+            .fill(Color.clear)
+            .glassEffect(
+                .regular.tint(tint.opacity(opacity)).interactive(interactive),
+                in: rowShape
+            )
+    }
+
+    private var rowShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: LauncherResultListLayoutPolicy.rowCornerRadius, style: .continuous)
+    }
+
+    private var rowRim: Color {
+        if isSelected {
+            return selectionTint.opacity(0.34)
+        }
+        if isMarked {
+            return markedTint.opacity(0.28)
+        }
+        return LauncherResultListVisualStyle.surfaceRim.opacity(0.18)
+    }
+}
+
+@available(macOS 26.0, *)
+private enum LauncherResultRowGlassEffectID: Hashable, Sendable {
+    case selection
+}
+
+@available(macOS 26.0, *)
+enum LauncherResultListVisualStyle {
+    static let rowFill = Color(nsColor: .windowBackgroundColor)
+    static let selectionFill = Color(nsColor: .selectedContentBackgroundColor)
+    static let markedFill = Color(nsColor: .controlAccentColor)
+    static let surfaceRim = Color(nsColor: .separatorColor)
+    static let selectionRim = Color(nsColor: .selectedContentBackgroundColor)
+    static let markedRim = Color(nsColor: .controlAccentColor)
+}

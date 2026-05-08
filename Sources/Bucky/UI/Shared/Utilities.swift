@@ -135,7 +135,67 @@ extension String {
         return result
     }
 }
+
+enum LauncherKeyRoutingPolicy {
+    static func shouldRouteAlphaNumeric(mode: LauncherMode, fileFocusState: FileBrowserFocusState?) -> Bool {
+        guard mode == .files else { return true }
+        return fileFocusState != .renaming
+    }
+
+    static func shouldPassThroughFileTextEditing(
+        mode: LauncherMode,
+        fileFocusState: FileBrowserFocusState?,
+        keyCode: UInt16,
+        eventType: NSEvent.EventType
+    ) -> Bool {
+        guard mode == .files,
+              fileFocusState == .renaming else {
+            return false
+        }
+        guard eventType == .keyDown || eventType == .keyUp else {
+            return false
+        }
+        return keyCode != UInt16(kVK_Return)
+            && keyCode != UInt16(kVK_ANSI_KeypadEnter)
+            && keyCode != UInt16(kVK_Escape)
+    }
+}
+
 extension NSEvent {
+    var commandNumberMode: LauncherMode? {
+        let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard flags == .command,
+              let charactersIgnoringModifiers,
+              let number = Int(charactersIgnoringModifiers) else {
+            return nil
+        }
+        return LauncherMode(commandNumber: number)
+    }
+
+    var firstAlphaNumericCharacter: Character? {
+        let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard flags.isEmpty,
+              let charactersIgnoringModifiers,
+              let character = charactersIgnoringModifiers.first,
+              character.isLetter || character.isNumber else {
+            return nil
+        }
+        return character
+    }
+
+    var fileNavigationAlphaNumericCharacter: (character: Character, isReverse: Bool)? {
+        let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard flags.intersection([.command, .control]).isEmpty,
+              flags.subtracting([.shift, .option]).isEmpty,
+              let charactersIgnoringModifiers,
+              let character = charactersIgnoringModifiers.first,
+              character.isLetter || character.isNumber else {
+            return nil
+        }
+
+        return (character, flags.contains(.shift))
+    }
+
     var isCommandR: Bool {
         let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
         return flags == .command && charactersIgnoringModifiers?.lowercased() == "r"
@@ -165,9 +225,14 @@ extension NSEvent {
             && keyCode == UInt16(kVK_DownArrow)
     }
 
-    var isToolsShortcut: Bool {
+    var isCommandLeftBracket: Bool {
         let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
-        let isSlashKey = keyCode == UInt16(kVK_ANSI_Slash) || charactersIgnoringModifiers == "/"
-        return flags == .command && isSlashKey
+        return flags == .command && charactersIgnoringModifiers == "["
     }
+
+    var isCommandRightBracket: Bool {
+        let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
+        return flags == .command && charactersIgnoringModifiers == "]"
+    }
+
 }
