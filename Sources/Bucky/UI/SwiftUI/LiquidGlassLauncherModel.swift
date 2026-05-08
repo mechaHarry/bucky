@@ -7,11 +7,13 @@ final class LiquidGlassLauncherModel: ObservableObject {
     @Published var query = ""
     @Published var filteredItems: [LaunchItem] = []
     @Published var toolItems: [ToolItem] = []
+    @Published private var activatedFileBrowserModel: FileBrowserModel?
     @Published var selectedIndex = 0
     @Published var selectionScrollRequest: SelectionScrollRequest?
     @Published var isIndexing = false
     @Published var animationTiming: LauncherAnimationTiming
     @Published var isPresented = false
+    @Published var isWindowKey = true
     @Published var isPinned = false {
         didSet { pinnedChangedAction?(isPinned) }
     }
@@ -20,16 +22,19 @@ final class LiquidGlassLauncherModel: ObservableObject {
     var openSettingsAction: (() -> Void)?
     var reindexAction: (() -> Void)?
     var pinnedChangedAction: ((Bool) -> Void)?
+    var modeWillSwitchAction: ((LauncherMode, LauncherMode) -> Void)?
 
     private let settingsStore: SettingsStore
     private let inclusionStore: InclusionStore
     private let exclusionStore: ExclusionStore
     private let calculationHistoryStore: CalculationHistoryStore
+    private let fileBrowserModelFactory: () -> FileBrowserModel
     private var allItems: [LaunchItem] = []
     private var visibleItems: [LaunchItem] = []
     private var filterCache = ApplicationFilterCache()
     private var applicationQuery = ""
-    private var toolsQuery = ""
+    private var calculatorQuery = ""
+    private var dictionaryQuery = ""
     private var needsReindexAfterCurrent = false
     private var pendingCalculationHistoryTimer: Timer?
     private var pendingCalculationHistoryExpression: String?
@@ -40,35 +45,46 @@ final class LiquidGlassLauncherModel: ObservableObject {
         settingsStore: SettingsStore,
         inclusionStore: InclusionStore,
         exclusionStore: ExclusionStore,
-        calculationHistoryStore: CalculationHistoryStore
+        calculationHistoryStore: CalculationHistoryStore,
+        fileBrowserModel: FileBrowserModel? = nil,
+        fileBrowserModelFactory: (() -> FileBrowserModel)? = nil
     ) {
         self.settingsStore = settingsStore
         self.inclusionStore = inclusionStore
         self.exclusionStore = exclusionStore
         self.calculationHistoryStore = calculationHistoryStore
+        self.activatedFileBrowserModel = fileBrowserModel
+        self.fileBrowserModelFactory = fileBrowserModelFactory ?? {
+            MainActor.assumeIsolated {
+                FileBrowserModel(startDirectory: settingsStore.settings.fileBrowserStartDirectory)
+            }
+        }
         animationTiming = settingsStore.settings.animationTiming
     }
 
+    var fileBrowserModel: FileBrowserModel {
+        activateFileBrowserModel()
+    }
+
     var placeholder: String {
-        switch mode {
-        case .applications:
-            return "Search for Apps"
-        case .tools:
-            return "Calculate Numbers and Define Words"
-        }
+        mode.placeholder
     }
 
     var resultCount: Int {
         switch mode {
         case .applications:
             return filteredItems.count
-        case .tools:
+        case .calculator, .dictionary:
             return toolItems.count
+        case .files:
+            return MainActor.assumeIsolated {
+                fileBrowserModel.entries.count
+            }
         }
     }
 
     var canClearHistory: Bool {
-        mode == .tools && !calculationHistoryStore.calculations.isEmpty
+        mode == .calculator && !calculationHistoryStore.calculations.isEmpty
     }
 
     var emptyMessage: String? {
@@ -80,9 +96,17 @@ final class LiquidGlassLauncherModel: ObservableObject {
                 }
                 return inputIsBlank ? "No launchable items found" : "No matches"
             }
-        case .tools:
+        case .calculator:
             if toolItems.isEmpty {
                 return inputIsBlank ? "No calculation history" : "No tool results"
+            }
+        case .dictionary:
+            if toolItems.isEmpty, !inputIsBlank {
+                return "No dictionary matches"
+            }
+        case .files:
+            if MainActor.assumeIsolated({ fileBrowserModel.entries.isEmpty }) {
+                return "No files"
             }
         }
 
@@ -95,13 +119,19 @@ final class LiquidGlassLauncherModel: ObservableObject {
 
     func show(mode: LauncherMode) {
         applicationQuery = ""
-        toolsQuery = ""
+        calculatorQuery = ""
+        dictionaryQuery = ""
         self.mode = mode
         query = storedQuery(for: mode)
         selectedIndex = 0
         isPinned = false
         applyCurrentMode()
         requestSelectionScroll(anchor: .top)
+    }
+
+    func setWindowKeyState(_ isWindowKey: Bool) {
+        guard self.isWindowKey != isWindowKey else { return }
+        self.isWindowKey = isWindowKey
     }
 
     func queryDidChange() {
@@ -112,27 +142,52 @@ final class LiquidGlassLauncherModel: ObservableObject {
     func handle(command: LauncherCommand) -> Bool {
         switch command {
         case .up:
+            if mode == .files {
+                return handleFileBrowserCommand(command)
+            }
             moveSelection(by: -1)
         case .down:
+            if mode == .files {
+                return handleFileBrowserCommand(command)
+            }
             moveSelection(by: 1)
         case .top:
+            if mode == .files {
+                return handleFileBrowserCommand(command, anchor: .top)
+            }
             moveSelection(to: 0, anchor: .top)
         case .bottom:
+            if mode == .files {
+                return handleFileBrowserCommand(command, anchor: .bottom)
+            }
             moveSelection(to: resultCount - 1, anchor: .bottom)
         case .open:
+            if mode == .files {
+                return handleFileBrowserCommand(command)
+            }
             activateSelected()
         case .close:
+            if mode == .files, fileBrowserFocusState != .browse {
+                return handleFileBrowserCommand(command)
+            }
             clearInputOrHide()
         case .reindex:
             reindex()
         case .settings:
             openSettingsAction?()
-        case .toggleToolsMode:
-            return toggleToolsMode()
+        case let .switchMode(nextMode):
+            return switchMode(nextMode)
         case .clearHistory:
             clearHistory()
         case .togglePin:
+            if mode == .files {
+                return handleFileBrowserCommand(command)
+            }
             isPinned.toggle()
+        case .left, .right, .prepareSpaceInteraction, .space, .shiftSpace, .beginSpaceHold, .endSpaceHold,
+                .alphaNumeric, .shiftAlphaNumeric, .beginPinnedFocus, .endPinnedFocus, .historyBack, .historyForward:
+            guard mode == .files else { return false }
+            return handleFileBrowserCommand(command)
         }
 
         return true
@@ -197,6 +252,16 @@ final class LiquidGlassLauncherModel: ObservableObject {
         pendingCalculationHistoryResult = nil
     }
 
+    private func activateFileBrowserModel() -> FileBrowserModel {
+        if let activatedFileBrowserModel {
+            return activatedFileBrowserModel
+        }
+
+        let model = fileBrowserModelFactory()
+        activatedFileBrowserModel = model
+        return model
+    }
+
     private func applyCurrentMode(preservePreviousOnEmpty: Bool = false) {
         switch mode {
         case .applications:
@@ -205,9 +270,15 @@ final class LiquidGlassLauncherModel: ObservableObject {
                 rebuildVisibleItems()
             }
             applyFilter(preservePreviousOnEmpty: preservePreviousOnEmpty)
-        case .tools:
+        case .calculator, .dictionary:
             calculationHistoryStore.load()
             applyToolsResults()
+        case .files:
+            cancelPendingCalculationHistory()
+            toolItems = []
+            selectedIndex = MainActor.assumeIsolated {
+                fileBrowserModel.selectedIndex
+            }
         }
     }
 
@@ -299,9 +370,25 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     private func makeToolItems(for trimmedQuery: String, scheduleHistory: Bool) -> [ToolItem] {
-        if trimmedQuery.isEmpty {
-            return calculationHistoryItems()
-        } else if ArithmeticEvaluator.isArithmeticInput(trimmedQuery) {
+        switch mode {
+        case .applications, .files:
+            return []
+        case .calculator:
+            if trimmedQuery.isEmpty {
+                return calculationHistoryItems()
+            }
+
+            guard ArithmeticEvaluator.isArithmeticInput(trimmedQuery) else {
+                return [
+                    ToolItem(
+                        title: "Enter a calculation",
+                        subtitle: trimmedQuery,
+                        copyText: nil,
+                        kind: .message
+                    )
+                ]
+            }
+
             if let result = ArithmeticEvaluator.evaluate(trimmedQuery) {
                 let items = [
                     ToolItem(
@@ -326,7 +413,11 @@ final class LiquidGlassLauncherModel: ObservableObject {
                     )
                 ] + calculationHistoryItems()
             }
-        } else {
+        case .dictionary:
+            guard !trimmedQuery.isEmpty else {
+                return []
+            }
+
             let dictionaryResults = DictionaryLookup.results(for: trimmedQuery)
             if dictionaryResults.isEmpty {
                 return [
@@ -395,7 +486,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         cancelPendingCalculationHistory()
         calculationHistoryStore.add(expression: expression, result: result)
 
-        if refreshResults, mode == .tools {
+        if refreshResults, mode == .calculator {
             applyToolsResults(scheduleHistory: false)
         }
     }
@@ -414,33 +505,16 @@ final class LiquidGlassLauncherModel: ObservableObject {
         applyCurrentMode()
     }
 
-    private func toggleToolsMode() -> Bool {
-        storeCurrentQuery()
-
-        switch mode {
-        case .applications:
-            mode = .tools
-        case .tools:
-            mode = .applications
-        }
-        query = storedQuery(for: mode)
-        selectedIndex = 0
-        applyCurrentMode()
-        requestSelectionScroll(anchor: .top)
-
-        if mode == .applications {
-            reindexAction?()
-        }
-
-        return true
-    }
-
     private func storeCurrentQuery() {
         switch mode {
         case .applications:
             applicationQuery = query
-        case .tools:
-            toolsQuery = query
+        case .calculator:
+            calculatorQuery = query
+        case .dictionary:
+            dictionaryQuery = query
+        case .files:
+            break
         }
     }
 
@@ -448,8 +522,60 @@ final class LiquidGlassLauncherModel: ObservableObject {
         switch mode {
         case .applications:
             return applicationQuery
-        case .tools:
-            return toolsQuery
+        case .calculator:
+            return calculatorQuery
+        case .dictionary:
+            return dictionaryQuery
+        case .files:
+            return ""
+        }
+    }
+
+    private func switchMode(_ nextMode: LauncherMode) -> Bool {
+        if mode != nextMode {
+            modeWillSwitchAction?(mode, nextMode)
+        }
+        storeCurrentQuery()
+        mode = nextMode
+        query = storedQuery(for: nextMode)
+        selectedIndex = 0
+        applyCurrentMode()
+        requestSelectionScroll(anchor: .top)
+        if nextMode == .applications {
+            reindexAction?()
+        }
+        return true
+    }
+
+    private var fileBrowserFocusState: FileBrowserFocusState {
+        MainActor.assumeIsolated {
+            fileBrowserModel.focusState
+        }
+    }
+
+    private func handleFileBrowserCommand(
+        _ command: LauncherCommand,
+        anchor: SelectionScrollAnchor = .nearest
+    ) -> Bool {
+        let shouldHideAfterOpenAction = shouldHideAfterFocusedFileOpen(command)
+        MainActor.assumeIsolated {
+            fileBrowserModel.handle(command)
+            selectedIndex = fileBrowserModel.selectedIndex
+        }
+        if shouldHideAfterOpenAction,
+           MainActor.assumeIsolated({ fileBrowserModel.focusState == .browse && fileBrowserModel.statusMessage == nil }) {
+            hideAction?()
+        }
+        requestSelectionScroll(anchor: anchor)
+        return true
+    }
+
+    private func shouldHideAfterFocusedFileOpen(_ command: LauncherCommand) -> Bool {
+        guard case .open = command else { return false }
+        return MainActor.assumeIsolated {
+            fileBrowserModel.focusState == .previewActions
+                && fileBrowserModel.focusableActions.indices.contains(fileBrowserModel.focusedActionIndex)
+                && fileBrowserModel.focusableActions[fileBrowserModel.focusedActionIndex] == .open
         }
     }
 
@@ -493,9 +619,13 @@ final class LiquidGlassLauncherModel: ObservableObject {
                 hideAction?()
             }
             launch(item)
-        case .tools:
+        case .calculator, .dictionary:
             guard selectedIndex >= 0, selectedIndex < toolItems.count else { return }
             activate(toolItems[selectedIndex])
+        case .files:
+            MainActor.assumeIsolated {
+                fileBrowserModel.handle(.open)
+            }
         }
     }
 

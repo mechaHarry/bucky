@@ -1,0 +1,62 @@
+import Foundation
+
+@MainActor
+protocol FileBrowserDirectoryStreaming {
+    func loadEntries(
+        in directory: URL,
+        sort: FileBrowserSort,
+        completion: @escaping (Result<[FileBrowserEntry], Error>) -> Void
+    )
+}
+
+@MainActor
+final class FileBrowserDirectoryStream: FileBrowserDirectoryStreaming {
+    private let fileSystem: FileSystemClientProtocol
+    private weak var accessStore: FileBrowserPersisting?
+    private let queue: DispatchQueue
+
+    init(
+        fileSystem: FileSystemClientProtocol,
+        accessStore: FileBrowserPersisting? = nil,
+        queue: DispatchQueue = DispatchQueue(label: "com.mechaHarry.bucky.file-browser.directory-stream", qos: .userInitiated)
+    ) {
+        self.fileSystem = fileSystem
+        self.accessStore = accessStore
+        self.queue = queue
+    }
+
+    func loadEntries(
+        in directory: URL,
+        sort: FileBrowserSort,
+        completion: @escaping (Result<[FileBrowserEntry], Error>) -> Void
+    ) {
+        let fileSystem = DirectoryStreamFileSystemBox(fileSystem: fileSystem)
+        let bookmarkData = accessStore?.bookmarkData(for: directory)
+        queue.async {
+            let result = Result {
+                try FileBrowserSecurityScopedBookmarkPolicy.withAccess(
+                    to: directory,
+                    bookmarkData: bookmarkData
+                ) {
+                    try fileSystem.entries(in: directory, sort: sort)
+                }
+            }
+
+            DispatchQueue.main.async {
+                completion(result)
+            }
+        }
+    }
+}
+
+private struct DirectoryStreamFileSystemBox: @unchecked Sendable {
+    private let fileSystem: FileSystemClientProtocol
+
+    init(fileSystem: FileSystemClientProtocol) {
+        self.fileSystem = fileSystem
+    }
+
+    func entries(in directory: URL, sort: FileBrowserSort) throws -> [FileBrowserEntry] {
+        try fileSystem.entries(in: directory, sort: sort)
+    }
+}

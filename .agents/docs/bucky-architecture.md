@@ -48,7 +48,7 @@ Files:
 - `settings.json`: hotkey, launch-on-startup preference, and animation timing preference.
 - `inclusions.json`: explicit `.app` paths to merge into the index. Missing or malformed file defaults to Finder.
 - `exclusions.json`: paths hidden from search results.
-- `calculations.json`: most recent tools-mode calculations, newest first, capped at 100 entries.
+- `calculations.json`: most recent calculator-mode calculations, newest first, capped at 100 entries.
 
 Exclusions are applied after indexing and inclusions. An explicitly included app can still be hidden if its path is in exclusions.
 
@@ -57,7 +57,7 @@ Exclusions are applied after indexing and inclusions. An explicitly included app
 - Default hotkey is Option+Space through Carbon `RegisterEventHotKey`.
 - Hotkey can be changed in Settings and is persisted in `settings.json`.
 - Up and Down move selection by one row; Command+Up and Command+Down jump to the first and last visible result.
-- Command+/ is handled by the visible launcher window, not a global Carbon hotkey. It switches between app mode and tools mode.
+- Command-number shortcuts are handled by the visible launcher window, not global Carbon hotkeys: Cmd+1 Apps, Cmd+2 Calculator, Cmd+3 Dictionary, and Cmd+4 Files.
 - Escape clears the input first; if the input is already blank, it closes the launcher window.
 - The launcher uses `LiquidGlassLauncherWindowController`, a borderless resizable `NSWindow` with an `NSHostingView` surface backed by `LiquidGlassLauncherView` and `LiquidGlassLauncherModel`.
 - SwiftUI owns the Liquid Glass visual system: `GlassEffectContainer`, `glassEffect`, glass button styles, and glass transitions for the main window, header controls, and individual result rows.
@@ -70,14 +70,15 @@ Exclusions are applied after indexing and inclusions. An explicitly included app
 - If a reindex is requested while one is active, one follow-up reindex is queued.
 - During typing, if the next query would produce zero results, Bucky preserves the previous interactable filtered list. This only applies to search typing, not explicit config/index refreshes.
 
-## Tools UX
+## Mode UX
 
-- Tools mode does not search or launch apps.
-- Tools mode exposes a clear-history button. Pin is global to app and tools modes. While pinned, the launcher stays above other apps, can be dragged by its background, refocuses on the global launcher hotkey, and stays open after result activation.
-- Arithmetic input is detected before dictionary lookup. Purely arithmetic text, including a standalone number like `1`, stays in math mode and never triggers dictionary mode.
-- Arithmetic expressions are evaluated with a local parser supporting `+`, `-`, `*`, `/`, `×`, `÷`, decimals, grouping commas, unary signs, and parentheses.
+- Calculator, Dictionary, and Files modes do not search or launch apps.
+- Apps is the default mode and must not activate Files code. `LiquidGlassLauncherModel` creates `FileBrowserModel` lazily only when Files is selected or the Files UI requests it.
+- File-browser directory lists flow through `FileBrowserDirectoryStreaming` before reaching SwiftUI. The model publishes stable loading, empty, and loaded snapshots and ignores stale stream results when a newer directory request wins.
+- Calculator mode exposes a clear-history button. Pin is global to all launcher modes. While pinned, the launcher stays above other apps, can be dragged by its background, refocuses on the global launcher hotkey, and stays open after result activation.
+- Calculator mode evaluates arithmetic expressions with a local parser supporting `+`, `-`, `*`, `/`, `×`, `÷`, decimals, grouping commas, unary signs, and parentheses.
 - Valid calculations with a binary arithmetic operator are added to `calculations.json` after a short typing debounce, and pressing Return on a live calculation commits it immediately.
-- Non-arithmetic text is looked up through macOS Dictionary Services via `DCSCopyTextDefinition`, with fuzzy candidates from `NSSpellChecker` completions and guesses. Dictionary.app is not launched during lookup.
+- Dictionary mode looks up text through macOS Dictionary Services via `DCSCopyTextDefinition`, with fuzzy candidates from `NSSpellChecker` completions and guesses. Dictionary.app is not launched during lookup.
 - Pressing Return on a calculation result copies its value to the pasteboard. Pressing Return on a dictionary result opens Dictionary.app at the matching word instead of copying the definition.
 
 ## Settings UX
