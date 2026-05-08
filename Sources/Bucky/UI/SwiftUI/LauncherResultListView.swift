@@ -51,6 +51,8 @@ struct LauncherResultList<RowID: Hashable, Content: View>: View {
 struct LauncherResultRow<Content: View>: View {
     let isSelected: Bool
     var isMarked = false
+    var selectionTint = LauncherResultListVisualStyle.selectionFill
+    var markedTint = LauncherResultListVisualStyle.markedFill
     let selectionNamespace: Namespace.ID
     var horizontalPadding: CGFloat = 14
     var verticalPadding: CGFloat = 10
@@ -66,6 +68,8 @@ struct LauncherResultRow<Content: View>: View {
                 LauncherResultRowBackground(
                     isSelected: isSelected,
                     isMarked: isMarked,
+                    selectionTint: selectionTint,
+                    markedTint: markedTint,
                     selectionNamespace: selectionNamespace
                 )
             }
@@ -80,6 +84,8 @@ struct LauncherResultRow<Content: View>: View {
 private struct LauncherResultRowBackground: View {
     let isSelected: Bool
     let isMarked: Bool
+    let selectionTint: Color
+    let markedTint: Color
     let selectionNamespace: Namespace.ID
 
     private var rowSelectionAnimation: Animation {
@@ -93,7 +99,7 @@ private struct LauncherResultRowBackground: View {
 
                 if isMarked && !isSelected {
                     rowHighlight(
-                        tint: LauncherResultListVisualStyle.markedFill,
+                        tint: markedTint,
                         opacity: FileBrowserRowFocusIndicatorPolicy.markedSelectionOpacity,
                         interactive: false
                     )
@@ -102,7 +108,7 @@ private struct LauncherResultRowBackground: View {
 
                 if isSelected {
                     rowHighlight(
-                        tint: LauncherResultListVisualStyle.selectionFill,
+                        tint: selectionTint,
                         opacity: FileBrowserRowFocusIndicatorPolicy.activeSelectionOpacity,
                         interactive: true
                     )
@@ -110,7 +116,7 @@ private struct LauncherResultRowBackground: View {
                         .glassEffectTransition(.matchedGeometry)
                         .overlay {
                             rowShape
-                                .strokeBorder(LauncherResultListVisualStyle.selectionRim.opacity(0.42), lineWidth: 1)
+                                .strokeBorder(selectionTint.opacity(0.42), lineWidth: 1)
                         }
                 }
             }
@@ -147,10 +153,10 @@ private struct LauncherResultRowBackground: View {
 
     private var rowRim: Color {
         if isSelected {
-            return LauncherResultListVisualStyle.selectionRim.opacity(0.34)
+            return selectionTint.opacity(0.34)
         }
         if isMarked {
-            return LauncherResultListVisualStyle.markedRim.opacity(0.28)
+            return markedTint.opacity(0.28)
         }
         return LauncherResultListVisualStyle.surfaceRim.opacity(0.18)
     }

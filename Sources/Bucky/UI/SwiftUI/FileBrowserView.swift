@@ -5,6 +5,7 @@ import SwiftUI
 @available(macOS 26.0, *)
 struct FileBrowserView: View {
     @ObservedObject var model: FileBrowserModel
+    let selectionTint: Color
     @Namespace private var browseSelectionGlassNamespace
     @Namespace private var pinnedSelectionGlassNamespace
     @State private var transferGlow = false
@@ -13,6 +14,14 @@ struct FileBrowserView: View {
     @State private var browseScrollTargetAnchor: UnitPoint?
     @State private var pinnedScrollTargetID: URL?
     @State private var handledSelectionScrollEventID = 0
+
+    init(
+        model: FileBrowserModel,
+        selectionTint: Color = LauncherModeTintPolicy.selectionColor(for: .files)
+    ) {
+        self.model = model
+        self.selectionTint = selectionTint
+    }
 
     var body: some View {
         ZStack(alignment: .trailing) {
@@ -95,6 +104,7 @@ struct FileBrowserView: View {
                         FileBrowserPinnedRow(
                             url: url,
                             isSelected: model.focusState == .pinnedItems && index == model.focusedPinnedIndex,
+                            selectionTint: selectionTint,
                             selectionNamespace: pinnedSelectionGlassNamespace,
                             model: model
                         )
@@ -150,6 +160,7 @@ struct FileBrowserView: View {
                             entry: entry,
                             isSelected: entry.url == model.selectedEntry?.url,
                             isMarked: model.selectedURLs.contains(entry.url),
+                            selectionTint: selectionTint,
                             selectionNamespace: browseSelectionGlassNamespace,
                             model: model
                         )
@@ -569,6 +580,7 @@ private struct FileBrowserRow: View {
     let entry: FileBrowserEntry
     let isSelected: Bool
     let isMarked: Bool
+    let selectionTint: Color
     let selectionNamespace: Namespace.ID
     @ObservedObject var model: FileBrowserModel
 
@@ -576,6 +588,8 @@ private struct FileBrowserRow: View {
         LauncherResultRow(
             isSelected: isSelected,
             isMarked: isMarked,
+            selectionTint: selectionTint,
+            markedTint: selectionTint,
             selectionNamespace: selectionNamespace,
             horizontalPadding: 12,
             verticalPadding: 8,
@@ -604,12 +618,12 @@ private struct FileBrowserRow: View {
         .overlay(alignment: .leading) {
             if isSelected {
                 Capsule()
-                    .fill(Color.accentColor)
+                    .fill(selectionTint)
                     .frame(
                         width: FileBrowserRowFocusIndicatorPolicy.activeIndicatorWidth,
                         height: FileBrowserRowFocusIndicatorPolicy.activeIndicatorHeight
                     )
-                    .shadow(color: Color.accentColor.opacity(0.5), radius: 5)
+                    .shadow(color: selectionTint.opacity(0.5), radius: 5)
                     .padding(.leading, 6)
                     .allowsHitTesting(false)
             }
@@ -625,12 +639,14 @@ private struct FileBrowserRow: View {
 private struct FileBrowserPinnedRow: View {
     let url: URL
     let isSelected: Bool
+    let selectionTint: Color
     let selectionNamespace: Namespace.ID
     @ObservedObject var model: FileBrowserModel
 
     var body: some View {
         LauncherResultRow(
             isSelected: isSelected,
+            selectionTint: selectionTint,
             selectionNamespace: selectionNamespace,
             horizontalPadding: 9,
             verticalPadding: 8,
