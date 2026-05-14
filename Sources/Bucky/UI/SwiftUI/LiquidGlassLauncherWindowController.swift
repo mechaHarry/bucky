@@ -198,6 +198,16 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
                 fileFocusState: self.model.mode == .files ? self.fileBrowserFocusState : nil,
                 keyCode: event.keyCode,
                 eventType: event.type
+            ), !event.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.command) {
+                return event
+            }
+
+            if LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
+                mode: self.model.mode,
+                fileFocusState: self.model.mode == .files ? self.fileBrowserFocusState : nil,
+                charactersIgnoringModifiers: event.charactersIgnoringModifiers,
+                modifierFlags: event.modifierFlags,
+                eventType: event.type
             ) {
                 return event
             }
