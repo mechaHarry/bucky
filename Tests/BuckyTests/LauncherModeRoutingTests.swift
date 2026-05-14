@@ -76,6 +76,71 @@ final class LauncherModeRoutingTests: XCTestCase {
         ))
     }
 
+    func testTextInputModesPassThroughNativeEditingCommands() {
+        XCTAssertTrue(LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
+            mode: .calculator,
+            fileFocusState: nil,
+            charactersIgnoringModifiers: "v",
+            modifierFlags: .command,
+            eventType: .keyDown
+        ))
+        XCTAssertTrue(LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
+            mode: .dictionary,
+            fileFocusState: nil,
+            charactersIgnoringModifiers: "a",
+            modifierFlags: .command,
+            eventType: .keyDown
+        ))
+        XCTAssertTrue(LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
+            mode: .applications,
+            fileFocusState: nil,
+            charactersIgnoringModifiers: "c",
+            modifierFlags: .command,
+            eventType: .keyDown
+        ))
+    }
+
+    func testLauncherCommandsDoNotPassThroughAsTextEditingCommands() {
+        XCTAssertFalse(LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
+            mode: .calculator,
+            fileFocusState: nil,
+            charactersIgnoringModifiers: "2",
+            modifierFlags: .command,
+            eventType: .keyDown
+        ))
+        XCTAssertFalse(LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
+            mode: .applications,
+            fileFocusState: nil,
+            charactersIgnoringModifiers: "r",
+            modifierFlags: .command,
+            eventType: .keyDown
+        ))
+        XCTAssertFalse(LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
+            mode: .applications,
+            fileFocusState: nil,
+            charactersIgnoringModifiers: "p",
+            modifierFlags: .command,
+            eventType: .keyDown
+        ))
+    }
+
+    func testFilesRenamePassesThroughNativeEditingCommands() {
+        XCTAssertTrue(LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
+            mode: .files,
+            fileFocusState: .renaming,
+            charactersIgnoringModifiers: "v",
+            modifierFlags: .command,
+            eventType: .keyDown
+        ))
+        XCTAssertFalse(LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
+            mode: .files,
+            fileFocusState: .browse,
+            charactersIgnoringModifiers: "v",
+            modifierFlags: .command,
+            eventType: .keyDown
+        ))
+    }
+
     func testFilesModeDoesNotHideLauncherWhenPermissionPromptStealsFocus() {
         XCTAssertFalse(LauncherWindowDismissalPolicy.shouldHideOnResignKey(
             mode: .files,
