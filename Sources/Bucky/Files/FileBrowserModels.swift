@@ -421,6 +421,10 @@ struct FileBrowserDragPolicy {
         url
     }
 
+    static func draggedURLs(for rowURL: URL, selectedURLs: [URL]) -> [URL] {
+        selectedURLs.contains(rowURL) ? selectedURLs : [rowURL]
+    }
+
     static func shouldBeginNativeDrag(delta: CGSize) -> Bool {
         hypot(delta.width, delta.height) >= nativeDragThreshold
     }

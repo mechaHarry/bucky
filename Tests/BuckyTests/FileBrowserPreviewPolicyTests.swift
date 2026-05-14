@@ -119,6 +119,41 @@ final class FileBrowserPreviewPolicyTests: XCTestCase {
         XCTAssertEqual(FileBrowserDragPolicy.draggedURL(for: url), url)
     }
 
+    func testSelectedRowDragUsesAllSelectedURLs() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let one = home.appendingPathComponent("one.txt")
+        let two = home.appendingPathComponent("two.txt")
+
+        XCTAssertEqual(
+            FileBrowserDragPolicy.draggedURLs(for: one, selectedURLs: [one, two]),
+            [one, two]
+        )
+    }
+
+    func testUnselectedRowDragUsesOnlyDraggedRow() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let one = home.appendingPathComponent("one.txt")
+        let two = home.appendingPathComponent("two.txt")
+        let three = home.appendingPathComponent("three.txt")
+
+        XCTAssertEqual(
+            FileBrowserDragPolicy.draggedURLs(for: three, selectedURLs: [one, two]),
+            [three]
+        )
+    }
+
+    func testSelectedRowDragPreservesSelectionsFromOtherDirectories() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let other = URL(fileURLWithPath: "/Users/other")
+        let one = home.appendingPathComponent("one.txt")
+        let remote = other.appendingPathComponent("remote.txt")
+
+        XCTAssertEqual(
+            FileBrowserDragPolicy.draggedURLs(for: one, selectedURLs: [one, remote]),
+            [one, remote]
+        )
+    }
+
     func testNativeRowDragStartsAfterSmallPointerMovementAndDisablesWindowDragging() {
         XCTAssertFalse(FileBrowserDragPolicy.mouseDownCanMoveWindow)
         XCTAssertFalse(FileBrowserDragPolicy.shouldBeginNativeDrag(delta: CGSize(width: 1, height: 1)))
