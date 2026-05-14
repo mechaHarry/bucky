@@ -280,6 +280,36 @@ final class LauncherModeRoutingTests: XCTestCase {
 
     @MainActor
     @available(macOS 26.0, *)
+    func testCalculatorLiveResultSelectsAndScrollsToTopRowWhileTyping() {
+        let model = LiquidGlassLauncherModel(
+            settingsStore: SettingsStore(),
+            inclusionStore: InclusionStore(),
+            exclusionStore: ExclusionStore(),
+            calculationHistoryStore: CalculationHistoryStore(),
+            fileBrowserModel: FileBrowserModel(
+                fileSystem: StubFileSystemClient(home: URL(fileURLWithPath: "/Users/test"), entriesByDirectory: [:]),
+                store: InMemoryFileBrowserStore(state: .defaultValue),
+                directoryStream: ImmediateDirectoryStream()
+            )
+        )
+
+        model.show(mode: .calculator)
+        model.query = "1 + 1"
+        model.queryDidChange()
+        model.selectedIndex = 1
+
+        model.query = "2 + 2 ="
+        model.queryDidChange()
+
+        XCTAssertEqual(model.toolItems.first?.kind, .calculation)
+        XCTAssertEqual(model.toolItems.first?.title, "4")
+        XCTAssertEqual(model.selectedIndex, 0)
+        XCTAssertEqual(model.selectionScrollRequest?.index, 0)
+        XCTAssertEqual(model.selectionScrollRequest?.anchor, .top)
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
     func testFilesTopBottomKeepLauncherAndFileSelectionAligned() {
         let model = makeFileLauncherModel(entries: ["alpha.txt", "beta.txt", "gamma.txt"])
 

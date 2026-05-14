@@ -378,7 +378,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
                 return calculationHistoryItems()
             }
 
-            guard ArithmeticEvaluator.isArithmeticInput(trimmedQuery) else {
+            let expression = ArithmeticEvaluator.normalizedExpression(trimmedQuery)
+            guard ArithmeticEvaluator.isArithmeticInput(expression) else {
                 return [
                     ToolItem(
                         title: "Enter a calculation",
@@ -389,18 +390,18 @@ final class LiquidGlassLauncherModel: ObservableObject {
                 ]
             }
 
-            if let result = ArithmeticEvaluator.evaluate(trimmedQuery) {
+            if let result = ArithmeticEvaluator.evaluate(expression) {
                 let items = [
                     ToolItem(
                         title: result,
-                        subtitle: "\(trimmedQuery) =",
+                        subtitle: "\(expression) =",
                         copyText: result,
                         kind: .calculation
                     )
-                ] + calculationHistoryItems(excludingExpression: trimmedQuery, result: result)
+                ] + calculationHistoryItems(excludingExpression: expression, result: result)
 
-                if scheduleHistory, ArithmeticEvaluator.shouldStoreInHistory(trimmedQuery) {
-                    scheduleCalculationHistory(expression: trimmedQuery, result: result)
+                if scheduleHistory, ArithmeticEvaluator.shouldStoreInHistory(expression) {
+                    scheduleCalculationHistory(expression: expression, result: result)
                 }
                 return items
             } else {
@@ -443,6 +444,11 @@ final class LiquidGlassLauncherModel: ObservableObject {
 
     private func applyToolResultsSnapshot(_ nextItems: [ToolItem]) {
         toolItems = nextItems
+        if mode == .calculator, toolItems.first?.kind == .calculation {
+            selectedIndex = 0
+            requestSelectionScroll(anchor: .top)
+            return
+        }
         clampSelection()
     }
 

@@ -1,8 +1,19 @@
 import Foundation
 
 enum ArithmeticEvaluator {
+    static func normalizedExpression(_ input: String) -> String {
+        var expression = input.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        while expression.hasSuffix("=") {
+            expression.removeLast()
+            expression = expression.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        return expression
+    }
+
     static func evaluate(_ input: String) -> String? {
-        let expression = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        let expression = normalizedExpression(input)
         guard isArithmeticInput(expression) else { return nil }
 
         do {
@@ -16,7 +27,7 @@ enum ArithmeticEvaluator {
     }
 
     static func isArithmeticInput(_ input: String) -> Bool {
-        let expression = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        let expression = normalizedExpression(input)
         guard !expression.isEmpty else {
             return false
         }
@@ -26,7 +37,7 @@ enum ArithmeticEvaluator {
     }
 
     static func shouldStoreInHistory(_ input: String) -> Bool {
-        containsBinaryArithmeticOperator(input.trimmingCharacters(in: .whitespacesAndNewlines))
+        containsBinaryArithmeticOperator(normalizedExpression(input))
     }
 
     private static func containsBinaryArithmeticOperator(_ value: String) -> Bool {
