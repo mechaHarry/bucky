@@ -150,38 +150,31 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
 
     func testActivePillExpansionFrameGrowsFromSelectedStoneSlot() {
         for availableWidth in [CGFloat(496), 760] {
-            for mode in LauncherMode.ordered {
-                let inactiveFrame = ModeSwitcherLayoutPolicy.inactiveStoneFrame(
-                    for: mode,
-                    availableWidth: availableWidth
-                )
-                let finalFrame = ModeSwitcherLayoutPolicy.activePillFrame(
-                    for: mode,
-                    availableWidth: availableWidth
-                )
-                let startFrame = ModeSwitcherLayoutPolicy.activePillFrame(
-                    for: mode,
+            let firstMode = LauncherMode.ordered[0]
+            let firstInactiveFrame = ModeSwitcherLayoutPolicy.inactiveStoneFrame(
+                for: firstMode,
+                availableWidth: availableWidth
+            )
+            let firstHalfwayFrame = ModeSwitcherLayoutPolicy.activePillFrame(
+                for: firstMode,
+                availableWidth: availableWidth,
+                expansionProgress: 0.5
+            )
+
+            XCTAssertEqual(
+                ModeSwitcherLayoutPolicy.activePillFrame(
+                    for: firstMode,
                     availableWidth: availableWidth,
                     expansionProgress: 0
-                )
-                let halfwayFrame = ModeSwitcherLayoutPolicy.activePillFrame(
-                    for: mode,
-                    availableWidth: availableWidth,
-                    expansionProgress: 0.5
-                )
+                ),
+                firstInactiveFrame
+            )
+            XCTAssertEqual(firstHalfwayFrame.minX, firstInactiveFrame.minX)
 
-                XCTAssertEqual(startFrame.minX, inactiveFrame.minX)
-                XCTAssertEqual(startFrame.width, inactiveFrame.width)
-                XCTAssertEqual(halfwayFrame.minX, inactiveFrame.minX)
-                XCTAssertGreaterThan(halfwayFrame.width, inactiveFrame.width)
-                XCTAssertLessThan(halfwayFrame.width, finalFrame.width)
-                XCTAssertEqual(
-                    ModeSwitcherLayoutPolicy.activePillFrame(
-                        for: mode,
-                        availableWidth: availableWidth,
-                        expansionProgress: 1
-                    ),
-                    finalFrame
+            for mode in LauncherMode.ordered.dropFirst() {
+                assertActivePillExpandsFromTrailingStoneEdge(
+                    mode: mode,
+                    availableWidth: availableWidth
                 )
             }
         }
@@ -338,6 +331,44 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
             .deletingLastPathComponent()
             .appendingPathComponent("Sources/Bucky/UI/SwiftUI/ModeSwitcherView.swift")
         return try String(contentsOf: sourceURL, encoding: .utf8)
+    }
+
+    private func assertActivePillExpandsFromTrailingStoneEdge(
+        mode: LauncherMode,
+        availableWidth: CGFloat,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let finalFrame = ModeSwitcherLayoutPolicy.activePillFrame(
+            for: mode,
+            availableWidth: availableWidth
+        )
+        let startFrame = ModeSwitcherLayoutPolicy.activePillFrame(
+            for: mode,
+            availableWidth: availableWidth,
+            expansionProgress: 0
+        )
+        let halfwayFrame = ModeSwitcherLayoutPolicy.activePillFrame(
+            for: mode,
+            availableWidth: availableWidth,
+            expansionProgress: 0.5
+        )
+
+        XCTAssertEqual(startFrame.maxX, finalFrame.maxX, file: file, line: line)
+        XCTAssertEqual(startFrame.width, ModeSwitcherLayoutPolicy.inactiveStoneSlotWidth, file: file, line: line)
+        XCTAssertEqual(halfwayFrame.maxX, finalFrame.maxX, file: file, line: line)
+        XCTAssertGreaterThan(halfwayFrame.width, startFrame.width, file: file, line: line)
+        XCTAssertLessThan(halfwayFrame.width, finalFrame.width, file: file, line: line)
+        XCTAssertEqual(
+            ModeSwitcherLayoutPolicy.activePillFrame(
+                for: mode,
+                availableWidth: availableWidth,
+                expansionProgress: 1
+            ),
+            finalFrame,
+            file: file,
+            line: line
+        )
     }
 
 }
