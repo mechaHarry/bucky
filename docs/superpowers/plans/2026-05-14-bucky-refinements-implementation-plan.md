@@ -1112,8 +1112,9 @@ Expected: commit succeeds.
 Correction after visual testing: use the sliding active pill model. Each mode has
 a compact ordered stone slot. The active pill expands from, slides with, and
 shrinks back into the selected mode's compact stone slot. Inactive stones remain
-in mode order around the expanded pill instead of being remapped into a separate
-trailing rail.
+fixed in their compact slots; the active mode's own glass identity morphs between
+stone and pill without rendering a second inactive stone that pushes neighboring
+stones aside.
 
 **Files:**
 - Modify: `Sources/Bucky/UI/SwiftUI/ModeSwitcherView.swift`
@@ -1183,37 +1184,58 @@ static var inactiveStoneSlotWidth: CGFloat { activePillHeight }
 static var modeSwitcherSpacing: CGFloat { 10 }
 
 static func stoneCenterX(for mode: LauncherMode, availableWidth: CGFloat) -> CGFloat {
+    inactiveStoneFrame(for: mode, availableWidth: availableWidth).midX
+}
+
+static func inactiveStoneFrame(for mode: LauncherMode, availableWidth: CGFloat) -> CGRect {
     let modes = LauncherMode.ordered
-    guard let index = modes.firstIndex(of: mode) else {
-        return inactiveStoneSlotWidth / 2
+    guard let modeIndex = modes.firstIndex(of: mode) else {
+        return CGRect(x: 0, y: 0, width: inactiveStoneSlotWidth, height: activePillHeight)
     }
-    if mode == modes.last {
-        return max(inactiveStoneSlotWidth / 2, availableWidth - inactiveStoneSlotWidth / 2)
-    }
-    return inactiveStoneSlotWidth / 2 + CGFloat(index) * (inactiveStoneSlotWidth + modeSwitcherSpacing)
+
+    let slotStride = inactiveStoneSlotWidth + modeSwitcherSpacing
+    return CGRect(
+        x: CGFloat(modeIndex) * slotStride,
+        y: 0,
+        width: inactiveStoneSlotWidth,
+        height: activePillHeight
+    )
 }
 
 static func activePillFrame(for mode: LauncherMode, availableWidth: CGFloat) -> CGRect {
-    let minimumWidth = activePillHeight
-    let reservedInactiveWidth = CGFloat(LauncherMode.ordered.count - 1) * (inactiveStoneSlotWidth + modeSwitcherSpacing)
-    let width = max(minimumWidth, availableWidth - reservedInactiveWidth)
-    let centerX = stoneCenterX(for: mode, availableWidth: availableWidth)
-    let originX = min(max(0, centerX - activePillHeight / 2), max(0, availableWidth - width))
-    return CGRect(x: originX, y: 0, width: width, height: activePillHeight)
+    let modes = LauncherMode.ordered
+    let reservedInactiveWidth = CGFloat(modes.count - 1) * inactiveStoneSlotWidth
+    let reservedSpacing = CGFloat(modes.count - 1) * modeSwitcherSpacing
+    let width = max(inactiveStoneSlotWidth, availableWidth - reservedInactiveWidth - reservedSpacing)
+
+    return CGRect(
+        x: inactiveStoneFrame(for: mode, availableWidth: availableWidth).minX,
+        y: 0,
+        width: width,
+        height: activePillHeight
+    )
 }
 ```
 
 - [ ] **Step 5: Rework mode switcher content to a sliding active pill overlay**
 
 Replace `modeSwitcherContent` with a slot overlay. The active pill's leading edge
-uses the selected mode's compact stone frame; inactive stones before the active
-mode keep compact positions, and inactive stones after the active mode follow
-after the expanded pill with normal spacing:
+uses the selected mode's compact stone frame; inactive stones stay in compact
+ordered positions that do not depend on the active mode:
 
 ```swift
 private var modeSwitcherContent: some View {
     GeometryReader { proxy in
+        let activeFrame = ModeSwitcherLayoutPolicy.activePillFrame(for: model.mode, availableWidth: proxy.size.width)
+
         ZStack(alignment: .topLeading) {
+            activePill(for: model.mode)
+                .frame(
+                    width: activeFrame.width,
+                    height: ModeSwitcherLayoutPolicy.activePillHeight
+                )
+                .offset(x: activeFrame.minX, y: 0)
+
             ForEach(LauncherMode.ordered, id: \.self) { mode in
                 if mode != model.mode {
                     modeOrb(for: mode)
@@ -1229,16 +1251,6 @@ private var modeSwitcherContent: some View {
                         .glassEffectTransition(.matchedGeometry)
                 }
             }
-
-            activePill(for: model.mode)
-                .frame(
-                    width: ModeSwitcherLayoutPolicy.activePillFrame(for: model.mode, availableWidth: proxy.size.width).width,
-                    height: ModeSwitcherLayoutPolicy.activePillHeight
-                )
-                .offset(
-                    x: ModeSwitcherLayoutPolicy.activePillFrame(for: model.mode, availableWidth: proxy.size.width).minX,
-                    y: 0
-                )
         }
         .frame(width: proxy.size.width, height: ModeSwitcherLayoutPolicy.activePillHeight)
     }
@@ -1348,7 +1360,7 @@ Expected:
 - Pasting text into Applications, Calculator, and Dictionary inputs works.
 - Dictionary Enter on a result stores the word; blank Dictionary mode shows history; the row trash button removes one word.
 - Files mode multi-select drag exports all selected file URLs when dragging a selected row.
-- Mode switcher active pill expands from and shrinks back to the selected mode's compact stone slot while inactive stones remain in ordered positions around it.
+- Mode switcher active pill expands from and shrinks back to the selected mode's compact stone slot while inactive stones remain fixed in compact ordered positions.
 
 - [ ] **Step 4: Commit verification fixes only if needed**
 
@@ -1371,7 +1383,7 @@ Expected: commit succeeds only when there are actual verification fixes.
   - Native text copy/paste: Task 2.
   - File drag respects multi-selection across directories: Task 3.
   - Persisted deduped dictionary history with row clearing: Tasks 4 and 5.
-  - Sliding active pill anchored to each mode's compact stone slot: Task 6.
+  - Sliding active pill anchored to each mode's compact stone slot, with inactive stone slots independent of the active mode: Task 6.
   - Full tests and app build: Task 7.
 - Placeholder scan: no placeholder tasks remain.
 - Type consistency:
