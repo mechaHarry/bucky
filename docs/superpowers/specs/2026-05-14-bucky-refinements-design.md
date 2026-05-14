@@ -118,6 +118,12 @@ Implementation notes:
   frame, so expansion and shrinkage start and end at the same slot.
 - Inactive stone slots are independent of the active mode; do not move trailing
   stones to make room for the active pill.
+- Inactive stones sit above the active pill layer so they remain visually and
+  interactively available when the pill extends beneath their compact slots.
+- Text input foregrounds clear the compact mode control row; placeholder and
+  typed text must not sit underneath inactive stones.
+- The active pill animates from the selected mode's circle-width stone frame to
+  the final pill frame instead of translating at full pill width.
 - Text input foregrounds stay outside the moving glass identity so native focus, typing, and legibility remain stable.
 - The current pattern of foreground content above a separate glass surface remains in place.
 

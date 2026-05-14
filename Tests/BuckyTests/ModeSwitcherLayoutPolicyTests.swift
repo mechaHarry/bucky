@@ -89,7 +89,7 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
         let source = try modeSwitcherSource()
 
         XCTAssertTrue(source.contains(".padding(.leading, ModeSwitcherLayoutPolicy.activeTextPillIconLeadingInset)"))
-        XCTAssertTrue(source.contains(".padding(.leading, ModeSwitcherLayoutPolicy.activeTextPillInputLeadingInset)"))
+        XCTAssertTrue(source.contains(".padding(.leading, inputLeadingInset)"))
         XCTAssertTrue(source.contains("ModeSwitcherLayoutPolicy.activeTextPillInputTrailingInset(isShowingProgress:"))
         XCTAssertFalse(source.contains("HStack(spacing: ModeSwitcherLayoutPolicy.activeTextPillSpacing)"))
         XCTAssertFalse(source.contains("activeTextPillInputVerticalOffset"))
@@ -116,10 +116,35 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
         XCTAssertTrue(source.contains(".fixedSize(horizontal: false, vertical: true)"))
     }
 
+    func testActiveTextInputLeadingInsetClearsCompactModeControls() {
+        for availableWidth in [CGFloat(496), 760] {
+            let compactControlsMaxX = ModeSwitcherLayoutPolicy.compactModeControlsFrame(
+                availableWidth: availableWidth
+            ).maxX
+
+            for mode in LauncherMode.ordered where mode.acceptsTextInput {
+                let activeFrame = ModeSwitcherLayoutPolicy.activePillFrame(
+                    for: mode,
+                    availableWidth: availableWidth
+                )
+                let inputLeadingInset = ModeSwitcherLayoutPolicy.activeTextPillClearedInputLeadingInset(
+                    for: mode,
+                    availableWidth: availableWidth
+                )
+
+                XCTAssertGreaterThanOrEqual(
+                    activeFrame.minX + inputLeadingInset,
+                    compactControlsMaxX + ModeSwitcherLayoutPolicy.activeTextPillHorizontalInset
+                )
+            }
+        }
+    }
+
     func testActiveTextPillKeepsTextFieldOutsideGlassIdentity() throws {
         let source = try modeSwitcherSource()
 
         XCTAssertTrue(source.contains("TextInputModePill(\n                model: model,\n                mode: mode,\n                symbol: symbol(for: mode),\n                glassNamespace: modeGlassNamespace,"))
+        XCTAssertTrue(source.contains("inputLeadingInset: ModeSwitcherLayoutPolicy.activeTextPillClearedInputLeadingInset("))
         XCTAssertTrue(source.contains("ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: model.mode)"))
         XCTAssertTrue(source.contains("private struct TextInputPillGlassSurface"))
         XCTAssertTrue(source.contains("TextInputPillGlassSurface(tint: LauncherModeTintPolicy.activeColor(for: mode))\n                .glassEffectID(mode, in: glassNamespace)\n                .glassEffectTransition(.matchedGeometry)"))
@@ -143,8 +168,58 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
         XCTAssertTrue(source.contains("availableWidth: proxy.size.width"))
         XCTAssertFalse(source.contains("activeMode: model.mode"))
         XCTAssertTrue(source.contains("static func inactiveStoneFrame(for mode: LauncherMode"))
-        XCTAssertTrue(source.contains("ModeSwitcherLayoutPolicy.activePillFrame(for:"))
+        XCTAssertTrue(source.contains("ModeSwitcherLayoutPolicy.activePillFrame("))
         XCTAssertTrue(source.contains(".glassEffectTransition(.matchedGeometry)"))
+    }
+
+    func testActivePillExpansionFrameGrowsFromSelectedStoneSlot() {
+        for availableWidth in [CGFloat(496), 760] {
+            for mode in LauncherMode.ordered {
+                let inactiveFrame = ModeSwitcherLayoutPolicy.inactiveStoneFrame(
+                    for: mode,
+                    availableWidth: availableWidth
+                )
+                let finalFrame = ModeSwitcherLayoutPolicy.activePillFrame(
+                    for: mode,
+                    availableWidth: availableWidth
+                )
+                let startFrame = ModeSwitcherLayoutPolicy.activePillFrame(
+                    for: mode,
+                    availableWidth: availableWidth,
+                    expansionProgress: 0
+                )
+                let halfwayFrame = ModeSwitcherLayoutPolicy.activePillFrame(
+                    for: mode,
+                    availableWidth: availableWidth,
+                    expansionProgress: 0.5
+                )
+
+                XCTAssertEqual(startFrame.minX, inactiveFrame.minX)
+                XCTAssertEqual(startFrame.width, inactiveFrame.width)
+                XCTAssertEqual(halfwayFrame.minX, inactiveFrame.minX)
+                XCTAssertGreaterThan(halfwayFrame.width, inactiveFrame.width)
+                XCTAssertLessThan(halfwayFrame.width, finalFrame.width)
+                XCTAssertEqual(
+                    ModeSwitcherLayoutPolicy.activePillFrame(
+                        for: mode,
+                        availableWidth: availableWidth,
+                        expansionProgress: 1
+                    ),
+                    finalFrame
+                )
+            }
+        }
+    }
+
+    func testModeSwitcherAnimatesActivePillExpansionAboveStableStoneLayer() throws {
+        let source = try modeSwitcherSource()
+
+        XCTAssertTrue(source.contains("@State private var activePillExpansionProgress"))
+        XCTAssertTrue(source.contains("expansionProgress: activePillExpansionProgress"))
+        XCTAssertTrue(source.contains(".clipped()"))
+        XCTAssertTrue(source.contains(".zIndex(ModeSwitcherLayoutPolicy.activePillZIndex)"))
+        XCTAssertTrue(source.contains(".zIndex(ModeSwitcherLayoutPolicy.inactiveStoneZIndex)"))
+        XCTAssertTrue(source.contains(".onChange(of: model.mode)"))
     }
 
     func testSlidingActivePillStartsAtItsInactiveStoneSlot() {

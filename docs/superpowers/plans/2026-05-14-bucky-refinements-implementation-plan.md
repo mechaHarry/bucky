@@ -1116,6 +1116,12 @@ fixed in their compact slots; the active mode's own glass identity morphs betwee
 stone and pill without rendering a second inactive stone that pushes neighboring
 stones aside.
 
+Second correction after visual testing: the active pill must not obscure the
+compact mode buttons or move at full width. Inactive stones render above the
+active pill layer, text input foregrounds clear the compact control row, and the
+active pill frame animates from the selected stone's circle width to the final
+pill width.
+
 **Files:**
 - Modify: `Sources/Bucky/UI/SwiftUI/ModeSwitcherView.swift`
 - Modify: `Tests/BuckyTests/ModeSwitcherLayoutPolicyTests.swift`
@@ -1260,6 +1266,18 @@ private var modeSwitcherContent: some View {
 
 Remove `.glassEffectID` and `.glassEffectTransition` from `modeSwitcherElement(for:)` after replacing the HStack path. Delete `modeSwitcherElement(for:)` when the compiler reports it as unused.
 
+- [ ] **Step 5b: Keep active pill content out from under compact controls**
+
+Add layout helpers for the compact control row, active pill expansion progress,
+and a cleared text input leading inset. The cleared inset should place active
+text after the compact controls, while the animated active frame should keep the
+selected stone's leading edge stable and interpolate only the pill width from
+circle to final size.
+
+Render inactive stones above the active pill layer with explicit z-index values.
+The active pill view should be clipped to its animated frame so foreground text
+does not draw ahead of the growing glass surface.
+
 - [ ] **Step 6: Keep text field foreground outside the moving glass identity**
 
 Change `TextInputModePill` to receive the namespace:
@@ -1360,7 +1378,7 @@ Expected:
 - Pasting text into Applications, Calculator, and Dictionary inputs works.
 - Dictionary Enter on a result stores the word; blank Dictionary mode shows history; the row trash button removes one word.
 - Files mode multi-select drag exports all selected file URLs when dragging a selected row.
-- Mode switcher active pill expands from and shrinks back to the selected mode's compact stone slot while inactive stones remain fixed in compact ordered positions.
+- Mode switcher active pill expands from and shrinks back to the selected mode's compact stone slot while inactive stones remain fixed above it; active text does not appear underneath inactive stones.
 
 - [ ] **Step 4: Commit verification fixes only if needed**
 
@@ -1383,7 +1401,7 @@ Expected: commit succeeds only when there are actual verification fixes.
   - Native text copy/paste: Task 2.
   - File drag respects multi-selection across directories: Task 3.
   - Persisted deduped dictionary history with row clearing: Tasks 4 and 5.
-  - Sliding active pill anchored to each mode's compact stone slot, with inactive stone slots independent of the active mode: Task 6.
+  - Sliding active pill anchored to each mode's compact stone slot, with inactive stone slots independent of the active mode and layered above active pill content: Task 6.
   - Full tests and app build: Task 7.
 - Placeholder scan: no placeholder tasks remain.
 - Type consistency:
