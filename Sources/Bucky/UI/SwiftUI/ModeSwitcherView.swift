@@ -6,6 +6,8 @@ struct ModeSwitcherView: View {
     @FocusState.Binding var isSearchFocused: Bool
     @Namespace private var modeGlassNamespace
     @State private var activePillExpansionProgress: CGFloat = 1
+    @State private var previousModeForActivePillExpansion: LauncherMode?
+    @State private var lastModeForActivePillExpansion: LauncherMode?
 
     @ViewBuilder
     var body: some View {
@@ -22,6 +24,7 @@ struct ModeSwitcherView: View {
         GeometryReader { proxy in
             let activeFrame = ModeSwitcherLayoutPolicy.activePillFrame(
                 for: model.mode,
+                previousMode: previousModeForActivePillExpansion,
                 availableWidth: proxy.size.width,
                 expansionProgress: activePillExpansionProgress
             )
@@ -62,6 +65,9 @@ struct ModeSwitcherView: View {
             .frame(width: proxy.size.width, height: ModeSwitcherLayoutPolicy.activePillHeight)
         }
         .frame(maxWidth: .infinity, minHeight: ModeSwitcherLayoutPolicy.activePillHeight, maxHeight: ModeSwitcherLayoutPolicy.activePillHeight)
+        .onAppear {
+            lastModeForActivePillExpansion = model.mode
+        }
         .onChange(of: model.mode) {
             startActivePillExpansion()
         }
@@ -149,6 +155,8 @@ struct ModeSwitcherView: View {
     }
 
     private func startActivePillExpansion() {
+        previousModeForActivePillExpansion = lastModeForActivePillExpansion
+        lastModeForActivePillExpansion = model.mode
         activePillExpansionProgress = 0
         withAnimation(.easeOut(duration: 0.22)) {
             activePillExpansionProgress = 1
@@ -316,11 +324,25 @@ struct ModeSwitcherLayoutPolicy {
         availableWidth: CGFloat,
         expansionProgress: CGFloat
     ) -> CGRect {
+        activePillFrame(
+            for: mode,
+            previousMode: nil,
+            availableWidth: availableWidth,
+            expansionProgress: expansionProgress
+        )
+    }
+
+    static func activePillFrame(
+        for mode: LauncherMode,
+        previousMode: LauncherMode?,
+        availableWidth: CGFloat,
+        expansionProgress: CGFloat
+    ) -> CGRect {
         let finalFrame = activePillFrame(for: mode, availableWidth: availableWidth)
         let clampedProgress = min(max(expansionProgress, 0), 1)
         let width = inactiveStoneSlotWidth + (finalFrame.width - inactiveStoneSlotWidth) * clampedProgress
-        let isFirstMode = mode == LauncherMode.ordered.first
-        let originX = isFirstMode ? finalFrame.minX : finalFrame.maxX - width
+        let growthEdge = activePillGrowthEdge(for: mode, previousMode: previousMode)
+        let originX = growthEdge == .leading ? finalFrame.minX : finalFrame.maxX - width
 
         return CGRect(
             x: originX,
@@ -328,6 +350,22 @@ struct ModeSwitcherLayoutPolicy {
             width: width,
             height: finalFrame.height
         )
+    }
+
+    private enum ActivePillGrowthEdge {
+        case leading
+        case trailing
+    }
+
+    private static func activePillGrowthEdge(for mode: LauncherMode, previousMode: LauncherMode?) -> ActivePillGrowthEdge {
+        guard let previousMode,
+              let modeIndex = LauncherMode.ordered.firstIndex(of: mode),
+              let previousIndex = LauncherMode.ordered.firstIndex(of: previousMode),
+              modeIndex != previousIndex else {
+            return mode == LauncherMode.ordered.first ? .leading : .trailing
+        }
+
+        return modeIndex < previousIndex ? .leading : .trailing
     }
 
     static func activeTextPillInputTrailingInset(isShowingProgress: Bool) -> CGFloat {
