@@ -98,21 +98,27 @@ The row clear action removes only that word and refreshes the blank dictionary r
 
 ## Mode Switcher Animation
 
-Inactive mode stones keep stable slots. On mode changes, only two visual elements move:
+The mode switcher uses the sliding active pill model. Each mode has a compact
+stone slot in the ordered row. When a mode becomes active, the active pill
+expands from that mode's compact stone slot; when it deactivates, the pill
+shrinks back to the same slot. The active pill therefore travels across the row
+with the selected mode instead of expanding into one fixed header location.
 
-- The newly activated stone expands into the active pill's final location.
-- The previously active pill shrinks back into its fixed inactive stone slot.
-
-Other inactive stones stay fixed and do not materialize in or out.
+Inactive stones remain in mode order around the expanded pill. Stones before the
+active mode keep their compact positions; stones after the active mode follow
+after the expanded pill with normal spacing so rows do not overlap.
 
 Implementation notes:
 
 - Every mode participates in matched glass geometry.
 - The moving glass identity belongs to the stone/pill surface.
+- The active pill's leading edge matches the selected mode's inactive stone
+  frame, so expansion and shrinkage start and end at the same slot.
 - Text input foregrounds stay outside the moving glass identity so native focus, typing, and legibility remain stable.
 - The current pattern of foreground content above a separate glass surface remains in place.
 
-The goal is a spatially legible morph, not a sliding pill that moves every inactive stone.
+The goal is a spatially legible sliding pill, not a rail where every active mode
+expands into the same fixed pill location.
 
 ## Error Handling And Security
 
