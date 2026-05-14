@@ -8,6 +8,9 @@ struct ModeSwitcherView: View {
     @State private var activePillExpansionProgress: CGFloat = 1
     @State private var previousModeForActivePillExpansion: LauncherMode?
     @State private var lastModeForActivePillExpansion: LauncherMode?
+    @State private var outgoingActivePillMode: LauncherMode?
+    @State private var outgoingActivePillNextMode: LauncherMode?
+    @State private var outgoingPillShrinkProgress: CGFloat = 0
 
     @ViewBuilder
     var body: some View {
@@ -30,6 +33,25 @@ struct ModeSwitcherView: View {
             )
 
             ZStack(alignment: .topLeading) {
+                if let outgoingActivePillMode,
+                   let outgoingActivePillNextMode {
+                    let outgoingFrame = ModeSwitcherLayoutPolicy.activePillShrinkFrame(
+                        for: outgoingActivePillMode,
+                        nextMode: outgoingActivePillNextMode,
+                        availableWidth: proxy.size.width,
+                        shrinkProgress: outgoingPillShrinkProgress
+                    )
+
+                    activePill(for: outgoingActivePillMode, availableWidth: proxy.size.width)
+                        .frame(
+                            width: outgoingFrame.width,
+                            height: ModeSwitcherLayoutPolicy.activePillHeight
+                        )
+                        .offset(x: outgoingFrame.minX, y: 0)
+                        .clipped()
+                        .zIndex(ModeSwitcherLayoutPolicy.outgoingPillZIndex)
+                }
+
                 activePill(for: model.mode, availableWidth: proxy.size.width)
                     .frame(
                         width: activeFrame.width,
@@ -40,7 +62,7 @@ struct ModeSwitcherView: View {
                     .zIndex(ModeSwitcherLayoutPolicy.activePillZIndex)
 
                 ForEach(LauncherMode.ordered, id: \.self) { mode in
-                    if mode != model.mode {
+                    if mode != model.mode && mode != outgoingActivePillMode {
                         let inactiveFrame = ModeSwitcherLayoutPolicy.inactiveStoneFrame(
                             for: mode,
                             activeMode: model.mode,
@@ -155,11 +177,26 @@ struct ModeSwitcherView: View {
     }
 
     private func startActivePillExpansion() {
-        previousModeForActivePillExpansion = lastModeForActivePillExpansion
+        let previousMode = lastModeForActivePillExpansion
+        previousModeForActivePillExpansion = previousMode
+        if previousMode != model.mode {
+            outgoingActivePillMode = previousMode
+            outgoingActivePillNextMode = model.mode
+            outgoingPillShrinkProgress = 1
+        }
         lastModeForActivePillExpansion = model.mode
         activePillExpansionProgress = 0
-        withAnimation(.easeOut(duration: 0.22)) {
+        withAnimation(.easeOut(duration: ModeSwitcherLayoutPolicy.activePillTransitionDuration)) {
             activePillExpansionProgress = 1
+            outgoingPillShrinkProgress = 0
+        }
+
+        let shrinkingMode = outgoingActivePillMode
+        DispatchQueue.main.asyncAfter(deadline: .now() + ModeSwitcherLayoutPolicy.activePillTransitionDuration) {
+            if outgoingActivePillMode == shrinkingMode {
+                outgoingActivePillMode = nil
+                outgoingActivePillNextMode = nil
+            }
         }
     }
 
@@ -237,7 +274,9 @@ struct ModeSwitcherLayoutPolicy {
     static var activeTextPillTextFieldHeight: CGFloat { activeTextPillControlHeight }
     static var activeTextPillProgressWidth: CGFloat { activeTextPillControlHeight }
     static var activePillZIndex: Double { 0 }
+    static var outgoingPillZIndex: Double { 1 }
     static var inactiveStoneZIndex: Double { 2 }
+    static var activePillTransitionDuration: TimeInterval { 0.28 }
     static let filesPillLeadingPadding: CGFloat = 16
     static let filesPillTrailingPadding: CGFloat = 12
     static let filesContentSpacing: CGFloat = 12
@@ -366,6 +405,30 @@ struct ModeSwitcherLayoutPolicy {
         }
 
         return modeIndex < previousIndex ? .leading : .trailing
+    }
+
+    static func activePillShrinkFrame(
+        for mode: LauncherMode,
+        nextMode: LauncherMode,
+        availableWidth: CGFloat,
+        shrinkProgress: CGFloat
+    ) -> CGRect {
+        let fullFrame = activePillFrame(for: mode, availableWidth: availableWidth)
+        let inactiveFrame = inactiveStoneFrame(
+            for: mode,
+            activeMode: nextMode,
+            availableWidth: availableWidth
+        )
+        let clampedProgress = min(max(shrinkProgress, 0), 1)
+        let minX = inactiveFrame.minX + (fullFrame.minX - inactiveFrame.minX) * clampedProgress
+        let width = inactiveFrame.width + (fullFrame.width - inactiveFrame.width) * clampedProgress
+
+        return CGRect(
+            x: minX,
+            y: fullFrame.minY,
+            width: width,
+            height: fullFrame.height
+        )
     }
 
     static func activeTextPillInputTrailingInset(isShowingProgress: Bool) -> CGFloat {
