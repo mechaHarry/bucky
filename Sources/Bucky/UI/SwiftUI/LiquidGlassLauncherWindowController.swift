@@ -24,13 +24,15 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         inclusionStore: InclusionStore,
         exclusionStore: ExclusionStore,
         calculationHistoryStore: CalculationHistoryStore,
+        dictionaryHistoryStore: DictionaryHistoryStore,
         openSettingsAction: @escaping () -> Void
     ) {
         model = LiquidGlassLauncherModel(
             settingsStore: settingsStore,
             inclusionStore: inclusionStore,
             exclusionStore: exclusionStore,
-            calculationHistoryStore: calculationHistoryStore
+            calculationHistoryStore: calculationHistoryStore,
+            dictionaryHistoryStore: dictionaryHistoryStore
         )
         window = LiquidGlassWindow(
             contentRect: NSRect(x: 0, y: 0, width: 760, height: 460),
