@@ -237,6 +237,8 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
         XCTAssertTrue(source.contains("lastModeForActivePillExpansion = model.mode"))
         XCTAssertTrue(source.contains("outgoingActivePillMode = previousMode"))
         XCTAssertTrue(source.contains("DispatchQueue.main.asyncAfter"))
+        XCTAssertTrue(source.contains("DispatchQueue.main.async {\n            guard lastModeForActivePillExpansion == targetMode"))
+        XCTAssertTrue(source.contains("withAnimation(.easeOut(duration: ModeSwitcherLayoutPolicy.activePillTransitionDuration))"))
         XCTAssertTrue(source.contains(".clipped()"))
         XCTAssertTrue(source.contains(".zIndex(ModeSwitcherLayoutPolicy.activePillZIndex)"))
         XCTAssertTrue(source.contains(".zIndex(ModeSwitcherLayoutPolicy.outgoingPillZIndex)"))
