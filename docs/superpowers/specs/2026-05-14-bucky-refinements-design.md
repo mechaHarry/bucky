@@ -116,8 +116,10 @@ Implementation notes:
 
 - Every mode participates in matched glass geometry.
 - The moving glass identity belongs to the stone/pill surface.
-- The active pill's leading edge matches the selected mode's inactive stone
-  frame, so expansion and shrinkage start and end at the same slot.
+- The active pill's expansion edge matches the selected mode's visual stone
+  origin: mode 1 grows from the leading edge, and modes 2-4 grow from the
+  trailing edge because their inactive stones sit to the right of the previous
+  active pill.
 - Inactive stone frames are active-mode-aware: stones before the active mode use
   their compact slots, and stones after the active mode sit after the active pill
   with normal spacing.

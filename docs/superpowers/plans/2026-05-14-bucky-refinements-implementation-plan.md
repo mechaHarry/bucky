@@ -1120,6 +1120,10 @@ compact mode buttons or move at full width. Inactive stones render above the
 active pill layer during growth, and the active pill frame animates from the
 selected stone's circle width to the final pill width.
 
+Third correction after visual testing: mode 1 expands from the active pill's
+leading edge, while modes 2-4 expand from the trailing edge because those
+inactive stones visually sit to the right of the previous active pill.
+
 **Files:**
 - Modify: `Sources/Bucky/UI/SwiftUI/ModeSwitcherView.swift`
 - Modify: `Tests/BuckyTests/ModeSwitcherLayoutPolicyTests.swift`
@@ -1298,8 +1302,9 @@ Remove `.glassEffectID` and `.glassEffectTransition` from `modeSwitcherElement(f
 Add layout helpers for active-mode-aware inactive stone frames and active pill
 expansion progress. Stones before the active mode keep compact positions; stones
 after the active mode sit after the active pill with normal spacing. The
-animated active frame keeps the selected stone's leading edge stable and
-interpolates only the pill width from circle to final size.
+animated active frame keeps the selected stone's local edge stable: leading edge
+for mode 1, trailing edge for modes 2-4, while interpolating only the pill width
+from circle to final size.
 
 Render inactive stones above the active pill layer with explicit z-index values.
 The active pill view should be clipped to its animated frame so foreground text

@@ -319,9 +319,11 @@ struct ModeSwitcherLayoutPolicy {
         let finalFrame = activePillFrame(for: mode, availableWidth: availableWidth)
         let clampedProgress = min(max(expansionProgress, 0), 1)
         let width = inactiveStoneSlotWidth + (finalFrame.width - inactiveStoneSlotWidth) * clampedProgress
+        let isFirstMode = mode == LauncherMode.ordered.first
+        let originX = isFirstMode ? finalFrame.minX : finalFrame.maxX - width
 
         return CGRect(
-            x: finalFrame.minX,
+            x: originX,
             y: finalFrame.minY,
             width: width,
             height: finalFrame.height
