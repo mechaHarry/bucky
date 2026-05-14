@@ -377,7 +377,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
         switch ToolResultsSnapshotPolicy.update(for: mode, query: query) {
         case .immediate:
             applyToolResultsSnapshot(
-                makeToolItems(for: trimmedQuery, scheduleHistory: scheduleHistory)
+                makeToolItems(for: trimmedQuery, scheduleHistory: scheduleHistory),
+                selectLiveCalculation: scheduleHistory
             )
         }
     }
@@ -455,9 +456,9 @@ final class LiquidGlassLauncherModel: ObservableObject {
         }
     }
 
-    private func applyToolResultsSnapshot(_ nextItems: [ToolItem]) {
+    private func applyToolResultsSnapshot(_ nextItems: [ToolItem], selectLiveCalculation: Bool) {
         toolItems = nextItems
-        if mode == .calculator, toolItems.first?.kind == .calculation {
+        if selectLiveCalculation, mode == .calculator, toolItems.first?.kind == .calculation {
             selectedIndex = 0
             requestSelectionScroll(anchor: .top)
             return

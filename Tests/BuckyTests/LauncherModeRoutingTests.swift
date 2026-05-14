@@ -474,6 +474,39 @@ final class LauncherModeRoutingTests: XCTestCase {
 
     @MainActor
     @available(macOS 26.0, *)
+    func testCalculatorHistoryCommitDoesNotStealHistorySelection() {
+        let calculationHistoryStore = CalculationHistoryStore()
+        calculationHistoryStore.clear()
+        defer { calculationHistoryStore.clear() }
+        calculationHistoryStore.add(expression: "3 + 3", result: "6")
+        let model = LiquidGlassLauncherModel(
+            settingsStore: SettingsStore(),
+            inclusionStore: InclusionStore(),
+            exclusionStore: ExclusionStore(),
+            calculationHistoryStore: calculationHistoryStore,
+            fileBrowserModel: FileBrowserModel(
+                fileSystem: StubFileSystemClient(home: URL(fileURLWithPath: "/Users/test"), entriesByDirectory: [:]),
+                store: InMemoryFileBrowserStore(state: .defaultValue),
+                directoryStream: ImmediateDirectoryStream()
+            )
+        )
+
+        model.show(mode: .calculator)
+        model.query = "2 + 2"
+        model.queryDidChange()
+        model.selectedIndex = 1
+        model.selectionScrollRequest = nil
+
+        RunLoop.current.run(until: Date().addingTimeInterval(0.8))
+
+        XCTAssertEqual(model.toolItems.first?.kind, .calculation)
+        XCTAssertEqual(model.toolItems.first?.title, "4")
+        XCTAssertEqual(model.selectedIndex, 1)
+        XCTAssertNil(model.selectionScrollRequest)
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
     func testFilesTopBottomKeepLauncherAndFileSelectionAligned() {
         let model = makeFileLauncherModel(entries: ["alpha.txt", "beta.txt", "gamma.txt"])
 

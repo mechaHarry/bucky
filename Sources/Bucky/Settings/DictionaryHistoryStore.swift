@@ -35,7 +35,7 @@ final class DictionaryHistoryStore {
             normalized(entry.term) == normalizedTerm
         }
         words.insert(
-            DictionaryHistoryEntry(term: normalizedTerm, date: Date()),
+            DictionaryHistoryEntry(term: trimmedTerm, date: Date()),
             at: 0
         )
 

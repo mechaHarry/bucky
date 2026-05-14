@@ -33,6 +33,18 @@ final class DictionaryHistoryStoreTests: XCTestCase {
         XCTAssertEqual(store.words.map(\.term), ["apple"])
     }
 
+    func testAddDedupesByNormalizedTermButPreservesOpenedTerm() {
+        let store = makeStore()
+
+        store.add(term: " Résumé ")
+
+        XCTAssertEqual(store.words.map(\.term), ["Résumé"])
+
+        store.add(term: "resume")
+
+        XCTAssertEqual(store.words.map(\.term), ["resume"])
+    }
+
     func testRemoveDeletesSingleNormalizedTerm() {
         let store = makeStore()
 
