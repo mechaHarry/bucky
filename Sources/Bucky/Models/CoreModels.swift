@@ -11,6 +11,8 @@ struct ToolItem: Hashable {
         case calculation
         case calculationHistory
         case dictionary
+        @available(*, unavailable, message: "Dictionary history UI handling is added in a later refinement task.")
+        case dictionaryHistory
         case message
     }
 
@@ -26,6 +28,13 @@ struct CalculationHistoryEntry: Codable, Hashable {
 }
 struct CalculationHistoryFile: Codable {
     var calculations: [CalculationHistoryEntry]
+}
+struct DictionaryHistoryEntry: Codable, Hashable {
+    let term: String
+    let date: Date
+}
+struct DictionaryHistoryFile: Codable {
+    var words: [DictionaryHistoryEntry]
 }
 struct DictionaryResult: Hashable {
     let term: String
