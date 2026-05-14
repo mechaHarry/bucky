@@ -30,11 +30,7 @@ struct ModeSwitcherView: View {
                                 height: ModeSwitcherLayoutPolicy.activePillHeight
                             )
                             .position(
-                                x: ModeSwitcherLayoutPolicy.stoneCenterX(
-                                    for: mode,
-                                    activeMode: model.mode,
-                                    availableWidth: proxy.size.width
-                                ),
+                                x: ModeSwitcherLayoutPolicy.stoneCenterX(for: mode, availableWidth: proxy.size.width),
                                 y: ModeSwitcherLayoutPolicy.activePillHeight / 2
                             )
                             .glassEffectID(mode, in: modeGlassNamespace)
@@ -234,40 +230,25 @@ struct ModeSwitcherLayoutPolicy {
         return max(0, filesPathButtonWidth(in: pillWidth) - fixedWidth)
     }
 
-    static func stoneCenterX(for mode: LauncherMode, activeMode: LauncherMode, availableWidth: CGFloat) -> CGFloat {
+    static func stoneCenterX(for mode: LauncherMode, availableWidth: CGFloat) -> CGFloat {
         let modes = LauncherMode.ordered
-        guard let modeIndex = modes.firstIndex(of: mode),
-              let activeIndex = modes.firstIndex(of: activeMode) else {
-            return inactiveStoneSlotWidth / 2
-        }
-        if mode == activeMode {
-            return activePillFrame(for: activeMode, availableWidth: availableWidth).midX
+        guard let modeIndex = modes.firstIndex(of: mode) else {
+            return availableWidth - inactiveStoneSlotWidth / 2
         }
 
         let slotStride = inactiveStoneSlotWidth + modeSwitcherSpacing
-        if modeIndex < activeIndex {
-            return inactiveStoneSlotWidth / 2 + CGFloat(modeIndex) * slotStride
-        }
-
-        let activeFrame = activePillFrame(for: activeMode, availableWidth: availableWidth)
-        let trailingSlotIndex = modeIndex - activeIndex - 1
-        return activeFrame.maxX
-            + modeSwitcherSpacing
-            + inactiveStoneSlotWidth / 2
-            + CGFloat(trailingSlotIndex) * slotStride
+        let railStartX = max(0, availableWidth - inactiveStoneRailWidth)
+        return railStartX + inactiveStoneSlotWidth / 2 + CGFloat(modeIndex) * slotStride
     }
 
     static func activePillFrame(for mode: LauncherMode, availableWidth: CGFloat) -> CGRect {
-        let modes = LauncherMode.ordered
-        guard let activeIndex = modes.firstIndex(of: mode) else {
-            return CGRect(x: 0, y: 0, width: max(0, availableWidth), height: activePillHeight)
-        }
+        let width = max(0, availableWidth - inactiveStoneRailWidth - modeSwitcherSpacing)
+        return CGRect(x: 0, y: 0, width: width, height: activePillHeight)
+    }
 
-        let reservedInactiveWidth = CGFloat(modes.count - 1) * inactiveStoneSlotWidth
-        let reservedSpacing = CGFloat(modes.count - 1) * modeSwitcherSpacing
-        let width = max(0, availableWidth - reservedInactiveWidth - reservedSpacing)
-        let originX = CGFloat(activeIndex) * (inactiveStoneSlotWidth + modeSwitcherSpacing)
-        return CGRect(x: originX, y: 0, width: width, height: activePillHeight)
+    private static var inactiveStoneRailWidth: CGFloat {
+        CGFloat(LauncherMode.ordered.count) * inactiveStoneSlotWidth
+            + CGFloat(LauncherMode.ordered.count - 1) * modeSwitcherSpacing
     }
 
     static func activeTextPillInputTrailingInset(isShowingProgress: Bool) -> CGFloat {
