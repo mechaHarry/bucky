@@ -430,10 +430,16 @@ final class LauncherModeRoutingTests: XCTestCase {
         let model = makeDictionaryLauncherModel(dictionaryHistoryStore: dictionaryHistoryStore)
 
         model.show(mode: .dictionary)
+        model.isPinned = true
         model.selectedIndex = 1
+        model.selectionScrollRequest = nil
         _ = model.handle(command: .open)
 
         XCTAssertEqual(dictionaryHistoryStore.words.map(\.term), ["apple", "banana"])
+        XCTAssertEqual(model.toolItems.first?.title, "apple")
+        XCTAssertEqual(model.selectedIndex, 0)
+        XCTAssertEqual(model.selectionScrollRequest?.index, 0)
+        XCTAssertEqual(model.selectionScrollRequest?.anchor, .top)
     }
 
     @MainActor

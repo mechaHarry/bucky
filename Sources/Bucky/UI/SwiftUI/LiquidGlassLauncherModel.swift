@@ -670,6 +670,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     private func activate(_ item: ToolItem) {
+        let activatedDictionaryHistory = item.kind == .dictionaryHistory
+
         switch item.kind {
         case .calculation:
             commitPendingCalculationHistory(refreshResults: false)
@@ -685,6 +687,10 @@ final class LiquidGlassLauncherModel: ObservableObject {
 
         if mode == .dictionary, inputIsBlank {
             applyToolsResults(scheduleHistory: false)
+            if activatedDictionaryHistory {
+                selectedIndex = 0
+                requestSelectionScroll(anchor: .top)
+            }
         }
 
         if !isPinned {
