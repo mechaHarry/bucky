@@ -184,18 +184,27 @@ struct ModeSwitcherView: View {
             outgoingActivePillNextMode = model.mode
             outgoingPillShrinkProgress = 1
         }
+        let targetMode = model.mode
         lastModeForActivePillExpansion = model.mode
         activePillExpansionProgress = 0
-        withAnimation(.easeOut(duration: ModeSwitcherLayoutPolicy.activePillTransitionDuration)) {
-            activePillExpansionProgress = 1
-            outgoingPillShrinkProgress = 0
-        }
-
         let shrinkingMode = outgoingActivePillMode
-        DispatchQueue.main.asyncAfter(deadline: .now() + ModeSwitcherLayoutPolicy.activePillTransitionDuration) {
-            if outgoingActivePillMode == shrinkingMode {
-                outgoingActivePillMode = nil
-                outgoingActivePillNextMode = nil
+
+        DispatchQueue.main.async {
+            guard lastModeForActivePillExpansion == targetMode,
+                  outgoingActivePillMode == shrinkingMode else {
+                return
+            }
+
+            withAnimation(.easeOut(duration: ModeSwitcherLayoutPolicy.activePillTransitionDuration)) {
+                activePillExpansionProgress = 1
+                outgoingPillShrinkProgress = 0
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + ModeSwitcherLayoutPolicy.activePillTransitionDuration) {
+                if outgoingActivePillMode == shrinkingMode {
+                    outgoingActivePillMode = nil
+                    outgoingActivePillNextMode = nil
+                }
             }
         }
     }
