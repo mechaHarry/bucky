@@ -22,6 +22,13 @@ struct ModeSwitcherView: View {
             let activeFrame = ModeSwitcherLayoutPolicy.activePillFrame(for: model.mode, availableWidth: proxy.size.width)
 
             ZStack(alignment: .topLeading) {
+                activePill(for: model.mode)
+                    .frame(
+                        width: activeFrame.width,
+                        height: ModeSwitcherLayoutPolicy.activePillHeight
+                    )
+                    .offset(x: activeFrame.minX, y: 0)
+
                 ForEach(LauncherMode.ordered, id: \.self) { mode in
                     if mode != model.mode {
                         modeOrb(for: mode)
@@ -32,7 +39,6 @@ struct ModeSwitcherView: View {
                             .position(
                                 x: ModeSwitcherLayoutPolicy.stoneCenterX(
                                     for: mode,
-                                    activeMode: model.mode,
                                     availableWidth: proxy.size.width
                                 ),
                                 y: ModeSwitcherLayoutPolicy.activePillHeight / 2
@@ -41,13 +47,6 @@ struct ModeSwitcherView: View {
                             .glassEffectTransition(.matchedGeometry)
                     }
                 }
-
-                activePill(for: model.mode)
-                    .frame(
-                        width: activeFrame.width,
-                        height: ModeSwitcherLayoutPolicy.activePillHeight
-                    )
-                    .offset(x: activeFrame.minX, y: 0)
             }
             .frame(width: proxy.size.width, height: ModeSwitcherLayoutPolicy.activePillHeight)
         }
@@ -236,26 +235,6 @@ struct ModeSwitcherLayoutPolicy {
 
     static func stoneCenterX(for mode: LauncherMode, availableWidth: CGFloat) -> CGFloat {
         inactiveStoneFrame(for: mode, availableWidth: availableWidth).midX
-    }
-
-    static func stoneCenterX(for mode: LauncherMode, activeMode: LauncherMode, availableWidth: CGFloat) -> CGFloat {
-        guard mode != activeMode,
-              let modeIndex = LauncherMode.ordered.firstIndex(of: mode),
-              let activeIndex = LauncherMode.ordered.firstIndex(of: activeMode) else {
-            return inactiveStoneFrame(for: mode, availableWidth: availableWidth).midX
-        }
-
-        if modeIndex < activeIndex {
-            return inactiveStoneFrame(for: mode, availableWidth: availableWidth).midX
-        }
-
-        let trailingIndex = modeIndex - activeIndex - 1
-        let activeFrame = activePillFrame(for: activeMode, availableWidth: availableWidth)
-        let slotStride = inactiveStoneSlotWidth + modeSwitcherSpacing
-        return activeFrame.maxX
-            + modeSwitcherSpacing
-            + inactiveStoneSlotWidth / 2
-            + CGFloat(trailingIndex) * slotStride
     }
 
     static func inactiveStoneFrame(for mode: LauncherMode, availableWidth: CGFloat) -> CGRect {

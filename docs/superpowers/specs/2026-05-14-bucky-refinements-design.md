@@ -104,9 +104,11 @@ expands from that mode's compact stone slot; when it deactivates, the pill
 shrinks back to the same slot. The active pill therefore travels across the row
 with the selected mode instead of expanding into one fixed header location.
 
-Inactive stones remain in mode order around the expanded pill. Stones before the
-active mode keep their compact positions; stones after the active mode follow
-after the expanded pill with normal spacing so rows do not overlap.
+Inactive stones remain visually fixed in their compact mode slots. The active
+mode does not also render a separate inactive stone; its glass identity morphs
+from that compact slot into the active pill and back. Switching modes should
+therefore read as one malleable glass object per mode, not as separate stones
+being pushed aside by an expanding pill.
 
 Implementation notes:
 
@@ -114,6 +116,8 @@ Implementation notes:
 - The moving glass identity belongs to the stone/pill surface.
 - The active pill's leading edge matches the selected mode's inactive stone
   frame, so expansion and shrinkage start and end at the same slot.
+- Inactive stone slots are independent of the active mode; do not move trailing
+  stones to make room for the active pill.
 - Text input foregrounds stay outside the moving glass identity so native focus, typing, and legibility remain stable.
 - The current pattern of foreground content above a separate glass surface remains in place.
 
