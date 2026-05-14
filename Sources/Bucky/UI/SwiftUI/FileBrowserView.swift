@@ -629,7 +629,12 @@ private struct FileBrowserRow: View {
             }
         }
         .overlay {
-            NativeFileDragSourceView(url: entry.url)
+            NativeFileDragSourceView(
+                url: entry.url,
+                urlsProvider: {
+                    FileBrowserDragPolicy.draggedURLs(for: entry.url, selectedURLs: model.selectedURLs)
+                }
+            )
                 .accessibilityHidden(true)
         }
     }
@@ -665,7 +670,10 @@ private struct FileBrowserPinnedRow: View {
             }
         }
         .overlay {
-            NativeFileDragSourceView(url: url)
+            NativeFileDragSourceView(
+                url: url,
+                urlsProvider: { [url] }
+            )
                 .accessibilityHidden(true)
         }
     }
