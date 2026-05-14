@@ -442,6 +442,8 @@ struct LiquidGlassLauncherView: View {
             return "clock.arrow.circlepath"
         case .dictionary:
             return "text.book.closed"
+        case .dictionaryHistory:
+            return "clock.arrow.circlepath"
         case .message:
             return "info.circle"
         }
@@ -451,7 +453,7 @@ struct LiquidGlassLauncherView: View {
         switch kind {
         case .calculation, .calculationHistory:
             return .cyan
-        case .dictionary:
+        case .dictionary, .dictionaryHistory:
             return .mint
         case .message:
             return .secondary
@@ -465,7 +467,7 @@ struct LiquidGlassLauncherView: View {
             return RowActionConfiguration(symbol: "doc.on.doc", help: "Copy result")
         case .dictionary:
             return RowActionConfiguration(symbol: "book", help: "Open in Dictionary")
-        case .message:
+        case .dictionaryHistory, .message:
             return nil
         }
     }
