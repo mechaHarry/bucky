@@ -654,6 +654,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
             copyToPasteboard(item.copyText)
         case .dictionary:
             openDictionary(term: item.title)
+        case .dictionaryHistory:
+            return
         case .message:
             return
         }

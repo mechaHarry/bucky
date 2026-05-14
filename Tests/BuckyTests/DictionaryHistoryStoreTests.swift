@@ -2,6 +2,28 @@ import XCTest
 @testable import Bucky
 
 final class DictionaryHistoryStoreTests: XCTestCase {
+    func testDictionaryHistoryEntryContractIncludesStableIdentityAndEquatable() {
+        let id = UUID()
+        let date = Date()
+        let entry = DictionaryHistoryEntry(id: id, term: "apple", date: date)
+        let sameEntry = DictionaryHistoryEntry(id: id, term: "apple", date: date)
+
+        assertIdentifiableAndEquatable(entry)
+        XCTAssertEqual(entry.id, id)
+        XCTAssertEqual(entry, sameEntry)
+    }
+
+    func testDictionaryHistoryToolKindIsUsable() {
+        let item = ToolItem(
+            title: "History",
+            subtitle: "Dictionary",
+            copyText: nil,
+            kind: .dictionaryHistory
+        )
+
+        XCTAssertEqual(item.kind, .dictionaryHistory)
+    }
+
     func testAddDedupesByNormalizedTermAndMovesLatestToTop() {
         let store = makeStore()
 
@@ -51,5 +73,9 @@ final class DictionaryHistoryStoreTests: XCTestCase {
     private func temporaryFileURL() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("BuckyDictionaryHistory-\(UUID().uuidString).json")
+    }
+
+    private func assertIdentifiableAndEquatable<Entry: Identifiable & Equatable>(_ entry: Entry) {
+        XCTAssertEqual(entry, entry)
     }
 }
