@@ -52,19 +52,22 @@ final class NativeFileDragSourceNSView: NSView, NSDraggingSource {
         }
 
         didBeginDrag = true
-        let urls = urlsProvider?() ?? [url]
+        let urls = FileBrowserDragPolicy.nonEmptyDraggedURLs(
+            rowURL: url,
+            providedURLs: urlsProvider?() ?? []
+        )
         let pointerLocation = convert(event.locationInWindow, from: nil)
         let draggingItems = urls.enumerated().map { index, draggedURL in
             let icon = NSWorkspace.shared.icon(forFile: draggedURL.path)
             let draggingItem = NSDraggingItem(
                 pasteboardWriter: FileBrowserDragPolicy.draggedURL(for: draggedURL) as NSURL
             )
-            let itemOffset = CGFloat(index) * 5
+            let itemOffset = FileBrowserDragPolicy.draggingImageOffset(forItemAt: index)
             let frame = FileBrowserDragPolicy.draggingImageFrame(
                 in: bounds,
                 iconSize: icon.size,
                 pointerLocation: pointerLocation
-            ).offsetBy(dx: itemOffset, dy: -itemOffset)
+            ).offsetBy(dx: itemOffset.width, dy: itemOffset.height)
             draggingItem.setDraggingFrame(frame, contents: icon)
             return draggingItem
         }

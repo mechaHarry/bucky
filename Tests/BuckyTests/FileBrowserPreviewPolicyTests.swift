@@ -154,6 +154,15 @@ final class FileBrowserPreviewPolicyTests: XCTestCase {
         )
     }
 
+    func testProvidedDragURLsFallBackToRowURLWhenEmpty() {
+        let url = URL(fileURLWithPath: "/Users/test/image.png")
+
+        XCTAssertEqual(
+            FileBrowserDragPolicy.nonEmptyDraggedURLs(rowURL: url, providedURLs: []),
+            [url]
+        )
+    }
+
     func testNativeRowDragStartsAfterSmallPointerMovementAndDisablesWindowDragging() {
         XCTAssertFalse(FileBrowserDragPolicy.mouseDownCanMoveWindow)
         XCTAssertFalse(FileBrowserDragPolicy.shouldBeginNativeDrag(delta: CGSize(width: 1, height: 1)))
@@ -173,6 +182,13 @@ final class FileBrowserPreviewPolicyTests: XCTestCase {
         XCTAssertEqual(frame.midX, 120)
         XCTAssertEqual(frame.midY, 21)
         XCTAssertLessThan(frame.width, rowBounds.width)
+    }
+
+    func testNativeRowDragImageOffsetIsCappedForLargeSelections() {
+        XCTAssertEqual(
+            FileBrowserDragPolicy.draggingImageOffset(forItemAt: 99),
+            FileBrowserDragPolicy.draggingImageOffset(forItemAt: 3)
+        )
     }
 
     func testTrashUsesSingleNativeTrashSymbolInsteadOfBadgedFolderArtwork() {
