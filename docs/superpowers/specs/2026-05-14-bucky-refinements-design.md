@@ -126,6 +126,10 @@ Implementation notes:
   interactively available during the growth animation.
 - The active pill animates from the selected mode's circle-width stone frame to
   the final pill frame instead of translating at full pill width.
+- The outgoing active pill remains in a temporary layer and shrinks back to its
+  inactive stone frame before that inactive stone is rendered again.
+- Growth and shrink use the same slightly longer transition duration so both
+  directions read as one reversible morph.
 - Text input foregrounds stay outside the moving glass identity so native focus, typing, and legibility remain stable.
 - The current pattern of foreground content above a separate glass surface remains in place.
 

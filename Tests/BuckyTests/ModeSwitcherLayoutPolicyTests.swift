@@ -173,17 +173,73 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
         }
     }
 
+    func testOutgoingActivePillShrinksBackToInactiveStoneSlot() {
+        for availableWidth in [CGFloat(496), 760] {
+            for outgoingMode in LauncherMode.ordered {
+                for nextMode in LauncherMode.ordered where nextMode != outgoingMode {
+                    let startFrame = ModeSwitcherLayoutPolicy.activePillShrinkFrame(
+                        for: outgoingMode,
+                        nextMode: nextMode,
+                        availableWidth: availableWidth,
+                        shrinkProgress: 1
+                    )
+                    let halfwayFrame = ModeSwitcherLayoutPolicy.activePillShrinkFrame(
+                        for: outgoingMode,
+                        nextMode: nextMode,
+                        availableWidth: availableWidth,
+                        shrinkProgress: 0.5
+                    )
+                    let endFrame = ModeSwitcherLayoutPolicy.activePillShrinkFrame(
+                        for: outgoingMode,
+                        nextMode: nextMode,
+                        availableWidth: availableWidth,
+                        shrinkProgress: 0
+                    )
+
+                    XCTAssertEqual(
+                        startFrame,
+                        ModeSwitcherLayoutPolicy.activePillFrame(for: outgoingMode, availableWidth: availableWidth)
+                    )
+                    XCTAssertEqual(
+                        endFrame,
+                        ModeSwitcherLayoutPolicy.inactiveStoneFrame(
+                            for: outgoingMode,
+                            activeMode: nextMode,
+                            availableWidth: availableWidth
+                        )
+                    )
+                    XCTAssertGreaterThan(halfwayFrame.width, endFrame.width)
+                    XCTAssertLessThan(halfwayFrame.width, startFrame.width)
+                    XCTAssertGreaterThanOrEqual(
+                        halfwayFrame.minX,
+                        min(startFrame.minX, endFrame.minX)
+                    )
+                    XCTAssertLessThanOrEqual(
+                        halfwayFrame.maxX,
+                        max(startFrame.maxX, endFrame.maxX)
+                    )
+                }
+            }
+        }
+    }
+
     func testModeSwitcherAnimatesActivePillExpansionAboveStableStoneLayer() throws {
         let source = try modeSwitcherSource()
 
         XCTAssertTrue(source.contains("@State private var activePillExpansionProgress"))
         XCTAssertTrue(source.contains("@State private var previousModeForActivePillExpansion"))
+        XCTAssertTrue(source.contains("@State private var outgoingActivePillMode"))
+        XCTAssertTrue(source.contains("@State private var outgoingPillShrinkProgress"))
         XCTAssertTrue(source.contains("expansionProgress: activePillExpansionProgress"))
         XCTAssertTrue(source.contains("previousMode: previousModeForActivePillExpansion"))
-        XCTAssertTrue(source.contains("previousModeForActivePillExpansion = lastModeForActivePillExpansion"))
+        XCTAssertTrue(source.contains("shrinkProgress: outgoingPillShrinkProgress"))
+        XCTAssertTrue(source.contains("previousModeForActivePillExpansion = previousMode"))
         XCTAssertTrue(source.contains("lastModeForActivePillExpansion = model.mode"))
+        XCTAssertTrue(source.contains("outgoingActivePillMode = previousMode"))
+        XCTAssertTrue(source.contains("DispatchQueue.main.asyncAfter"))
         XCTAssertTrue(source.contains(".clipped()"))
         XCTAssertTrue(source.contains(".zIndex(ModeSwitcherLayoutPolicy.activePillZIndex)"))
+        XCTAssertTrue(source.contains(".zIndex(ModeSwitcherLayoutPolicy.outgoingPillZIndex)"))
         XCTAssertTrue(source.contains(".zIndex(ModeSwitcherLayoutPolicy.inactiveStoneZIndex)"))
         XCTAssertTrue(source.contains(".onChange(of: model.mode)"))
     }
@@ -341,6 +397,11 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
             for: mode,
             availableWidth: availableWidth
         )
+        let sourceStoneFrame = ModeSwitcherLayoutPolicy.inactiveStoneFrame(
+            for: mode,
+            activeMode: previousMode,
+            availableWidth: availableWidth
+        )
         let startFrame = ModeSwitcherLayoutPolicy.activePillFrame(
             for: mode,
             previousMode: previousMode,
@@ -354,6 +415,7 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
             expansionProgress: 0.5
         )
 
+        XCTAssertEqual(startFrame, sourceStoneFrame, file: file, line: line)
         XCTAssertEqual(startFrame.minX, finalFrame.minX, file: file, line: line)
         XCTAssertEqual(startFrame.width, ModeSwitcherLayoutPolicy.inactiveStoneSlotWidth, file: file, line: line)
         XCTAssertEqual(halfwayFrame.minX, finalFrame.minX, file: file, line: line)
@@ -383,6 +445,11 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
             for: mode,
             availableWidth: availableWidth
         )
+        let sourceStoneFrame = ModeSwitcherLayoutPolicy.inactiveStoneFrame(
+            for: mode,
+            activeMode: previousMode,
+            availableWidth: availableWidth
+        )
         let startFrame = ModeSwitcherLayoutPolicy.activePillFrame(
             for: mode,
             previousMode: previousMode,
@@ -396,6 +463,7 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
             expansionProgress: 0.5
         )
 
+        XCTAssertEqual(startFrame, sourceStoneFrame, file: file, line: line)
         XCTAssertEqual(startFrame.maxX, finalFrame.maxX, file: file, line: line)
         XCTAssertEqual(startFrame.width, ModeSwitcherLayoutPolicy.inactiveStoneSlotWidth, file: file, line: line)
         XCTAssertEqual(halfwayFrame.maxX, finalFrame.maxX, file: file, line: line)

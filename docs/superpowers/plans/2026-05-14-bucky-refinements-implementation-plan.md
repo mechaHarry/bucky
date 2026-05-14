@@ -1125,6 +1125,11 @@ previous-to-next mode transition. If the newly active mode is left of the
 previous mode, grow from the leading edge; if it is right of the previous mode,
 grow from the trailing edge.
 
+Fourth correction after visual testing: the outgoing active pill remains in a
+temporary layer and shrinks back to its inactive stone frame. The inactive stone
+for that outgoing mode is withheld until the shrink completes, avoiding a snap
+or duplicate glass object.
+
 **Files:**
 - Modify: `Sources/Bucky/UI/SwiftUI/ModeSwitcherView.swift`
 - Modify: `Tests/BuckyTests/ModeSwitcherLayoutPolicyTests.swift`
@@ -1310,6 +1315,11 @@ interpolating only the pill width from circle to final size.
 Render inactive stones above the active pill layer with explicit z-index values.
 The active pill view should be clipped to its animated frame so foreground text
 does not draw ahead of the growing glass surface.
+
+Add an outgoing active pill layer with its own shrink progress and z-index. The
+shrink frame interpolates from the outgoing full active pill frame to the
+outgoing mode's inactive frame for the newly active mode, then removes the
+temporary layer after the shared transition duration.
 
 - [ ] **Step 6: Keep text field foreground outside the moving glass identity**
 
