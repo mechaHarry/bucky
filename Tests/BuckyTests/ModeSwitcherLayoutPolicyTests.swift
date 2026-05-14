@@ -150,32 +150,25 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
 
     func testActivePillExpansionFrameGrowsFromSelectedStoneSlot() {
         for availableWidth in [CGFloat(496), 760] {
-            let firstMode = LauncherMode.ordered[0]
-            let firstInactiveFrame = ModeSwitcherLayoutPolicy.inactiveStoneFrame(
-                for: firstMode,
-                availableWidth: availableWidth
-            )
-            let firstHalfwayFrame = ModeSwitcherLayoutPolicy.activePillFrame(
-                for: firstMode,
-                availableWidth: availableWidth,
-                expansionProgress: 0.5
-            )
+            for sourceMode in LauncherMode.ordered {
+                for destinationMode in LauncherMode.ordered where destinationMode != sourceMode {
+                    let sourceIndex = LauncherMode.ordered.firstIndex(of: sourceMode)!
+                    let destinationIndex = LauncherMode.ordered.firstIndex(of: destinationMode)!
 
-            XCTAssertEqual(
-                ModeSwitcherLayoutPolicy.activePillFrame(
-                    for: firstMode,
-                    availableWidth: availableWidth,
-                    expansionProgress: 0
-                ),
-                firstInactiveFrame
-            )
-            XCTAssertEqual(firstHalfwayFrame.minX, firstInactiveFrame.minX)
-
-            for mode in LauncherMode.ordered.dropFirst() {
-                assertActivePillExpandsFromTrailingStoneEdge(
-                    mode: mode,
-                    availableWidth: availableWidth
-                )
+                    if destinationIndex < sourceIndex {
+                        assertActivePillExpandsFromLeadingStoneEdge(
+                            mode: destinationMode,
+                            previousMode: sourceMode,
+                            availableWidth: availableWidth
+                        )
+                    } else {
+                        assertActivePillExpandsFromTrailingStoneEdge(
+                            mode: destinationMode,
+                            previousMode: sourceMode,
+                            availableWidth: availableWidth
+                        )
+                    }
+                }
             }
         }
     }
@@ -184,7 +177,11 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
         let source = try modeSwitcherSource()
 
         XCTAssertTrue(source.contains("@State private var activePillExpansionProgress"))
+        XCTAssertTrue(source.contains("@State private var previousModeForActivePillExpansion"))
         XCTAssertTrue(source.contains("expansionProgress: activePillExpansionProgress"))
+        XCTAssertTrue(source.contains("previousMode: previousModeForActivePillExpansion"))
+        XCTAssertTrue(source.contains("previousModeForActivePillExpansion = lastModeForActivePillExpansion"))
+        XCTAssertTrue(source.contains("lastModeForActivePillExpansion = model.mode"))
         XCTAssertTrue(source.contains(".clipped()"))
         XCTAssertTrue(source.contains(".zIndex(ModeSwitcherLayoutPolicy.activePillZIndex)"))
         XCTAssertTrue(source.contains(".zIndex(ModeSwitcherLayoutPolicy.inactiveStoneZIndex)"))
@@ -333,8 +330,9 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
         return try String(contentsOf: sourceURL, encoding: .utf8)
     }
 
-    private func assertActivePillExpandsFromTrailingStoneEdge(
+    private func assertActivePillExpandsFromLeadingStoneEdge(
         mode: LauncherMode,
+        previousMode: LauncherMode,
         availableWidth: CGFloat,
         file: StaticString = #filePath,
         line: UInt = #line
@@ -345,11 +343,55 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
         )
         let startFrame = ModeSwitcherLayoutPolicy.activePillFrame(
             for: mode,
+            previousMode: previousMode,
             availableWidth: availableWidth,
             expansionProgress: 0
         )
         let halfwayFrame = ModeSwitcherLayoutPolicy.activePillFrame(
             for: mode,
+            previousMode: previousMode,
+            availableWidth: availableWidth,
+            expansionProgress: 0.5
+        )
+
+        XCTAssertEqual(startFrame.minX, finalFrame.minX, file: file, line: line)
+        XCTAssertEqual(startFrame.width, ModeSwitcherLayoutPolicy.inactiveStoneSlotWidth, file: file, line: line)
+        XCTAssertEqual(halfwayFrame.minX, finalFrame.minX, file: file, line: line)
+        XCTAssertGreaterThan(halfwayFrame.width, startFrame.width, file: file, line: line)
+        XCTAssertLessThan(halfwayFrame.width, finalFrame.width, file: file, line: line)
+        XCTAssertEqual(
+            ModeSwitcherLayoutPolicy.activePillFrame(
+                for: mode,
+                previousMode: previousMode,
+                availableWidth: availableWidth,
+                expansionProgress: 1
+            ),
+            finalFrame,
+            file: file,
+            line: line
+        )
+    }
+
+    private func assertActivePillExpandsFromTrailingStoneEdge(
+        mode: LauncherMode,
+        previousMode: LauncherMode,
+        availableWidth: CGFloat,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let finalFrame = ModeSwitcherLayoutPolicy.activePillFrame(
+            for: mode,
+            availableWidth: availableWidth
+        )
+        let startFrame = ModeSwitcherLayoutPolicy.activePillFrame(
+            for: mode,
+            previousMode: previousMode,
+            availableWidth: availableWidth,
+            expansionProgress: 0
+        )
+        let halfwayFrame = ModeSwitcherLayoutPolicy.activePillFrame(
+            for: mode,
+            previousMode: previousMode,
             availableWidth: availableWidth,
             expansionProgress: 0.5
         )
@@ -362,6 +404,7 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
         XCTAssertEqual(
             ModeSwitcherLayoutPolicy.activePillFrame(
                 for: mode,
+                previousMode: previousMode,
                 availableWidth: availableWidth,
                 expansionProgress: 1
             ),
