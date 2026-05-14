@@ -100,6 +100,33 @@ final class LauncherModeRoutingTests: XCTestCase {
         ))
     }
 
+    func testTextInputModesPassThroughNativeEditingCommandsOnKeyUp() {
+        XCTAssertTrue(LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
+            mode: .calculator,
+            fileFocusState: nil,
+            charactersIgnoringModifiers: "x",
+            modifierFlags: .command,
+            eventType: .keyUp
+        ))
+    }
+
+    func testModifiedNativeEditingCommandsDoNotPassThrough() {
+        XCTAssertFalse(LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
+            mode: .calculator,
+            fileFocusState: nil,
+            charactersIgnoringModifiers: "v",
+            modifierFlags: [.command, .shift],
+            eventType: .keyDown
+        ))
+        XCTAssertFalse(LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
+            mode: .calculator,
+            fileFocusState: nil,
+            charactersIgnoringModifiers: "v",
+            modifierFlags: [.command, .option],
+            eventType: .keyDown
+        ))
+    }
+
     func testLauncherCommandsDoNotPassThroughAsTextEditingCommands() {
         XCTAssertFalse(LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
             mode: .calculator,
@@ -124,6 +151,21 @@ final class LauncherModeRoutingTests: XCTestCase {
         ))
     }
 
+    func testReservedLauncherCommandKeysDoNotPassThroughAsTextEditingCommands() {
+        for key in ["1", "2", "3", "4", "r", ",", "p", "[", "]"] {
+            XCTAssertFalse(
+                LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
+                    mode: .applications,
+                    fileFocusState: nil,
+                    charactersIgnoringModifiers: key,
+                    modifierFlags: .command,
+                    eventType: .keyDown
+                ),
+                "Expected Command+\(key) to remain reserved for launcher routing"
+            )
+        }
+    }
+
     func testFilesRenamePassesThroughNativeEditingCommands() {
         XCTAssertTrue(LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
             mode: .files,
@@ -135,6 +177,13 @@ final class LauncherModeRoutingTests: XCTestCase {
         XCTAssertFalse(LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
             mode: .files,
             fileFocusState: .browse,
+            charactersIgnoringModifiers: "v",
+            modifierFlags: .command,
+            eventType: .keyDown
+        ))
+        XCTAssertFalse(LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
+            mode: .files,
+            fileFocusState: .previewActions,
             charactersIgnoringModifiers: "v",
             modifierFlags: .command,
             eventType: .keyDown
