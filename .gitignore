@@ -31,6 +31,10 @@
 # Agentic reosurces for future iterations.
 !.agents/
 !.agents/**
+!docs/
+!docs/superpowers/
+!docs/superpowers/specs/
+!docs/superpowers/specs/**
 !README.md
 !AGENTS.md
 !CHANGELOG.md
