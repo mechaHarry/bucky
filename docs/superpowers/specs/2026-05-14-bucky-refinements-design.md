@@ -104,11 +104,13 @@ expands from that mode's compact stone slot; when it deactivates, the pill
 shrinks back to the same slot. The active pill therefore travels across the row
 with the selected mode instead of expanding into one fixed header location.
 
-Inactive stones remain visually fixed in their compact mode slots. The active
-mode does not also render a separate inactive stone; its glass identity morphs
-from that compact slot into the active pill and back. Switching modes should
-therefore read as one malleable glass object per mode, not as separate stones
-being pushed aside by an expanding pill.
+Inactive stones remain in their respective compact areas outside the active
+pill. For active mode 1, stones 2-4 sit after the pill; for active mode 2, stone
+1 stays before the pill and stones 3-4 sit after it; for active mode 3, stones
+1-2 stay before the pill and stone 4 sits after it; for active mode 4, stones
+1-3 stay before the pill. The active mode does not also render a separate
+inactive stone; its glass identity morphs from that compact slot into the active
+pill and back.
 
 Implementation notes:
 
@@ -116,12 +118,11 @@ Implementation notes:
 - The moving glass identity belongs to the stone/pill surface.
 - The active pill's leading edge matches the selected mode's inactive stone
   frame, so expansion and shrinkage start and end at the same slot.
-- Inactive stone slots are independent of the active mode; do not move trailing
-  stones to make room for the active pill.
+- Inactive stone frames are active-mode-aware: stones before the active mode use
+  their compact slots, and stones after the active mode sit after the active pill
+  with normal spacing.
 - Inactive stones sit above the active pill layer so they remain visually and
-  interactively available when the pill extends beneath their compact slots.
-- Text input foregrounds clear the compact mode control row; placeholder and
-  typed text must not sit underneath inactive stones.
+  interactively available during the growth animation.
 - The active pill animates from the selected mode's circle-width stone frame to
   the final pill frame instead of translating at full pill width.
 - Text input foregrounds stay outside the moving glass identity so native focus, typing, and legibility remain stable.

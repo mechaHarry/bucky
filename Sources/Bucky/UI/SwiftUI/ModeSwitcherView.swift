@@ -38,16 +38,19 @@ struct ModeSwitcherView: View {
 
                 ForEach(LauncherMode.ordered, id: \.self) { mode in
                     if mode != model.mode {
+                        let inactiveFrame = ModeSwitcherLayoutPolicy.inactiveStoneFrame(
+                            for: mode,
+                            activeMode: model.mode,
+                            availableWidth: proxy.size.width
+                        )
+
                         modeOrb(for: mode)
                             .frame(
                                 width: ModeSwitcherLayoutPolicy.inactiveStoneSlotWidth,
                                 height: ModeSwitcherLayoutPolicy.activePillHeight
                             )
                             .position(
-                                x: ModeSwitcherLayoutPolicy.stoneCenterX(
-                                    for: mode,
-                                    availableWidth: proxy.size.width
-                                ),
+                                x: inactiveFrame.midX,
                                 y: ModeSwitcherLayoutPolicy.activePillHeight / 2
                             )
                             .glassEffectID(mode, in: modeGlassNamespace)
@@ -89,10 +92,6 @@ struct ModeSwitcherView: View {
                 mode: mode,
                 symbol: symbol(for: mode),
                 glassNamespace: modeGlassNamespace,
-                inputLeadingInset: ModeSwitcherLayoutPolicy.activeTextPillClearedInputLeadingInset(
-                    for: mode,
-                    availableWidth: availableWidth
-                ),
                 isSearchFocused: $isSearchFocused
             )
         case .files:
@@ -257,22 +256,28 @@ struct ModeSwitcherLayoutPolicy {
         return max(0, filesPathButtonWidth(in: pillWidth) - fixedWidth)
     }
 
-    static func stoneCenterX(for mode: LauncherMode, availableWidth: CGFloat) -> CGFloat {
-        inactiveStoneFrame(for: mode, availableWidth: availableWidth).midX
-    }
-
-    static func compactModeControlsFrame(availableWidth: CGFloat) -> CGRect {
-        guard let firstMode = LauncherMode.ordered.first,
-              let lastMode = LauncherMode.ordered.last else {
-            return .zero
+    static func inactiveStoneFrame(
+        for mode: LauncherMode,
+        activeMode: LauncherMode,
+        availableWidth: CGFloat
+    ) -> CGRect {
+        guard mode != activeMode,
+              let modeIndex = LauncherMode.ordered.firstIndex(of: mode),
+              let activeIndex = LauncherMode.ordered.firstIndex(of: activeMode) else {
+            return inactiveStoneFrame(for: mode, availableWidth: availableWidth)
         }
 
-        let firstFrame = inactiveStoneFrame(for: firstMode, availableWidth: availableWidth)
-        let lastFrame = inactiveStoneFrame(for: lastMode, availableWidth: availableWidth)
+        if modeIndex < activeIndex {
+            return inactiveStoneFrame(for: mode, availableWidth: availableWidth)
+        }
+
+        let trailingIndex = modeIndex - activeIndex - 1
+        let activeFrame = activePillFrame(for: activeMode, availableWidth: availableWidth)
+        let slotStride = inactiveStoneSlotWidth + modeSwitcherSpacing
         return CGRect(
-            x: firstFrame.minX,
+            x: activeFrame.maxX + modeSwitcherSpacing + CGFloat(trailingIndex) * slotStride,
             y: 0,
-            width: lastFrame.maxX - firstFrame.minX,
+            width: inactiveStoneSlotWidth,
             height: activePillHeight
         )
     }
@@ -323,18 +328,6 @@ struct ModeSwitcherLayoutPolicy {
         )
     }
 
-    static func activeTextPillClearedInputLeadingInset(
-        for mode: LauncherMode,
-        availableWidth: CGFloat
-    ) -> CGFloat {
-        let activeFrame = activePillFrame(for: mode, availableWidth: availableWidth)
-        let compactControlsFrame = compactModeControlsFrame(availableWidth: availableWidth)
-        let clearedLeadingInset = compactControlsFrame.maxX
-            - activeFrame.minX
-            + activeTextPillHorizontalInset
-        return max(activeTextPillInputLeadingInset, clearedLeadingInset)
-    }
-
     static func activeTextPillInputTrailingInset(isShowingProgress: Bool) -> CGFloat {
         activeTextPillHorizontalInset
             + (isShowingProgress ? activeTextPillProgressWidth + activePillHeight / 4 : 0)
@@ -357,7 +350,6 @@ private struct TextInputModePill: View {
     let mode: LauncherMode
     let symbol: String
     let glassNamespace: Namespace.ID
-    let inputLeadingInset: CGFloat
     @FocusState.Binding var isSearchFocused: Bool
 
     var body: some View {
@@ -366,7 +358,6 @@ private struct TextInputModePill: View {
             placeholder: mode.placeholder,
             tint: LauncherModeTintPolicy.activeColor(for: mode),
             isShowingProgress: model.isIndexing && mode == .applications,
-            inputLeadingInset: inputLeadingInset,
             text: $model.query,
             isSearchFocused: $isSearchFocused,
             onQueryChange: {
@@ -410,7 +401,6 @@ private struct TextInputPillForegroundLayer: View {
     let placeholder: String
     let tint: Color
     let isShowingProgress: Bool
-    let inputLeadingInset: CGFloat
     @Binding var text: String
     @FocusState.Binding var isSearchFocused: Bool
     let onQueryChange: () -> Void
@@ -431,7 +421,7 @@ private struct TextInputPillForegroundLayer: View {
                 onQueryChange: onQueryChange,
                 onSubmit: onSubmit
             )
-            .padding(.leading, inputLeadingInset)
+            .padding(.leading, ModeSwitcherLayoutPolicy.activeTextPillInputLeadingInset)
             .padding(
                 .trailing,
                 ModeSwitcherLayoutPolicy.activeTextPillInputTrailingInset(isShowingProgress: isShowingProgress)

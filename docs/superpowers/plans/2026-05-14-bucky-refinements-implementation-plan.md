@@ -1110,17 +1110,15 @@ Expected: commit succeeds.
 ### Task 6: Mode Switcher Stone And Pill Motion
 
 Correction after visual testing: use the sliding active pill model. Each mode has
-a compact ordered stone slot. The active pill expands from, slides with, and
-shrinks back into the selected mode's compact stone slot. Inactive stones remain
-fixed in their compact slots; the active mode's own glass identity morphs between
-stone and pill without rendering a second inactive stone that pushes neighboring
-stones aside.
+a compact ordered stone area. The active pill expands from, slides with, and
+shrinks back into the selected mode's compact stone area. Inactive stones stay
+outside the active pill: stones before the active mode stay before the pill, and
+stones after the active mode sit after the pill.
 
 Second correction after visual testing: the active pill must not obscure the
 compact mode buttons or move at full width. Inactive stones render above the
-active pill layer, text input foregrounds clear the compact control row, and the
-active pill frame animates from the selected stone's circle width to the final
-pill width.
+active pill layer during growth, and the active pill frame animates from the
+selected stone's circle width to the final pill width.
 
 **Files:**
 - Modify: `Sources/Bucky/UI/SwiftUI/ModeSwitcherView.swift`
@@ -1144,12 +1142,13 @@ XCTAssertTrue(ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: .files))
 Add this test:
 
 ```swift
-func testModeSwitcherUsesStableStoneSlotsWithActivePillOverlay() throws {
+func testModeSwitcherUsesActiveModeAwareStoneAreasWithActivePillOverlay() throws {
     let source = try modeSwitcherSource()
 
     XCTAssertTrue(source.contains("GeometryReader { proxy in"))
-    XCTAssertTrue(source.contains("ModeSwitcherLayoutPolicy.stoneCenterX(for:"))
-    XCTAssertTrue(source.contains("ModeSwitcherLayoutPolicy.activePillFrame(for:"))
+    XCTAssertTrue(source.contains("ModeSwitcherLayoutPolicy.inactiveStoneFrame("))
+    XCTAssertTrue(source.contains("activeMode: model.mode"))
+    XCTAssertTrue(source.contains("ModeSwitcherLayoutPolicy.activePillFrame("))
     XCTAssertTrue(source.contains(".glassEffectTransition(.matchedGeometry)"))
 }
 ```
@@ -1189,10 +1188,6 @@ In `ModeSwitcherLayoutPolicy`, add:
 static var inactiveStoneSlotWidth: CGFloat { activePillHeight }
 static var modeSwitcherSpacing: CGFloat { 10 }
 
-static func stoneCenterX(for mode: LauncherMode, availableWidth: CGFloat) -> CGFloat {
-    inactiveStoneFrame(for: mode, availableWidth: availableWidth).midX
-}
-
 static func inactiveStoneFrame(for mode: LauncherMode, availableWidth: CGFloat) -> CGRect {
     let modes = LauncherMode.ordered
     guard let modeIndex = modes.firstIndex(of: mode) else {
@@ -1202,6 +1197,32 @@ static func inactiveStoneFrame(for mode: LauncherMode, availableWidth: CGFloat) 
     let slotStride = inactiveStoneSlotWidth + modeSwitcherSpacing
     return CGRect(
         x: CGFloat(modeIndex) * slotStride,
+        y: 0,
+        width: inactiveStoneSlotWidth,
+        height: activePillHeight
+    )
+}
+
+static func inactiveStoneFrame(
+    for mode: LauncherMode,
+    activeMode: LauncherMode,
+    availableWidth: CGFloat
+) -> CGRect {
+    guard mode != activeMode,
+          let modeIndex = LauncherMode.ordered.firstIndex(of: mode),
+          let activeIndex = LauncherMode.ordered.firstIndex(of: activeMode) else {
+        return inactiveStoneFrame(for: mode, availableWidth: availableWidth)
+    }
+
+    if modeIndex < activeIndex {
+        return inactiveStoneFrame(for: mode, availableWidth: availableWidth)
+    }
+
+    let trailingIndex = modeIndex - activeIndex - 1
+    let activeFrame = activePillFrame(for: activeMode, availableWidth: availableWidth)
+    let slotStride = inactiveStoneSlotWidth + modeSwitcherSpacing
+    return CGRect(
+        x: activeFrame.maxX + modeSwitcherSpacing + CGFloat(trailingIndex) * slotStride,
         y: 0,
         width: inactiveStoneSlotWidth,
         height: activePillHeight
@@ -1226,8 +1247,8 @@ static func activePillFrame(for mode: LauncherMode, availableWidth: CGFloat) -> 
 - [ ] **Step 5: Rework mode switcher content to a sliding active pill overlay**
 
 Replace `modeSwitcherContent` with a slot overlay. The active pill's leading edge
-uses the selected mode's compact stone frame; inactive stones stay in compact
-ordered positions that do not depend on the active mode:
+uses the selected mode's compact stone frame; inactive stones use
+active-mode-aware positions that keep them outside the active pill:
 
 ```swift
 private var modeSwitcherContent: some View {
@@ -1244,13 +1265,19 @@ private var modeSwitcherContent: some View {
 
             ForEach(LauncherMode.ordered, id: \.self) { mode in
                 if mode != model.mode {
+                    let inactiveFrame = ModeSwitcherLayoutPolicy.inactiveStoneFrame(
+                        for: mode,
+                        activeMode: model.mode,
+                        availableWidth: proxy.size.width
+                    )
+
                     modeOrb(for: mode)
                         .frame(
                             width: ModeSwitcherLayoutPolicy.inactiveStoneSlotWidth,
                             height: ModeSwitcherLayoutPolicy.activePillHeight
                         )
                         .position(
-                            x: ModeSwitcherLayoutPolicy.stoneCenterX(for: mode, availableWidth: proxy.size.width),
+                            x: inactiveFrame.midX,
                             y: ModeSwitcherLayoutPolicy.activePillHeight / 2
                         )
                         .glassEffectID(mode, in: modeGlassNamespace)
@@ -1266,13 +1293,13 @@ private var modeSwitcherContent: some View {
 
 Remove `.glassEffectID` and `.glassEffectTransition` from `modeSwitcherElement(for:)` after replacing the HStack path. Delete `modeSwitcherElement(for:)` when the compiler reports it as unused.
 
-- [ ] **Step 5b: Keep active pill content out from under compact controls**
+- [ ] **Step 5b: Keep inactive stones outside the active pill**
 
-Add layout helpers for the compact control row, active pill expansion progress,
-and a cleared text input leading inset. The cleared inset should place active
-text after the compact controls, while the animated active frame should keep the
-selected stone's leading edge stable and interpolate only the pill width from
-circle to final size.
+Add layout helpers for active-mode-aware inactive stone frames and active pill
+expansion progress. Stones before the active mode keep compact positions; stones
+after the active mode sit after the active pill with normal spacing. The
+animated active frame keeps the selected stone's leading edge stable and
+interpolates only the pill width from circle to final size.
 
 Render inactive stones above the active pill layer with explicit z-index values.
 The active pill view should be clipped to its animated frame so foreground text
@@ -1378,7 +1405,7 @@ Expected:
 - Pasting text into Applications, Calculator, and Dictionary inputs works.
 - Dictionary Enter on a result stores the word; blank Dictionary mode shows history; the row trash button removes one word.
 - Files mode multi-select drag exports all selected file URLs when dragging a selected row.
-- Mode switcher active pill expands from and shrinks back to the selected mode's compact stone slot while inactive stones remain fixed above it; active text does not appear underneath inactive stones.
+- Mode switcher active pill expands from and shrinks back to the selected mode's compact stone area while inactive stones remain outside the active pill with normal spacing.
 
 - [ ] **Step 4: Commit verification fixes only if needed**
 
@@ -1401,7 +1428,7 @@ Expected: commit succeeds only when there are actual verification fixes.
   - Native text copy/paste: Task 2.
   - File drag respects multi-selection across directories: Task 3.
   - Persisted deduped dictionary history with row clearing: Tasks 4 and 5.
-  - Sliding active pill anchored to each mode's compact stone slot, with inactive stone slots independent of the active mode and layered above active pill content: Task 6.
+  - Sliding active pill anchored to each mode's compact stone area, with active-mode-aware inactive stone areas layered above the growth animation: Task 6.
   - Full tests and app build: Task 7.
 - Placeholder scan: no placeholder tasks remain.
 - Type consistency:
