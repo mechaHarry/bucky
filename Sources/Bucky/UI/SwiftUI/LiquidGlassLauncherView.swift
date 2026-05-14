@@ -343,7 +343,7 @@ struct LiquidGlassLauncherView: View {
                 if let actionConfiguration {
                     Button {
                         model.selectedIndex = index
-                        _ = model.handle(command: .open)
+                        performToolRowAction(actionConfiguration.action, item: item)
                     } label: {
                         Image(systemName: actionConfiguration.symbol)
                             .frame(width: 16, height: 16)
@@ -357,6 +357,15 @@ struct LiquidGlassLauncherView: View {
             }
         }
         .id(rowID)
+    }
+
+    private func performToolRowAction(_ action: RowAction, item: ToolItem) {
+        switch action {
+        case .open:
+            _ = model.handle(command: .open)
+        case .removeDictionaryHistory:
+            model.removeDictionaryHistory(item)
+        }
     }
 
     private func handleSelectionScrollRequest(_ request: SelectionScrollRequest) {
@@ -464,10 +473,16 @@ struct LiquidGlassLauncherView: View {
         switch item.kind {
         case .calculation, .calculationHistory:
             guard item.copyText != nil else { return nil }
-            return RowActionConfiguration(symbol: "doc.on.doc", help: "Copy result")
+            return RowActionConfiguration(symbol: "doc.on.doc", help: "Copy result", action: .open)
         case .dictionary:
-            return RowActionConfiguration(symbol: "book", help: "Open in Dictionary")
-        case .dictionaryHistory, .message:
+            return RowActionConfiguration(symbol: "book", help: "Open in Dictionary", action: .open)
+        case .dictionaryHistory:
+            return RowActionConfiguration(
+                symbol: "trash",
+                help: "Remove from dictionary history",
+                action: .removeDictionaryHistory
+            )
+        case .message:
             return nil
         }
     }
@@ -548,6 +563,13 @@ private enum LauncherVisualStyle {
 private struct RowActionConfiguration {
     let symbol: String
     let help: String
+    let action: RowAction
+}
+
+@available(macOS 26.0, *)
+private enum RowAction {
+    case open
+    case removeDictionaryHistory
 }
 
 @available(macOS 26.0, *)

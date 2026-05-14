@@ -375,21 +375,65 @@ final class LauncherModeRoutingTests: XCTestCase {
     @MainActor
     @available(macOS 26.0, *)
     func testBlankDictionaryModeDoesNotUseCalculatorHistoryMessage() {
-        let model = LiquidGlassLauncherModel(
-            settingsStore: SettingsStore(),
-            inclusionStore: InclusionStore(),
-            exclusionStore: ExclusionStore(),
-            calculationHistoryStore: CalculationHistoryStore(),
-            fileBrowserModel: FileBrowserModel(
-                fileSystem: StubFileSystemClient(home: URL(fileURLWithPath: "/Users/test"), entriesByDirectory: [:]),
-                store: InMemoryFileBrowserStore(state: .defaultValue),
-                directoryStream: ImmediateDirectoryStream()
-            )
+        let model = makeDictionaryLauncherModel(
+            dictionaryHistoryStore: DictionaryHistoryStore(fileURL: temporaryDictionaryHistoryFileURL())
         )
 
         model.show(mode: .dictionary)
 
+        XCTAssertEqual(model.toolItems, [])
         XCTAssertNil(model.emptyMessage)
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testBlankDictionaryModeShowsPersistedHistoryRows() {
+        let dictionaryHistoryStore = DictionaryHistoryStore(fileURL: temporaryDictionaryHistoryFileURL())
+        dictionaryHistoryStore.add(term: "apple")
+        dictionaryHistoryStore.add(term: "banana")
+        let model = makeDictionaryLauncherModel(dictionaryHistoryStore: dictionaryHistoryStore)
+
+        model.show(mode: .dictionary)
+
+        XCTAssertEqual(model.toolItems.map(\.kind), [.dictionaryHistory, .dictionaryHistory])
+        XCTAssertEqual(model.toolItems.map(\.title), ["banana", "apple"])
+        XCTAssertTrue(model.toolItems.allSatisfy { $0.copyText == nil })
+        XCTAssertNil(model.emptyMessage)
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testDictionaryHistoryRowCanBeRemovedIndividually() {
+        let dictionaryHistoryStore = DictionaryHistoryStore(fileURL: temporaryDictionaryHistoryFileURL())
+        dictionaryHistoryStore.add(term: "apple")
+        dictionaryHistoryStore.add(term: "banana")
+        let model = makeDictionaryLauncherModel(dictionaryHistoryStore: dictionaryHistoryStore)
+
+        model.show(mode: .dictionary)
+        guard let banana = model.toolItems.first(where: { $0.title == "banana" }) else {
+            return XCTFail("Expected banana dictionary history row")
+        }
+
+        model.removeDictionaryHistory(banana)
+
+        XCTAssertEqual(model.toolItems.map(\.title), ["apple"])
+        XCTAssertEqual(dictionaryHistoryStore.words.map(\.term), ["apple"])
+        XCTAssertNil(model.emptyMessage)
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testDictionaryHistoryActivationMovesTermToTop() {
+        let dictionaryHistoryStore = DictionaryHistoryStore(fileURL: temporaryDictionaryHistoryFileURL())
+        dictionaryHistoryStore.add(term: "apple")
+        dictionaryHistoryStore.add(term: "banana")
+        let model = makeDictionaryLauncherModel(dictionaryHistoryStore: dictionaryHistoryStore)
+
+        model.show(mode: .dictionary)
+        model.selectedIndex = 1
+        _ = model.handle(command: .open)
+
+        XCTAssertEqual(dictionaryHistoryStore.words.map(\.term), ["apple", "banana"])
     }
 
     @MainActor
@@ -531,6 +575,31 @@ final class LauncherModeRoutingTests: XCTestCase {
         _ = model.handle(command: .switchMode(.calculator))
 
         XCTAssertEqual(model.fileBrowserModel.focusState, .browse)
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    private func makeDictionaryLauncherModel(
+        dictionaryHistoryStore: DictionaryHistoryStore
+    ) -> LiquidGlassLauncherModel {
+        LiquidGlassLauncherModel(
+            settingsStore: SettingsStore(),
+            inclusionStore: InclusionStore(),
+            exclusionStore: ExclusionStore(),
+            calculationHistoryStore: CalculationHistoryStore(),
+            dictionaryHistoryStore: dictionaryHistoryStore,
+            dictionaryOpenHandler: { _ in },
+            fileBrowserModel: FileBrowserModel(
+                fileSystem: StubFileSystemClient(home: URL(fileURLWithPath: "/Users/test"), entriesByDirectory: [:]),
+                store: InMemoryFileBrowserStore(state: .defaultValue),
+                directoryStream: ImmediateDirectoryStream()
+            )
+        )
+    }
+
+    private func temporaryDictionaryHistoryFileURL() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("BuckyDictionaryHistory-\(UUID().uuidString).json")
     }
 
     @MainActor

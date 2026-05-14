@@ -28,6 +28,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private let inclusionStore: InclusionStore
     private let exclusionStore: ExclusionStore
     private let calculationHistoryStore: CalculationHistoryStore
+    private let dictionaryHistoryStore: DictionaryHistoryStore
+    private let dictionaryOpenHandler: (String) -> Void
     private let fileBrowserModelFactory: () -> FileBrowserModel
     private var allItems: [LaunchItem] = []
     private var visibleItems: [LaunchItem] = []
@@ -46,6 +48,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
         inclusionStore: InclusionStore,
         exclusionStore: ExclusionStore,
         calculationHistoryStore: CalculationHistoryStore,
+        dictionaryHistoryStore: DictionaryHistoryStore = DictionaryHistoryStore(),
+        dictionaryOpenHandler: @escaping (String) -> Void = LiquidGlassLauncherModel.openDictionaryTerm,
         fileBrowserModel: FileBrowserModel? = nil,
         fileBrowserModelFactory: (() -> FileBrowserModel)? = nil
     ) {
@@ -53,6 +57,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
         self.inclusionStore = inclusionStore
         self.exclusionStore = exclusionStore
         self.calculationHistoryStore = calculationHistoryStore
+        self.dictionaryHistoryStore = dictionaryHistoryStore
+        self.dictionaryOpenHandler = dictionaryOpenHandler
         self.activatedFileBrowserModel = fileBrowserModel
         self.fileBrowserModelFactory = fileBrowserModelFactory ?? {
             MainActor.assumeIsolated {
@@ -245,6 +251,12 @@ final class LiquidGlassLauncherModel: ObservableObject {
         applyToolsResults(scheduleHistory: false)
     }
 
+    func removeDictionaryHistory(_ item: ToolItem) {
+        guard item.kind == .dictionaryHistory else { return }
+        dictionaryHistoryStore.remove(term: item.title)
+        applyToolsResults(scheduleHistory: false)
+    }
+
     func cancelPendingCalculationHistory() {
         pendingCalculationHistoryTimer?.invalidate()
         pendingCalculationHistoryTimer = nil
@@ -272,6 +284,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
             applyFilter(preservePreviousOnEmpty: preservePreviousOnEmpty)
         case .calculator, .dictionary:
             calculationHistoryStore.load()
+            dictionaryHistoryStore.load()
             applyToolsResults()
         case .files:
             cancelPendingCalculationHistory()
@@ -416,7 +429,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
             }
         case .dictionary:
             guard !trimmedQuery.isEmpty else {
-                return []
+                return dictionaryHistoryItems()
             }
 
             let dictionaryResults = DictionaryLookup.results(for: trimmedQuery)
@@ -466,6 +479,17 @@ final class LiquidGlassLauncherModel: ObservableObject {
                 subtitle: "Calculated \(Self.calculationHistoryDateFormatter.string(from: entry.date))",
                 copyText: entry.result,
                 kind: .calculationHistory
+            )
+        }
+    }
+
+    private func dictionaryHistoryItems() -> [ToolItem] {
+        dictionaryHistoryStore.words.map { entry in
+            ToolItem(
+                title: entry.term,
+                subtitle: "Opened \(Self.calculationHistoryDateFormatter.string(from: entry.date))",
+                copyText: nil,
+                kind: .dictionaryHistory
             )
         }
     }
@@ -652,12 +676,15 @@ final class LiquidGlassLauncherModel: ObservableObject {
             copyToPasteboard(item.copyText)
         case .calculationHistory:
             copyToPasteboard(item.copyText)
-        case .dictionary:
+        case .dictionary, .dictionaryHistory:
+            dictionaryHistoryStore.add(term: item.title)
             openDictionary(term: item.title)
-        case .dictionaryHistory:
-            return
         case .message:
             return
+        }
+
+        if mode == .dictionary, inputIsBlank {
+            applyToolsResults(scheduleHistory: false)
         }
 
         if !isPinned {
@@ -673,6 +700,10 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     private func openDictionary(term: String) {
+        dictionaryOpenHandler(term)
+    }
+
+    private static func openDictionaryTerm(_ term: String) {
         guard let escapedTerm = term.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
               let url = URL(string: "dict://\(escapedTerm)") else {
             return
