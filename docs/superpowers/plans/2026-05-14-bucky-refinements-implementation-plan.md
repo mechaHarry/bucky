@@ -18,7 +18,7 @@
 - Modify `Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift`: let native text-editing commands reach focused text fields.
 - Modify `Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherModel.swift`: inject dictionary history, scroll live calculator results, build dictionary history rows, and remove one dictionary history row.
 - Modify `Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift`: add dictionary-history row icon and clear-row action.
-- Modify `Sources/Bucky/UI/SwiftUI/ModeSwitcherView.swift`: use matched glass geometry for every mode and keep inactive stone slots stable.
+- Modify `Sources/Bucky/UI/SwiftUI/ModeSwitcherView.swift`: use matched glass geometry for every mode and slide the active pill from the selected mode's compact stone slot.
 - Modify `Sources/Bucky/UI/SwiftUI/NativeFileDragSourceView.swift`: accept a URL provider and begin native drags with all selected URLs when the dragged row is selected.
 - Modify `Sources/Bucky/UI/SwiftUI/FileBrowserView.swift`: pass selected drag URLs into `NativeFileDragSourceView`.
 - Create `Sources/Bucky/Settings/DictionaryHistoryStore.swift`: persisted, deduped dictionary history.
@@ -1109,6 +1109,12 @@ Expected: commit succeeds.
 
 ### Task 6: Mode Switcher Stone And Pill Motion
 
+Correction after visual testing: use the sliding active pill model. Each mode has
+a compact ordered stone slot. The active pill expands from, slides with, and
+shrinks back into the selected mode's compact stone slot. Inactive stones remain
+in mode order around the expanded pill instead of being remapped into a separate
+trailing rail.
+
 **Files:**
 - Modify: `Sources/Bucky/UI/SwiftUI/ModeSwitcherView.swift`
 - Modify: `Tests/BuckyTests/ModeSwitcherLayoutPolicyTests.swift`
@@ -1168,7 +1174,7 @@ struct ModeSwitcherGlassTransitionPolicy {
 }
 ```
 
-- [ ] **Step 4: Add stable slot layout helpers**
+- [ ] **Step 4: Add sliding pill layout helpers**
 
 In `ModeSwitcherLayoutPolicy`, add:
 
@@ -1197,9 +1203,12 @@ static func activePillFrame(for mode: LauncherMode, availableWidth: CGFloat) -> 
 }
 ```
 
-- [ ] **Step 5: Rework mode switcher content to stable slots**
+- [ ] **Step 5: Rework mode switcher content to a sliding active pill overlay**
 
-Replace `modeSwitcherContent` with a stable-slot overlay. The inactive stones use fixed centers; the active pill receives the same slot frame without moving the other stones:
+Replace `modeSwitcherContent` with a slot overlay. The active pill's leading edge
+uses the selected mode's compact stone frame; inactive stones before the active
+mode keep compact positions, and inactive stones after the active mode follow
+after the expanded pill with normal spacing:
 
 ```swift
 private var modeSwitcherContent: some View {
@@ -1339,7 +1348,7 @@ Expected:
 - Pasting text into Applications, Calculator, and Dictionary inputs works.
 - Dictionary Enter on a result stores the word; blank Dictionary mode shows history; the row trash button removes one word.
 - Files mode multi-select drag exports all selected file URLs when dragging a selected row.
-- Mode switcher inactive stones stay visually fixed while the old active pill shrinks and the new active stone expands.
+- Mode switcher active pill expands from and shrinks back to the selected mode's compact stone slot while inactive stones remain in ordered positions around it.
 
 - [ ] **Step 4: Commit verification fixes only if needed**
 
@@ -1362,7 +1371,7 @@ Expected: commit succeeds only when there are actual verification fixes.
   - Native text copy/paste: Task 2.
   - File drag respects multi-selection across directories: Task 3.
   - Persisted deduped dictionary history with row clearing: Tasks 4 and 5.
-  - Fixed inactive stones and expanding/shrinking active pill: Task 6.
+  - Sliding active pill anchored to each mode's compact stone slot: Task 6.
   - Full tests and app build: Task 7.
 - Placeholder scan: no placeholder tasks remain.
 - Type consistency:

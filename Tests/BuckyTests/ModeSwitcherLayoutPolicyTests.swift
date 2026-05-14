@@ -139,50 +139,71 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
         let source = try modeSwitcherSource()
 
         XCTAssertTrue(source.contains("GeometryReader { proxy in"))
-        XCTAssertTrue(source.contains("ModeSwitcherLayoutPolicy.stoneCenterX(for: mode, availableWidth: proxy.size.width)"))
-        XCTAssertFalse(source.contains("stoneCenterX(for mode: LauncherMode, activeMode:"))
-        XCTAssertFalse(source.contains("activeMode: model.mode"))
+        XCTAssertTrue(source.contains("ModeSwitcherLayoutPolicy.stoneCenterX(\n                                    for: mode,\n                                    activeMode: model.mode,"))
+        XCTAssertTrue(source.contains("static func inactiveStoneFrame(for mode: LauncherMode"))
         XCTAssertTrue(source.contains("ModeSwitcherLayoutPolicy.activePillFrame(for:"))
         XCTAssertTrue(source.contains(".glassEffectTransition(.matchedGeometry)"))
     }
 
-    func testInactiveStoneSlotsStayOutsideActivePillFrame() {
-        assertInactiveStoneSlotsStayOutsideActivePillFrame(availableWidth: 496)
-        assertInactiveStoneSlotsStayOutsideActivePillFrame(availableWidth: 520)
-        assertInactiveStoneSlotsStayOutsideActivePillFrame(availableWidth: 760)
+    func testSlidingActivePillStartsAtItsInactiveStoneSlot() {
+        for availableWidth in [CGFloat(496), 520, 760] {
+            for mode in LauncherMode.ordered {
+                let inactiveFrame = ModeSwitcherLayoutPolicy.inactiveStoneFrame(
+                    for: mode,
+                    availableWidth: availableWidth
+                )
+                let activeFrame = ModeSwitcherLayoutPolicy.activePillFrame(
+                    for: mode,
+                    availableWidth: availableWidth
+                )
+
+                XCTAssertEqual(activeFrame.minX, inactiveFrame.minX)
+                XCTAssertEqual(activeFrame.height, inactiveFrame.height)
+            }
+        }
     }
 
-    func testStoneSlotsUseAbsoluteTrailingRailPositions() {
+    func testInactiveStoneSlotsUseCompactModeOrder() {
         for availableWidth in [CGFloat(496), 520, 760] {
             let slotWidth = ModeSwitcherLayoutPolicy.inactiveStoneSlotWidth
             let slotStride = slotWidth + ModeSwitcherLayoutPolicy.modeSwitcherSpacing
-            let railWidth = CGFloat(LauncherMode.ordered.count) * slotWidth
-                + CGFloat(LauncherMode.ordered.count - 1) * ModeSwitcherLayoutPolicy.modeSwitcherSpacing
-            let railStartX = availableWidth - railWidth
 
             for (index, mode) in LauncherMode.ordered.enumerated() {
                 XCTAssertEqual(
-                    ModeSwitcherLayoutPolicy.stoneCenterX(for: mode, availableWidth: availableWidth),
-                    railStartX + slotWidth / 2 + CGFloat(index) * slotStride
+                    ModeSwitcherLayoutPolicy.inactiveStoneFrame(for: mode, availableWidth: availableWidth).minX,
+                    CGFloat(index) * slotStride
+                )
+                XCTAssertEqual(
+                    ModeSwitcherLayoutPolicy.inactiveStoneFrame(for: mode, availableWidth: availableWidth).width,
+                    slotWidth
                 )
             }
         }
     }
 
-    func testBystanderStoneCenterDoesNotChangeAcrossNonAdjacentModeSwitch() {
-        let availableWidth = CGFloat(520)
-        let calculatorCenterWhenApplicationsActive = ModeSwitcherLayoutPolicy.stoneCenterX(
-            for: .calculator,
-            availableWidth: availableWidth
-        )
-        _ = ModeSwitcherLayoutPolicy.activePillFrame(for: .applications, availableWidth: availableWidth)
-        let calculatorCenterWhenDictionaryActive = ModeSwitcherLayoutPolicy.stoneCenterX(
-            for: .calculator,
-            availableWidth: availableWidth
-        )
-        _ = ModeSwitcherLayoutPolicy.activePillFrame(for: .dictionary, availableWidth: availableWidth)
+    func testInactiveStonesStayOutsideSlidingActivePillFrame() {
+        assertInactiveStoneSlotsStayOutsideActivePillFrame(availableWidth: 496)
+        assertInactiveStoneSlotsStayOutsideActivePillFrame(availableWidth: 520)
+        assertInactiveStoneSlotsStayOutsideActivePillFrame(availableWidth: 760)
+    }
 
-        XCTAssertEqual(calculatorCenterWhenApplicationsActive, calculatorCenterWhenDictionaryActive)
+    func testInactiveStonesAfterActiveModeFollowExpandedPillInModeOrder() {
+        let availableWidth = CGFloat(520)
+        let activeFrame = ModeSwitcherLayoutPolicy.activePillFrame(
+            for: .calculator,
+            availableWidth: availableWidth
+        )
+        let dictionaryFrame = stoneFrame(
+            for: .dictionary,
+            activeMode: .calculator,
+            availableWidth: availableWidth
+        )
+
+        XCTAssertEqual(dictionaryFrame.minX, activeFrame.maxX + ModeSwitcherLayoutPolicy.modeSwitcherSpacing)
+        XCTAssertEqual(
+            stoneFrame(for: .applications, activeMode: .calculator, availableWidth: availableWidth).minX,
+            ModeSwitcherLayoutPolicy.inactiveStoneFrame(for: .applications, availableWidth: availableWidth).minX
+        )
     }
 
     func testActiveTextPillOwnsForegroundLegibilityOutsideGlass() throws {
@@ -239,9 +260,10 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
                 availableWidth: availableWidth
             )
 
-            for inactiveMode in LauncherMode.ordered {
+            for inactiveMode in LauncherMode.ordered where inactiveMode != activeMode {
                 let stoneCenterX = ModeSwitcherLayoutPolicy.stoneCenterX(
                     for: inactiveMode,
+                    activeMode: activeMode,
                     availableWidth: availableWidth
                 )
                 let stoneFrame = CGRect(
@@ -270,5 +292,23 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
                 )
             }
         }
+    }
+
+    private func stoneFrame(
+        for mode: LauncherMode,
+        activeMode: LauncherMode,
+        availableWidth: CGFloat
+    ) -> CGRect {
+        let centerX = ModeSwitcherLayoutPolicy.stoneCenterX(
+            for: mode,
+            activeMode: activeMode,
+            availableWidth: availableWidth
+        )
+        return CGRect(
+            x: centerX - ModeSwitcherLayoutPolicy.inactiveStoneSlotWidth / 2,
+            y: 0,
+            width: ModeSwitcherLayoutPolicy.inactiveStoneSlotWidth,
+            height: ModeSwitcherLayoutPolicy.activePillHeight
+        )
     }
 }
