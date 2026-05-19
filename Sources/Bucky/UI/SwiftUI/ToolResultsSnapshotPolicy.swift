@@ -1,6 +1,7 @@
 enum ToolResultsSnapshotPolicy {
     enum Update: Equatable {
         case immediate
+        case deferred(delayNanoseconds: UInt64)
     }
 
     enum Animation: Equatable {
@@ -8,8 +9,15 @@ enum ToolResultsSnapshotPolicy {
         case subtle
     }
 
-    static func update(for _: LauncherMode, query _: String) -> Update {
-        .immediate
+    static let dictionaryLookupDelayNanoseconds: UInt64 = 80_000_000
+
+    static func update(for mode: LauncherMode, query: String) -> Update {
+        if mode == .dictionary,
+           !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return .deferred(delayNanoseconds: dictionaryLookupDelayNanoseconds)
+        }
+
+        return .immediate
     }
 
     static func animation(for mode: LauncherMode, items: [ToolItem]) -> Animation {

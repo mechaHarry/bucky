@@ -8,6 +8,7 @@ This design covers the launcher refinements on branch `refinement_2026_05_13`:
 - Native file drag respecting Bucky multi-selection.
 - Persisted Dictionary history for enter-opened words.
 - Text input editing and layout stability.
+- Frame-safe app icon and dictionary result updates.
 
 Bucky is a local-only macOS 26 Swift Package app. The launcher UI is SwiftUI Liquid Glass hosted by AppKit. Existing boundaries are:
 
@@ -28,6 +29,7 @@ Use targeted fixes in existing models and policies:
 - Add a dedicated dictionary history store.
 - Preserve native text-editing shortcuts through key-routing policy.
 - Keep text-input foreground content outside the glass identity so rendering remains stable.
+- Prewarm app icons beyond the first viewport and defer dictionary lookups off the UI update path.
 
 This avoids a broader tool-history abstraction and avoids UI-only patches that would be harder to test.
 
@@ -96,6 +98,24 @@ Behavior:
 
 The row clear action removes only that word and refreshes the blank dictionary result list.
 
+## Frame-Safe Result Updates
+
+Application mode uses an icon preload policy that warms every displayed result
+URL up to a bounded cache limit, not just the first visible rows. Icon requests
+stay behind `AppIconCache`, which dedupes in-flight loads, caps concurrent native
+icon queries, and stores enough icons that first traversal and later traversal
+behave similarly. Row icon updates avoid per-icon fade animations so a batch of
+completed icon loads does not add extra scroll-time work.
+
+Dictionary mode defers non-empty lookups through a cancellable snapshot pipeline.
+Typing schedules a short debounce, runs dictionary definition and spell-check
+work away from the main actor, and publishes only the newest query generation.
+Older in-flight work is ignored when it completes. Blank dictionary input still
+updates immediately so history rows remain responsive.
+
+This pattern keeps list rendering responsive and can be reused by app and file
+lists when their result generation needs heavier background work.
+
 ## Mode Switcher Text Input Stability
 
 The mode switcher keeps the existing simple ordered row behavior. Text input
@@ -132,6 +152,8 @@ Add or update focused tests:
 - File drag selection preserves selected URLs from other directories.
 - Dictionary history persists, dedupes, caps entries, removes single rows, and shows on blank input.
 - Opening dictionary results and history rows records/moves history entries.
+- Application icon preload policy warms beyond the first viewport and caps large result sets.
+- Dictionary snapshots defer non-empty lookups and publish only the latest query.
 - Text input modes stay out of matched glass geometry while keeping the text field foreground outside the glass surface.
 
 Run `swift test` after implementation.

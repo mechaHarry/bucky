@@ -29,6 +29,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private let exclusionStore: ExclusionStore
     private let calculationHistoryStore: CalculationHistoryStore
     private let dictionaryHistoryStore: DictionaryHistoryStore
+    private let dictionaryLookup: @Sendable (String) -> [DictionaryResult]
     private let dictionaryOpenHandler: (String) -> Void
     private let fileBrowserModelFactory: () -> FileBrowserModel
     private var allItems: [LaunchItem] = []
@@ -41,6 +42,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private var pendingCalculationHistoryTimer: Timer?
     private var pendingCalculationHistoryExpression: String?
     private var pendingCalculationHistoryResult: String?
+    private var pendingDictionaryLookupTask: Task<Void, Never>?
+    private var dictionaryLookupGeneration = 0
     private var selectionScrollRequestID = 0
 
     init(
@@ -49,6 +52,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         exclusionStore: ExclusionStore,
         calculationHistoryStore: CalculationHistoryStore,
         dictionaryHistoryStore: DictionaryHistoryStore = DictionaryHistoryStore(),
+        dictionaryLookup: @escaping @Sendable (String) -> [DictionaryResult] = { DictionaryLookup.results(for: $0) },
         dictionaryOpenHandler: @escaping (String) -> Void = LiquidGlassLauncherModel.openDictionaryTerm,
         fileBrowserModel: FileBrowserModel? = nil,
         fileBrowserModelFactory: (() -> FileBrowserModel)? = nil
@@ -58,6 +62,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         self.exclusionStore = exclusionStore
         self.calculationHistoryStore = calculationHistoryStore
         self.dictionaryHistoryStore = dictionaryHistoryStore
+        self.dictionaryLookup = dictionaryLookup
         self.dictionaryOpenHandler = dictionaryOpenHandler
         self.activatedFileBrowserModel = fileBrowserModel
         self.fileBrowserModelFactory = fileBrowserModelFactory ?? {
@@ -200,6 +205,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     func reindex() {
+        cancelPendingDictionaryLookup()
         guard !isIndexing else {
             needsReindexAfterCurrent = true
             return
@@ -247,12 +253,14 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     func clearHistory() {
+        cancelPendingDictionaryLookup()
         calculationHistoryStore.clear()
         applyToolsResults(scheduleHistory: false)
     }
 
     func removeDictionaryHistory(_ item: ToolItem) {
         guard item.kind == .dictionaryHistory else { return }
+        cancelPendingDictionaryLookup()
         dictionaryHistoryStore.remove(term: item.title)
         applyToolsResults(scheduleHistory: false)
     }
@@ -262,6 +270,12 @@ final class LiquidGlassLauncherModel: ObservableObject {
         pendingCalculationHistoryTimer = nil
         pendingCalculationHistoryExpression = nil
         pendingCalculationHistoryResult = nil
+    }
+
+    private func cancelPendingDictionaryLookup() {
+        dictionaryLookupGeneration += 1
+        pendingDictionaryLookupTask?.cancel()
+        pendingDictionaryLookupTask = nil
     }
 
     private func activateFileBrowserModel() -> FileBrowserModel {
@@ -278,6 +292,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         switch mode {
         case .applications:
             cancelPendingCalculationHistory()
+            cancelPendingDictionaryLookup()
             if visibleItems.isEmpty, !allItems.isEmpty {
                 rebuildVisibleItems()
             }
@@ -288,6 +303,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
             applyToolsResults()
         case .files:
             cancelPendingCalculationHistory()
+            cancelPendingDictionaryLookup()
             toolItems = []
             selectedIndex = MainActor.assumeIsolated {
                 fileBrowserModel.selectedIndex
@@ -376,10 +392,56 @@ final class LiquidGlassLauncherModel: ObservableObject {
 
         switch ToolResultsSnapshotPolicy.update(for: mode, query: query) {
         case .immediate:
+            cancelPendingDictionaryLookup()
             applyToolResultsSnapshot(
                 makeToolItems(for: trimmedQuery, scheduleHistory: scheduleHistory),
                 selectLiveCalculation: scheduleHistory
             )
+        case let .deferred(delayNanoseconds):
+            applyDeferredToolResults(
+                for: trimmedQuery,
+                delayNanoseconds: delayNanoseconds,
+                selectLiveCalculation: scheduleHistory
+            )
+        }
+    }
+
+    private func applyDeferredToolResults(
+        for trimmedQuery: String,
+        delayNanoseconds: UInt64,
+        selectLiveCalculation: Bool
+    ) {
+        guard mode == .dictionary else { return }
+
+        dictionaryLookupGeneration += 1
+        let generation = dictionaryLookupGeneration
+        let lookup = dictionaryLookup
+        if toolItems.contains(where: { $0.kind == .calculation || $0.kind == .calculationHistory }) {
+            toolItems = []
+            selectedIndex = 0
+        }
+        pendingDictionaryLookupTask?.cancel()
+        pendingDictionaryLookupTask = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: delayNanoseconds)
+            } catch {
+                return
+            }
+
+            let results = await Task.detached(priority: .userInitiated) {
+                lookup(trimmedQuery)
+            }.value
+
+            guard !Task.isCancelled else { return }
+
+            await MainActor.run { [weak self] in
+                self?.applyDictionaryLookupResults(
+                    results,
+                    query: trimmedQuery,
+                    generation: generation,
+                    selectLiveCalculation: selectLiveCalculation
+                )
+            }
         }
     }
 
@@ -433,27 +495,49 @@ final class LiquidGlassLauncherModel: ObservableObject {
                 return dictionaryHistoryItems()
             }
 
-            let dictionaryResults = DictionaryLookup.results(for: trimmedQuery)
-            if dictionaryResults.isEmpty {
-                return [
-                    ToolItem(
-                        title: "No dictionary matches",
-                        subtitle: trimmedQuery,
-                        copyText: nil,
-                        kind: .message
-                    )
-                ]
-            } else {
-                return dictionaryResults.map { result in
-                    ToolItem(
-                        title: result.term,
-                        subtitle: singleLine(result.definition),
-                        copyText: nil,
-                        kind: .dictionary
-                    )
-                }
-            }
+            return toolItems
         }
+    }
+
+    private func makeDictionaryToolItems(for query: String, results: [DictionaryResult]) -> [ToolItem] {
+        if results.isEmpty {
+            return [
+                ToolItem(
+                    title: "No dictionary matches",
+                    subtitle: query,
+                    copyText: nil,
+                    kind: .message
+                )
+            ]
+        }
+
+        return results.map { result in
+            ToolItem(
+                title: result.term,
+                subtitle: singleLine(result.definition),
+                copyText: nil,
+                kind: .dictionary
+            )
+        }
+    }
+
+    private func applyDictionaryLookupResults(
+        _ results: [DictionaryResult],
+        query: String,
+        generation: Int,
+        selectLiveCalculation: Bool
+    ) {
+        guard mode == .dictionary,
+              dictionaryLookupGeneration == generation,
+              self.query.trimmingCharacters(in: .whitespacesAndNewlines) == query else {
+            return
+        }
+
+        pendingDictionaryLookupTask = nil
+        applyToolResultsSnapshot(
+            makeDictionaryToolItems(for: query, results: results),
+            selectLiveCalculation: selectLiveCalculation
+        )
     }
 
     private func applyToolResultsSnapshot(_ nextItems: [ToolItem], selectLiveCalculation: Bool) {
@@ -533,6 +617,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
 
         query = ""
         storeCurrentQuery()
+        cancelPendingDictionaryLookup()
         applyCurrentMode()
     }
 
@@ -566,6 +651,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         if mode != nextMode {
             modeWillSwitchAction?(mode, nextMode)
         }
+        cancelPendingDictionaryLookup()
         storeCurrentQuery()
         mode = nextMode
         query = storedQuery(for: nextMode)
