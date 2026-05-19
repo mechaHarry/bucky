@@ -154,7 +154,7 @@ struct ModeSwitcherView: View {
         case .applications:
             return "square.grid.2x2"
         case .calculator:
-            return "function"
+            return "123.rectangle.fill"
         case .dictionary:
             return "text.book.closed"
         case .files:
@@ -249,7 +249,7 @@ private struct TextInputModePill: View {
         TextInputPillForegroundLayer(
             symbol: symbol,
             placeholder: mode.placeholder,
-            tint: LauncherModeTintPolicy.activeColor(for: mode),
+            tint: LauncherModeTintPolicy.iconColor(for: mode),
             isShowingProgress: model.isIndexing && mode == .applications,
             text: $model.query,
             isSearchFocused: $isSearchFocused,
