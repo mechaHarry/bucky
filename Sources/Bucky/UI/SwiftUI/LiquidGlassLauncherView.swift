@@ -379,6 +379,16 @@ struct LiquidGlassLauncherView: View {
             return
         }
 
+        guard SelectionScrollAnimationPolicy.shouldAnimate(anchor: request.anchor) else {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                scrollTargetAnchor = request.anchor.unitPoint
+                scrollTargetID = rowID
+            }
+            return
+        }
+
         withAnimation(selectionScrollAnimation) {
             scrollTargetAnchor = request.anchor.unitPoint
             scrollTargetID = rowID

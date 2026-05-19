@@ -828,6 +828,18 @@ enum SelectionScrollAnchor: Equatable {
 }
 
 @available(macOS 26.0, *)
+enum SelectionScrollAnimationPolicy {
+    static func shouldAnimate(anchor: SelectionScrollAnchor) -> Bool {
+        switch anchor {
+        case .nearest:
+            return false
+        case .top, .bottom:
+            return true
+        }
+    }
+}
+
+@available(macOS 26.0, *)
 struct SelectionScrollRequest: Equatable {
     let id: Int
     let index: Int
