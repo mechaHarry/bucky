@@ -68,6 +68,11 @@ struct LiquidGlassLauncherView: View {
         .padding(10)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(windowBackdrop)
+        .clipShape(launcherOuterShape)
+    }
+
+    private var launcherOuterShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: LauncherVisualStyle.windowCornerRadius, style: .continuous)
     }
 
     private func synchronizeSearchFocus() {
@@ -435,18 +440,18 @@ struct LiquidGlassLauncherView: View {
 
     private var windowBackdrop: some View {
         GlassEffectContainer(spacing: 0) {
-            RoundedRectangle(cornerRadius: 30, style: .continuous)
+            launcherOuterShape
                 .fill(Color.clear)
                 .glassEffect(
                     .regular.tint(
                         LauncherModeTintPolicy.panelColor(for: model.mode)
                             .opacity(LauncherVisualStyle.windowModeTintOpacity(resultCount: model.resultCount))
                     ),
-                    in: RoundedRectangle(cornerRadius: 30, style: .continuous)
+                    in: launcherOuterShape
                 )
         }
         .overlay {
-            RoundedRectangle(cornerRadius: 30, style: .continuous)
+            launcherOuterShape
                 .strokeBorder(LauncherVisualStyle.surfaceRim.opacity(0.30), lineWidth: 1)
         }
         .padding(2)
@@ -554,6 +559,7 @@ private enum HeaderGlassEffectID: Hashable, Sendable {
 
 @available(macOS 26.0, *)
 private enum LauncherVisualStyle {
+    static let windowCornerRadius: CGFloat = 30
     static let rowFill = Color(nsColor: .windowBackgroundColor)
     static let selectionFill = Color(nsColor: .selectedContentBackgroundColor)
     static let activeHeaderControlTint = Color(nsColor: .controlAccentColor)

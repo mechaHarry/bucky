@@ -43,6 +43,8 @@ final class LauncherModeTintPolicyTests: XCTestCase {
         let launcher = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
 
         XCTAssertTrue(launcher.contains("private var windowBackdrop: some View"))
+        XCTAssertTrue(launcher.contains(".clipShape(launcherOuterShape)"))
+        XCTAssertTrue(launcher.contains("static let windowCornerRadius: CGFloat = 30"))
         XCTAssertFalse(launcher.contains(".shadow(color: .black.opacity(0.22), radius: 30, x: 0, y: 20)"))
     }
 
