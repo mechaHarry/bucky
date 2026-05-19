@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Implement the approved Bucky launcher refinements for calculator live results, native file drag selection, persisted dictionary history, text input editing, and mode-switcher stone/pill motion.
+**Goal:** Implement the approved Bucky launcher refinements for calculator live results, native file drag selection, persisted dictionary history, and text input editing.
 
 **Architecture:** Keep changes inside existing boundaries: calculator parsing in `ArithmeticEvaluator`, launcher/tool routing in `LiquidGlassLauncherModel`, file selection in `FileBrowserModel`, native drag in `NativeFileDragSourceView`, and mode-switcher visuals in `ModeSwitcherView`. Add a dedicated `DictionaryHistoryStore` matching the calculator history store pattern instead of creating a shared abstraction.
 
@@ -18,7 +18,7 @@
 - Modify `Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift`: let native text-editing commands reach focused text fields.
 - Modify `Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherModel.swift`: inject dictionary history, scroll live calculator results, build dictionary history rows, and remove one dictionary history row.
 - Modify `Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift`: add dictionary-history row icon and clear-row action.
-- Modify `Sources/Bucky/UI/SwiftUI/ModeSwitcherView.swift`: use matched glass geometry for every mode and slide the active pill from the selected mode's compact stone slot.
+- Modify `Sources/Bucky/UI/SwiftUI/ModeSwitcherView.swift`: keep text input foregrounds outside the glass identity so icon/input alignment remains stable.
 - Modify `Sources/Bucky/UI/SwiftUI/NativeFileDragSourceView.swift`: accept a URL provider and begin native drags with all selected URLs when the dragged row is selected.
 - Modify `Sources/Bucky/UI/SwiftUI/FileBrowserView.swift`: pass selected drag URLs into `NativeFileDragSourceView`.
 - Create `Sources/Bucky/Settings/DictionaryHistoryStore.swift`: persisted, deduped dictionary history.
@@ -1107,258 +1107,25 @@ Expected: commit succeeds.
 
 ---
 
-### Task 6: Mode Switcher Stone And Pill Motion
+### Task 6: Mode Switcher Text Input Stability
 
-Correction after visual testing: use the sliding active pill model. Each mode has
-a compact ordered stone area. The active pill expands from, slides with, and
-shrinks back into the selected mode's compact stone area. Inactive stones stay
-outside the active pill: stones before the active mode stay before the pill, and
-stones after the active mode sit after the pill.
+The stone/pill motion experiment was reverted after visual testing. Keep the
+mode switcher on the simple ordered `HStack` path: only non-text-input mode
+surfaces participate in matched glass geometry, and text input modes stay out of
+the outer glass container.
 
-Second correction after visual testing: the active pill must not obscure the
-compact mode buttons or move at full width. Inactive stones render above the
-active pill layer during growth, and the active pill frame animates from the
-selected stone's circle width to the final pill width.
+Retain the text-input stability fix:
 
-Third correction after visual testing: active pill expansion edge depends on the
-previous-to-next mode transition. If the newly active mode is left of the
-previous mode, grow from the leading edge; if it is right of the previous mode,
-grow from the trailing edge.
-
-Fourth correction after visual testing: the outgoing active pill remains in a
-temporary layer and shrinks back to its inactive stone frame. The inactive stone
-for that outgoing mode is withheld until the shrink completes, avoiding a snap
-or duplicate glass object.
+- `TextInputPillForegroundLayer` owns the icon, placeholder, `TextField`, focus,
+  and progress indicator.
+- `TextInputPillGlassSurface` owns only the glass capsule background.
+- The foreground layer is not a matched-geometry participant.
 
 **Files:**
 - Modify: `Sources/Bucky/UI/SwiftUI/ModeSwitcherView.swift`
 - Modify: `Tests/BuckyTests/ModeSwitcherLayoutPolicyTests.swift`
 
-- [ ] **Step 1: Write failing animation policy tests**
-
-In `Tests/BuckyTests/ModeSwitcherLayoutPolicyTests.swift`, replace `testTextInputModesUseSharedTextPillLayout` expectations for matched geometry and outer container with:
-
-```swift
-XCTAssertTrue(ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: .applications))
-XCTAssertTrue(ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: .calculator))
-XCTAssertTrue(ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: .dictionary))
-XCTAssertTrue(ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: .files))
-XCTAssertTrue(ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: .applications))
-XCTAssertTrue(ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: .calculator))
-XCTAssertTrue(ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: .dictionary))
-XCTAssertTrue(ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: .files))
-```
-
-Add this test:
-
-```swift
-func testModeSwitcherUsesActiveModeAwareStoneAreasWithActivePillOverlay() throws {
-    let source = try modeSwitcherSource()
-
-    XCTAssertTrue(source.contains("GeometryReader { proxy in"))
-    XCTAssertTrue(source.contains("ModeSwitcherLayoutPolicy.inactiveStoneFrame("))
-    XCTAssertTrue(source.contains("activeMode: model.mode"))
-    XCTAssertTrue(source.contains("ModeSwitcherLayoutPolicy.activePillFrame("))
-    XCTAssertTrue(source.contains(".glassEffectTransition(.matchedGeometry)"))
-}
-```
-
-- [ ] **Step 2: Run mode switcher tests to verify they fail**
-
-Run:
-
-```bash
-swift test --filter ModeSwitcherLayoutPolicyTests/testTextInputModesUseSharedTextPillLayout
-swift test --filter ModeSwitcherLayoutPolicyTests/testModeSwitcherUsesStableStoneSlotsWithActivePillOverlay
-```
-
-Expected: FAIL because text input modes do not use matched geometry and the stable-slot helpers do not exist.
-
-- [ ] **Step 3: Make all modes use matched glass transitions**
-
-In `Sources/Bucky/UI/SwiftUI/ModeSwitcherView.swift`, replace `ModeSwitcherGlassTransitionPolicy` with:
-
-```swift
-struct ModeSwitcherGlassTransitionPolicy {
-    static func usesMatchedGeometry(for mode: LauncherMode) -> Bool {
-        true
-    }
-
-    static func usesOuterContainer(for mode: LauncherMode) -> Bool {
-        true
-    }
-}
-```
-
-- [ ] **Step 4: Add sliding pill layout helpers**
-
-In `ModeSwitcherLayoutPolicy`, add:
-
-```swift
-static var inactiveStoneSlotWidth: CGFloat { activePillHeight }
-static var modeSwitcherSpacing: CGFloat { 10 }
-
-static func inactiveStoneFrame(for mode: LauncherMode, availableWidth: CGFloat) -> CGRect {
-    let modes = LauncherMode.ordered
-    guard let modeIndex = modes.firstIndex(of: mode) else {
-        return CGRect(x: 0, y: 0, width: inactiveStoneSlotWidth, height: activePillHeight)
-    }
-
-    let slotStride = inactiveStoneSlotWidth + modeSwitcherSpacing
-    return CGRect(
-        x: CGFloat(modeIndex) * slotStride,
-        y: 0,
-        width: inactiveStoneSlotWidth,
-        height: activePillHeight
-    )
-}
-
-static func inactiveStoneFrame(
-    for mode: LauncherMode,
-    activeMode: LauncherMode,
-    availableWidth: CGFloat
-) -> CGRect {
-    guard mode != activeMode,
-          let modeIndex = LauncherMode.ordered.firstIndex(of: mode),
-          let activeIndex = LauncherMode.ordered.firstIndex(of: activeMode) else {
-        return inactiveStoneFrame(for: mode, availableWidth: availableWidth)
-    }
-
-    if modeIndex < activeIndex {
-        return inactiveStoneFrame(for: mode, availableWidth: availableWidth)
-    }
-
-    let trailingIndex = modeIndex - activeIndex - 1
-    let activeFrame = activePillFrame(for: activeMode, availableWidth: availableWidth)
-    let slotStride = inactiveStoneSlotWidth + modeSwitcherSpacing
-    return CGRect(
-        x: activeFrame.maxX + modeSwitcherSpacing + CGFloat(trailingIndex) * slotStride,
-        y: 0,
-        width: inactiveStoneSlotWidth,
-        height: activePillHeight
-    )
-}
-
-static func activePillFrame(for mode: LauncherMode, availableWidth: CGFloat) -> CGRect {
-    let modes = LauncherMode.ordered
-    let reservedInactiveWidth = CGFloat(modes.count - 1) * inactiveStoneSlotWidth
-    let reservedSpacing = CGFloat(modes.count - 1) * modeSwitcherSpacing
-    let width = max(inactiveStoneSlotWidth, availableWidth - reservedInactiveWidth - reservedSpacing)
-
-    return CGRect(
-        x: inactiveStoneFrame(for: mode, availableWidth: availableWidth).minX,
-        y: 0,
-        width: width,
-        height: activePillHeight
-    )
-}
-```
-
-- [ ] **Step 5: Rework mode switcher content to a sliding active pill overlay**
-
-Replace `modeSwitcherContent` with a slot overlay. The active pill's leading edge
-uses the selected mode's compact stone frame; inactive stones use
-active-mode-aware positions that keep them outside the active pill:
-
-```swift
-private var modeSwitcherContent: some View {
-    GeometryReader { proxy in
-        let activeFrame = ModeSwitcherLayoutPolicy.activePillFrame(for: model.mode, availableWidth: proxy.size.width)
-
-        ZStack(alignment: .topLeading) {
-            activePill(for: model.mode)
-                .frame(
-                    width: activeFrame.width,
-                    height: ModeSwitcherLayoutPolicy.activePillHeight
-                )
-                .offset(x: activeFrame.minX, y: 0)
-
-            ForEach(LauncherMode.ordered, id: \.self) { mode in
-                if mode != model.mode {
-                    let inactiveFrame = ModeSwitcherLayoutPolicy.inactiveStoneFrame(
-                        for: mode,
-                        activeMode: model.mode,
-                        availableWidth: proxy.size.width
-                    )
-
-                    modeOrb(for: mode)
-                        .frame(
-                            width: ModeSwitcherLayoutPolicy.inactiveStoneSlotWidth,
-                            height: ModeSwitcherLayoutPolicy.activePillHeight
-                        )
-                        .position(
-                            x: inactiveFrame.midX,
-                            y: ModeSwitcherLayoutPolicy.activePillHeight / 2
-                        )
-                        .glassEffectID(mode, in: modeGlassNamespace)
-                        .glassEffectTransition(.matchedGeometry)
-                }
-            }
-        }
-        .frame(width: proxy.size.width, height: ModeSwitcherLayoutPolicy.activePillHeight)
-    }
-    .frame(maxWidth: .infinity, minHeight: ModeSwitcherLayoutPolicy.activePillHeight, maxHeight: ModeSwitcherLayoutPolicy.activePillHeight)
-}
-```
-
-Remove `.glassEffectID` and `.glassEffectTransition` from `modeSwitcherElement(for:)` after replacing the HStack path. Delete `modeSwitcherElement(for:)` when the compiler reports it as unused.
-
-- [ ] **Step 5b: Keep inactive stones outside the active pill**
-
-Add layout helpers for active-mode-aware inactive stone frames and active pill
-expansion progress. Stones before the active mode keep compact positions; stones
-after the active mode sit after the active pill with normal spacing. The
-animated active frame keeps the selected stone's local edge stable: leading edge
-when moving left from the previous mode, trailing edge when moving right, while
-interpolating only the pill width from circle to final size.
-
-Render inactive stones above the active pill layer with explicit z-index values.
-The active pill view should be clipped to its animated frame so foreground text
-does not draw ahead of the growing glass surface.
-
-Add an outgoing active pill layer with its own shrink progress and z-index. The
-shrink frame interpolates from the outgoing full active pill frame to the
-outgoing mode's inactive frame for the newly active mode, then removes the
-temporary layer after the shared transition duration.
-
-- [ ] **Step 6: Keep text field foreground outside the moving glass identity**
-
-Change `TextInputModePill` to receive the namespace:
-
-```swift
-private struct TextInputModePill: View {
-    @ObservedObject var model: LiquidGlassLauncherModel
-    let mode: LauncherMode
-    let symbol: String
-    let glassNamespace: Namespace.ID
-    @FocusState.Binding var isSearchFocused: Bool
-```
-
-Pass it from `activePill(for:)`:
-
-```swift
-TextInputModePill(
-    model: model,
-    mode: mode,
-    symbol: symbol(for: mode),
-    glassNamespace: modeGlassNamespace,
-    isSearchFocused: $isSearchFocused
-)
-```
-
-Apply the matched identity only to the background glass surface:
-
-```swift
-.background {
-    TextInputPillGlassSurface(tint: LauncherModeTintPolicy.activeColor(for: mode))
-        .glassEffectID(mode, in: glassNamespace)
-        .glassEffectTransition(.matchedGeometry)
-}
-```
-
-Keep `TextInputPillForegroundLayer` outside that background block so the `TextField` remains outside the moving glass identity.
-
-- [ ] **Step 7: Run mode switcher tests**
+- [ ] **Step 1: Verify text input modes opt out of glass identity**
 
 Run:
 
@@ -1366,15 +1133,17 @@ Run:
 swift test --filter ModeSwitcherLayoutPolicyTests
 ```
 
-Expected: PASS after updating source-based tests that still assert text input modes opt out of glass identity.
+Expected: PASS with tests asserting `.applications`, `.calculator`, and
+`.dictionary` do not use matched geometry or the outer glass container, while
+`.files` still does.
 
-- [ ] **Step 8: Commit Task 6**
+- [ ] **Step 2: Commit Task 6**
 
 Run:
 
 ```bash
-git add Sources/Bucky/UI/SwiftUI/ModeSwitcherView.swift Tests/BuckyTests/ModeSwitcherLayoutPolicyTests.swift
-git commit -m "feat: morph mode stones and pills"
+git add Sources/Bucky/UI/SwiftUI/ModeSwitcherView.swift Tests/BuckyTests/ModeSwitcherLayoutPolicyTests.swift docs/superpowers/plans/2026-05-14-bucky-refinements-implementation-plan.md docs/superpowers/specs/2026-05-14-bucky-refinements-design.md
+git commit -m "fix: revert mode pill animation"
 ```
 
 Expected: commit succeeds.
@@ -1421,7 +1190,7 @@ Expected:
 - Pasting text into Applications, Calculator, and Dictionary inputs works.
 - Dictionary Enter on a result stores the word; blank Dictionary mode shows history; the row trash button removes one word.
 - Files mode multi-select drag exports all selected file URLs when dragging a selected row.
-- Mode switcher active pill expands from and shrinks back to the selected mode's compact stone area while inactive stones remain outside the active pill with normal spacing.
+- Mode switcher text input modes keep foreground content outside the glass surface and out of matched geometry.
 
 - [ ] **Step 4: Commit verification fixes only if needed**
 
@@ -1444,7 +1213,7 @@ Expected: commit succeeds only when there are actual verification fixes.
   - Native text copy/paste: Task 2.
   - File drag respects multi-selection across directories: Task 3.
   - Persisted deduped dictionary history with row clearing: Tasks 4 and 5.
-  - Sliding active pill anchored to each mode's compact stone area, with active-mode-aware inactive stone areas layered above the growth animation: Task 6.
+  - Mode switcher text-input foreground/glass separation retained while stone/pill motion is reverted: Task 6.
   - Full tests and app build: Task 7.
 - Placeholder scan: no placeholder tasks remain.
 - Type consistency:

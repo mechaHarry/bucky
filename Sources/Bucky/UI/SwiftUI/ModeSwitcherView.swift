@@ -5,17 +5,11 @@ struct ModeSwitcherView: View {
     @ObservedObject var model: LiquidGlassLauncherModel
     @FocusState.Binding var isSearchFocused: Bool
     @Namespace private var modeGlassNamespace
-    @State private var activePillExpansionProgress: CGFloat = 1
-    @State private var previousModeForActivePillExpansion: LauncherMode?
-    @State private var lastModeForActivePillExpansion: LauncherMode?
-    @State private var outgoingActivePillMode: LauncherMode?
-    @State private var outgoingActivePillNextMode: LauncherMode?
-    @State private var outgoingPillShrinkProgress: CGFloat = 0
 
     @ViewBuilder
     var body: some View {
         if ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: model.mode) {
-            GlassEffectContainer(spacing: ModeSwitcherLayoutPolicy.modeSwitcherSpacing) {
+            GlassEffectContainer(spacing: 10) {
                 modeSwitcherContent
             }
         } else {
@@ -24,74 +18,32 @@ struct ModeSwitcherView: View {
     }
 
     private var modeSwitcherContent: some View {
-        GeometryReader { proxy in
-            let activeFrame = ModeSwitcherLayoutPolicy.activePillFrame(
-                for: model.mode,
-                previousMode: previousModeForActivePillExpansion,
-                availableWidth: proxy.size.width,
-                expansionProgress: activePillExpansionProgress
-            )
-
-            ZStack(alignment: .topLeading) {
-                if let outgoingActivePillMode,
-                   let outgoingActivePillNextMode {
-                    let outgoingFrame = ModeSwitcherLayoutPolicy.activePillShrinkFrame(
-                        for: outgoingActivePillMode,
-                        nextMode: outgoingActivePillNextMode,
-                        availableWidth: proxy.size.width,
-                        shrinkProgress: outgoingPillShrinkProgress
-                    )
-
-                    activePill(for: outgoingActivePillMode, availableWidth: proxy.size.width)
-                        .frame(
-                            width: outgoingFrame.width,
-                            height: ModeSwitcherLayoutPolicy.activePillHeight
-                        )
-                        .offset(x: outgoingFrame.minX, y: 0)
-                        .clipped()
-                        .zIndex(ModeSwitcherLayoutPolicy.outgoingPillZIndex)
-                }
-
-                activePill(for: model.mode, availableWidth: proxy.size.width)
-                    .frame(
-                        width: activeFrame.width,
-                        height: ModeSwitcherLayoutPolicy.activePillHeight
-                    )
-                    .offset(x: activeFrame.minX, y: 0)
-                    .clipped()
-                    .zIndex(ModeSwitcherLayoutPolicy.activePillZIndex)
-
-                ForEach(LauncherMode.ordered, id: \.self) { mode in
-                    if mode != model.mode && mode != outgoingActivePillMode {
-                        let inactiveFrame = ModeSwitcherLayoutPolicy.inactiveStoneFrame(
-                            for: mode,
-                            activeMode: model.mode,
-                            availableWidth: proxy.size.width
-                        )
-
-                        modeOrb(for: mode)
-                            .frame(
-                                width: ModeSwitcherLayoutPolicy.inactiveStoneSlotWidth,
-                                height: ModeSwitcherLayoutPolicy.activePillHeight
-                            )
-                            .position(
-                                x: inactiveFrame.midX,
-                                y: ModeSwitcherLayoutPolicy.activePillHeight / 2
-                            )
-                            .glassEffectID(mode, in: modeGlassNamespace)
-                            .glassEffectTransition(.matchedGeometry)
-                            .zIndex(ModeSwitcherLayoutPolicy.inactiveStoneZIndex)
-                    }
-                }
+        HStack(spacing: 10) {
+            ForEach(LauncherMode.ordered, id: \.self) { mode in
+                modeSwitcherElement(for: mode)
             }
-            .frame(width: proxy.size.width, height: ModeSwitcherLayoutPolicy.activePillHeight)
         }
-        .frame(maxWidth: .infinity, minHeight: ModeSwitcherLayoutPolicy.activePillHeight, maxHeight: ModeSwitcherLayoutPolicy.activePillHeight)
-        .onAppear {
-            lastModeForActivePillExpansion = model.mode
-        }
-        .onChange(of: model.mode) {
-            startActivePillExpansion()
+        .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private func modeSwitcherElement(for mode: LauncherMode) -> some View {
+        if mode == model.mode {
+            if ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: mode) {
+                activePill(for: mode)
+                    .glassEffectID(mode, in: modeGlassNamespace)
+                    .glassEffectTransition(.matchedGeometry)
+            } else {
+                activePill(for: mode)
+            }
+        } else {
+            if ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: mode) {
+                modeOrb(for: mode)
+                    .glassEffectID(mode, in: modeGlassNamespace)
+                    .glassEffectTransition(.matchedGeometry)
+            } else {
+                modeOrb(for: mode)
+            }
         }
     }
 
@@ -112,14 +64,13 @@ struct ModeSwitcherView: View {
     }
 
     @ViewBuilder
-    private func activePill(for mode: LauncherMode, availableWidth: CGFloat) -> some View {
+    private func activePill(for mode: LauncherMode) -> some View {
         switch mode {
         case .applications, .calculator, .dictionary:
             TextInputModePill(
                 model: model,
                 mode: mode,
                 symbol: symbol(for: mode),
-                glassNamespace: modeGlassNamespace,
                 isSearchFocused: $isSearchFocused
             )
         case .files:
@@ -168,44 +119,9 @@ struct ModeSwitcherView: View {
                     .regular.tint(modeTint.opacity(ModeSwitcherTintPolicy.activePillTintOpacity)).interactive(),
                     in: Capsule()
                 )
-                .glassEffectID(mode, in: modeGlassNamespace)
-                .glassEffectTransition(.matchedGeometry)
             }
             .frame(minWidth: 0, maxWidth: .infinity, minHeight: ModeSwitcherLayoutPolicy.activePillHeight, maxHeight: ModeSwitcherLayoutPolicy.activePillHeight)
             .layoutPriority(1)
-        }
-    }
-
-    private func startActivePillExpansion() {
-        let previousMode = lastModeForActivePillExpansion
-        previousModeForActivePillExpansion = previousMode
-        if previousMode != model.mode {
-            outgoingActivePillMode = previousMode
-            outgoingActivePillNextMode = model.mode
-            outgoingPillShrinkProgress = 1
-        }
-        let targetMode = model.mode
-        lastModeForActivePillExpansion = model.mode
-        activePillExpansionProgress = 0
-        let shrinkingMode = outgoingActivePillMode
-
-        DispatchQueue.main.async {
-            guard lastModeForActivePillExpansion == targetMode,
-                  outgoingActivePillMode == shrinkingMode else {
-                return
-            }
-
-            withAnimation(.easeOut(duration: ModeSwitcherLayoutPolicy.activePillTransitionDuration)) {
-                activePillExpansionProgress = 1
-                outgoingPillShrinkProgress = 0
-            }
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + ModeSwitcherLayoutPolicy.activePillTransitionDuration) {
-                if outgoingActivePillMode == shrinkingMode {
-                    outgoingActivePillMode = nil
-                    outgoingActivePillNextMode = nil
-                }
-            }
         }
     }
 
@@ -266,8 +182,6 @@ struct ModeSwitcherView: View {
 
 struct ModeSwitcherLayoutPolicy {
     static let activePillHeight: CGFloat = 48
-    static var inactiveStoneSlotWidth: CGFloat { activePillHeight }
-    static var modeSwitcherSpacing: CGFloat { 10 }
     static var launcherHeaderTopInset: CGFloat { activePillHeight / 12 }
     static var launcherHeaderHorizontalInset: CGFloat { activePillHeight / 24 }
     static var launcherHeaderBottomInset: CGFloat { activePillHeight / 24 }
@@ -282,10 +196,6 @@ struct ModeSwitcherLayoutPolicy {
     static var activeTextPillInputHeight: CGFloat { activeTextPillControlHeight }
     static var activeTextPillTextFieldHeight: CGFloat { activeTextPillControlHeight }
     static var activeTextPillProgressWidth: CGFloat { activeTextPillControlHeight }
-    static var activePillZIndex: Double { 0 }
-    static var outgoingPillZIndex: Double { 1 }
-    static var inactiveStoneZIndex: Double { 2 }
-    static var activePillTransitionDuration: TimeInterval { 0.28 }
     static let filesPillLeadingPadding: CGFloat = 16
     static let filesPillTrailingPadding: CGFloat = 12
     static let filesContentSpacing: CGFloat = 12
@@ -312,134 +222,6 @@ struct ModeSwitcherLayoutPolicy {
         return max(0, filesPathButtonWidth(in: pillWidth) - fixedWidth)
     }
 
-    static func inactiveStoneFrame(
-        for mode: LauncherMode,
-        activeMode: LauncherMode,
-        availableWidth: CGFloat
-    ) -> CGRect {
-        guard mode != activeMode,
-              let modeIndex = LauncherMode.ordered.firstIndex(of: mode),
-              let activeIndex = LauncherMode.ordered.firstIndex(of: activeMode) else {
-            return inactiveStoneFrame(for: mode, availableWidth: availableWidth)
-        }
-
-        if modeIndex < activeIndex {
-            return inactiveStoneFrame(for: mode, availableWidth: availableWidth)
-        }
-
-        let trailingIndex = modeIndex - activeIndex - 1
-        let activeFrame = activePillFrame(for: activeMode, availableWidth: availableWidth)
-        let slotStride = inactiveStoneSlotWidth + modeSwitcherSpacing
-        return CGRect(
-            x: activeFrame.maxX + modeSwitcherSpacing + CGFloat(trailingIndex) * slotStride,
-            y: 0,
-            width: inactiveStoneSlotWidth,
-            height: activePillHeight
-        )
-    }
-
-    static func inactiveStoneFrame(for mode: LauncherMode, availableWidth: CGFloat) -> CGRect {
-        let modes = LauncherMode.ordered
-        guard let modeIndex = modes.firstIndex(of: mode) else {
-            return CGRect(x: 0, y: 0, width: inactiveStoneSlotWidth, height: activePillHeight)
-        }
-
-        let slotStride = inactiveStoneSlotWidth + modeSwitcherSpacing
-        return CGRect(
-            x: CGFloat(modeIndex) * slotStride,
-            y: 0,
-            width: inactiveStoneSlotWidth,
-            height: activePillHeight
-        )
-    }
-
-    static func activePillFrame(for mode: LauncherMode, availableWidth: CGFloat) -> CGRect {
-        let modes = LauncherMode.ordered
-        let reservedInactiveWidth = CGFloat(modes.count - 1) * inactiveStoneSlotWidth
-        let reservedSpacing = CGFloat(modes.count - 1) * modeSwitcherSpacing
-        let width = max(inactiveStoneSlotWidth, availableWidth - reservedInactiveWidth - reservedSpacing)
-
-        return CGRect(
-            x: inactiveStoneFrame(for: mode, availableWidth: availableWidth).minX,
-            y: 0,
-            width: width,
-            height: activePillHeight
-        )
-    }
-
-    static func activePillFrame(
-        for mode: LauncherMode,
-        availableWidth: CGFloat,
-        expansionProgress: CGFloat
-    ) -> CGRect {
-        activePillFrame(
-            for: mode,
-            previousMode: nil,
-            availableWidth: availableWidth,
-            expansionProgress: expansionProgress
-        )
-    }
-
-    static func activePillFrame(
-        for mode: LauncherMode,
-        previousMode: LauncherMode?,
-        availableWidth: CGFloat,
-        expansionProgress: CGFloat
-    ) -> CGRect {
-        let finalFrame = activePillFrame(for: mode, availableWidth: availableWidth)
-        let clampedProgress = min(max(expansionProgress, 0), 1)
-        let width = inactiveStoneSlotWidth + (finalFrame.width - inactiveStoneSlotWidth) * clampedProgress
-        let growthEdge = activePillGrowthEdge(for: mode, previousMode: previousMode)
-        let originX = growthEdge == .leading ? finalFrame.minX : finalFrame.maxX - width
-
-        return CGRect(
-            x: originX,
-            y: finalFrame.minY,
-            width: width,
-            height: finalFrame.height
-        )
-    }
-
-    private enum ActivePillGrowthEdge {
-        case leading
-        case trailing
-    }
-
-    private static func activePillGrowthEdge(for mode: LauncherMode, previousMode: LauncherMode?) -> ActivePillGrowthEdge {
-        guard let previousMode,
-              let modeIndex = LauncherMode.ordered.firstIndex(of: mode),
-              let previousIndex = LauncherMode.ordered.firstIndex(of: previousMode),
-              modeIndex != previousIndex else {
-            return mode == LauncherMode.ordered.first ? .leading : .trailing
-        }
-
-        return modeIndex < previousIndex ? .leading : .trailing
-    }
-
-    static func activePillShrinkFrame(
-        for mode: LauncherMode,
-        nextMode: LauncherMode,
-        availableWidth: CGFloat,
-        shrinkProgress: CGFloat
-    ) -> CGRect {
-        let fullFrame = activePillFrame(for: mode, availableWidth: availableWidth)
-        let inactiveFrame = inactiveStoneFrame(
-            for: mode,
-            activeMode: nextMode,
-            availableWidth: availableWidth
-        )
-        let clampedProgress = min(max(shrinkProgress, 0), 1)
-        let minX = inactiveFrame.minX + (fullFrame.minX - inactiveFrame.minX) * clampedProgress
-        let width = inactiveFrame.width + (fullFrame.width - inactiveFrame.width) * clampedProgress
-
-        return CGRect(
-            x: minX,
-            y: fullFrame.minY,
-            width: width,
-            height: fullFrame.height
-        )
-    }
-
     static func activeTextPillInputTrailingInset(isShowingProgress: Bool) -> CGFloat {
         activeTextPillHorizontalInset
             + (isShowingProgress ? activeTextPillProgressWidth + activePillHeight / 4 : 0)
@@ -448,11 +230,11 @@ struct ModeSwitcherLayoutPolicy {
 
 struct ModeSwitcherGlassTransitionPolicy {
     static func usesMatchedGeometry(for mode: LauncherMode) -> Bool {
-        true
+        !mode.acceptsTextInput
     }
 
     static func usesOuterContainer(for mode: LauncherMode) -> Bool {
-        true
+        !mode.acceptsTextInput
     }
 }
 
@@ -461,7 +243,6 @@ private struct TextInputModePill: View {
     @ObservedObject var model: LiquidGlassLauncherModel
     let mode: LauncherMode
     let symbol: String
-    let glassNamespace: Namespace.ID
     @FocusState.Binding var isSearchFocused: Bool
 
     var body: some View {
@@ -487,8 +268,6 @@ private struct TextInputModePill: View {
         )
         .background {
             TextInputPillGlassSurface(tint: LauncherModeTintPolicy.activeColor(for: mode))
-                .glassEffectID(mode, in: glassNamespace)
-                .glassEffectTransition(.matchedGeometry)
         }
         .contentShape(Capsule())
     }
