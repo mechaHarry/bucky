@@ -170,20 +170,8 @@ struct LiquidGlassLauncherView: View {
         }
     }
 
-    private var results: some View {
-        ZStack {
-            resultsBackdrop
-            resultContent
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .strokeBorder(LauncherVisualStyle.panelRim.opacity(0.26), lineWidth: 1)
-        }
-    }
-
     @ViewBuilder
-    private var resultContent: some View {
+    private var results: some View {
         if model.mode == .files {
             FileBrowserView(
                 model: model.fileBrowserModel,
@@ -223,20 +211,6 @@ struct LiquidGlassLauncherView: View {
                     )
                 }
             }
-        }
-    }
-
-    private var resultsBackdrop: some View {
-        GlassEffectContainer(spacing: 0) {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(Color.clear)
-                .glassEffect(
-                    .regular.tint(
-                        LauncherModeTintPolicy.panelColor(for: model.mode)
-                            .opacity(LauncherVisualStyle.panelModeTintOpacity(resultCount: model.resultCount))
-                    ),
-                    in: RoundedRectangle(cornerRadius: 24, style: .continuous)
-                )
         }
     }
 
@@ -564,13 +538,8 @@ private enum LauncherVisualStyle {
     static let selectionFill = Color(nsColor: .selectedContentBackgroundColor)
     static let activeHeaderControlTint = Color(nsColor: .controlAccentColor)
     static let surfaceRim = Color(nsColor: .separatorColor)
-    static let panelRim = Color(nsColor: .separatorColor)
     static let selectionRim = Color(nsColor: .selectedContentBackgroundColor)
     static let actionRim = Color(nsColor: .separatorColor)
-
-    static func panelModeTintOpacity(resultCount: Int) -> Double {
-        resultCount == 0 ? 0.026 : 0.045
-    }
 
     static func windowModeTintOpacity(resultCount: Int) -> Double {
         resultCount == 0 ? 0.028 : 0.040

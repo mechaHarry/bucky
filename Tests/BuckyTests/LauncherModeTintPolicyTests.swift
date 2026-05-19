@@ -25,7 +25,7 @@ final class LauncherModeTintPolicyTests: XCTestCase {
         )
     }
 
-    func testModeTintIsWiredToPillsAndPanelBackdrops() throws {
+    func testModeTintIsWiredToPillsAndMainBackdrop() throws {
         let modeSwitcher = try source(named: "Sources/Bucky/UI/SwiftUI/ModeSwitcherView.swift")
         let launcher = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
 
@@ -35,8 +35,10 @@ final class LauncherModeTintPolicyTests: XCTestCase {
         XCTAssertTrue(modeSwitcher.contains(".tint(LauncherModeTintPolicy.inactiveOrbColor(for: mode))"))
         XCTAssertTrue(modeSwitcher.contains("ModeSwitcherTintPolicy.activePillTintOpacity"))
         XCTAssertTrue(launcher.contains("LauncherModeTintPolicy.panelColor(for: model.mode)"))
-        XCTAssertTrue(launcher.contains("LauncherVisualStyle.panelModeTintOpacity"))
         XCTAssertTrue(launcher.contains("LauncherVisualStyle.windowModeTintOpacity"))
+        XCTAssertFalse(launcher.contains("private var resultsBackdrop: some View"))
+        XCTAssertFalse(launcher.contains("LauncherVisualStyle.panelModeTintOpacity"))
+        XCTAssertFalse(launcher.contains("LauncherVisualStyle.panelRim"))
     }
 
     func testLauncherBackdropDoesNotAddOuterWindowShadow() throws {
