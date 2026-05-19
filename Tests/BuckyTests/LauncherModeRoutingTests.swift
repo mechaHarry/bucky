@@ -266,8 +266,9 @@ final class LauncherModeRoutingTests: XCTestCase {
     }
 
     @available(macOS 26.0, *)
-    func testLauncherWindowBackgroundDoesNotDragRowsAwayFromNativeFileDragging() {
-        XCTAssertFalse(LauncherWindowDragPolicy.isMovableByWindowBackground)
+    func testLauncherWindowBackgroundCanDragFromMainPanel() {
+        XCTAssertTrue(LauncherWindowDragPolicy.isMovableByWindowBackground)
+        XCTAssertFalse(FileBrowserDragPolicy.mouseDownCanMoveWindow)
     }
 
     @available(macOS 26.0, *)

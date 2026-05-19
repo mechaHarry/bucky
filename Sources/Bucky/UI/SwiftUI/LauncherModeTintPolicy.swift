@@ -16,13 +16,13 @@ enum LauncherModeTintPolicy {
     static func tint(for mode: LauncherMode) -> LauncherModeTint {
         switch mode {
         case .applications:
-            return LauncherModeTint(activeHex: 0x266EF6, panelHex: 0x08578A)
+            return LauncherModeTint(activeHex: 0x266EF6, panelHex: 0x08578A, iconHex: 0x0B3D91)
         case .calculator:
             return LauncherModeTint(activeHex: 0xFFD300, panelHex: 0xFFC239, iconHex: 0x3A2B00)
         case .dictionary:
-            return LauncherModeTint(activeHex: 0xE429F2, panelHex: 0xBF00FF)
+            return LauncherModeTint(activeHex: 0xE429F2, panelHex: 0xBF00FF, iconHex: 0x6E1977)
         case .files:
-            return LauncherModeTint(activeHex: 0xFF0130, panelHex: 0xC60404)
+            return LauncherModeTint(activeHex: 0xFF0130, panelHex: 0xC60404, iconHex: 0x7A0018)
         }
     }
 
