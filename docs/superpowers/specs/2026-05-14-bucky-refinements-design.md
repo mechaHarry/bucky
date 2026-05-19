@@ -2,12 +2,12 @@
 
 ## Context
 
-This design covers four launcher refinements on branch `refinement_2026_05_13`:
+This design covers the launcher refinements on branch `refinement_2026_05_13`:
 
 - Calculator live-result scrolling and trailing equals handling.
 - Native file drag respecting Bucky multi-selection.
 - Persisted Dictionary history for enter-opened words.
-- Mode-switcher stone and active pill animation.
+- Text input editing and layout stability.
 
 Bucky is a local-only macOS 26 Swift Package app. The launcher UI is SwiftUI Liquid Glass hosted by AppKit. Existing boundaries are:
 
@@ -27,7 +27,7 @@ Use targeted fixes in existing models and policies:
 - Pass file drag payload selection through the existing file browser selection model.
 - Add a dedicated dictionary history store.
 - Preserve native text-editing shortcuts through key-routing policy.
-- Change mode-switcher glass transition policy so stones and pills morph between stable slots.
+- Keep text-input foreground content outside the glass identity so rendering remains stable.
 
 This avoids a broader tool-history abstraction and avoids UI-only patches that would be harder to test.
 
@@ -96,45 +96,21 @@ Behavior:
 
 The row clear action removes only that word and refreshes the blank dictionary result list.
 
-## Mode Switcher Animation
+## Mode Switcher Text Input Stability
 
-The mode switcher uses the sliding active pill model. Each mode has a compact
-stone slot in the ordered row. When a mode becomes active, the active pill
-expands from that mode's compact stone slot; when it deactivates, the pill
-shrinks back to the same slot. The active pill therefore travels across the row
-with the selected mode instead of expanding into one fixed header location.
+The mode switcher keeps the existing simple ordered row behavior. Text input
+modes do not participate in matched glass geometry or the outer glass container,
+because moving the `TextField` through a glass identity can randomize foreground
+layout and render properties.
 
-Inactive stones remain in their respective compact areas outside the active
-pill. For active mode 1, stones 2-4 sit after the pill; for active mode 2, stone
-1 stays before the pill and stones 3-4 sit after it; for active mode 3, stones
-1-2 stay before the pill and stone 4 sits after it; for active mode 4, stones
-1-3 stay before the pill. The active mode does not also render a separate
-inactive stone; its glass identity morphs from that compact slot into the active
-pill and back.
+The retained fix is the split between:
 
-Implementation notes:
+- `TextInputPillForegroundLayer`, which owns the icon, placeholder, text field,
+  focus, and progress indicator.
+- `TextInputPillGlassSurface`, which owns only the glass capsule background.
 
-- Every mode participates in matched glass geometry.
-- The moving glass identity belongs to the stone/pill surface.
-- The active pill's expansion edge follows transition direction: when the newly
-  active mode is left of the previous mode, it grows from the leading edge; when
-  it is right of the previous mode, it grows from the trailing edge.
-- Inactive stone frames are active-mode-aware: stones before the active mode use
-  their compact slots, and stones after the active mode sit after the active pill
-  with normal spacing.
-- Inactive stones sit above the active pill layer so they remain visually and
-  interactively available during the growth animation.
-- The active pill animates from the selected mode's circle-width stone frame to
-  the final pill frame instead of translating at full pill width.
-- The outgoing active pill remains in a temporary layer and shrinks back to its
-  inactive stone frame before that inactive stone is rendered again.
-- Growth and shrink use the same slightly longer transition duration so both
-  directions read as one reversible morph.
-- Text input foregrounds stay outside the moving glass identity so native focus, typing, and legibility remain stable.
-- The current pattern of foreground content above a separate glass surface remains in place.
-
-The goal is a spatially legible sliding pill, not a rail where every active mode
-expands into the same fixed pill location.
+This keeps the input aligned relative to the icon while preserving a native
+SwiftUI text field path for copy, paste, selection, typing, and focus.
 
 ## Error Handling And Security
 
@@ -156,6 +132,6 @@ Add or update focused tests:
 - File drag selection preserves selected URLs from other directories.
 - Dictionary history persists, dedupes, caps entries, removes single rows, and shows on blank input.
 - Opening dictionary results and history rows records/moves history entries.
-- Mode switcher transition policy uses matched geometry for every mode while keeping text field foreground outside the glass identity.
+- Text input modes stay out of matched glass geometry while keeping the text field foreground outside the glass surface.
 
 Run `swift test` after implementation.

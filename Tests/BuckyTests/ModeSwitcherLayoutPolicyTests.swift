@@ -63,10 +63,14 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
             .calculator,
             .dictionary
         ])
-        for mode in LauncherMode.ordered {
-            XCTAssertTrue(ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: mode))
-            XCTAssertTrue(ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: mode))
-        }
+        XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: .applications))
+        XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: .calculator))
+        XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: .dictionary))
+        XCTAssertTrue(ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: .files))
+        XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: .applications))
+        XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: .calculator))
+        XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: .dictionary))
+        XCTAssertTrue(ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: .files))
         XCTAssertEqual(
             ModeSwitcherLayoutPolicy.activeTextPillIconLeadingInset,
             ModeSwitcherLayoutPolicy.activeTextPillHorizontalInset
@@ -119,11 +123,11 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
     func testActiveTextPillKeepsTextFieldOutsideGlassIdentity() throws {
         let source = try modeSwitcherSource()
 
-        XCTAssertTrue(source.contains("TextInputModePill(\n                model: model,\n                mode: mode,\n                symbol: symbol(for: mode),\n                glassNamespace: modeGlassNamespace,"))
-        XCTAssertFalse(source.contains("activeTextPillClearedInputLeadingInset"))
+        XCTAssertTrue(source.contains("modeSwitcherElement(for: mode)"))
+        XCTAssertTrue(source.contains("ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: mode)"))
         XCTAssertTrue(source.contains("ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: model.mode)"))
         XCTAssertTrue(source.contains("private struct TextInputPillGlassSurface"))
-        XCTAssertTrue(source.contains("TextInputPillGlassSurface(tint: LauncherModeTintPolicy.activeColor(for: mode))\n                .glassEffectID(mode, in: glassNamespace)\n                .glassEffectTransition(.matchedGeometry)"))
+        XCTAssertFalse(source.contains("TextInputPillGlassSurface {"))
         XCTAssertFalse(source.contains("TextInputModePill(\n                model: model,\n                mode: mode,\n                symbol: symbol(for: mode),\n                isSearchFocused: $isSearchFocused\n            )\n            .glassEffectID"))
     }
 
@@ -131,218 +135,9 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
         let source = try modeSwitcherSource()
 
         XCTAssertTrue(source.contains("private struct TextInputPillForegroundLayer"))
-        XCTAssertTrue(source.contains(".background {\n            TextInputPillGlassSurface(tint: LauncherModeTintPolicy.activeColor(for: mode))"))
+        XCTAssertTrue(source.contains(".background {\n            TextInputPillGlassSurface(tint: LauncherModeTintPolicy.activeColor(for: mode))\n        }"))
         XCTAssertTrue(source.contains("TextInputPillForegroundLayer("))
         XCTAssertFalse(source.contains(".glassEffect(.regular.interactive(), in: Capsule())\n            .overlay(alignment: .leading)"))
-    }
-
-    func testModeSwitcherUsesActiveModeAwareStoneAreasWithActivePillOverlay() throws {
-        let source = try modeSwitcherSource()
-
-        XCTAssertTrue(source.contains("GeometryReader { proxy in"))
-        XCTAssertTrue(source.contains("ModeSwitcherLayoutPolicy.inactiveStoneFrame("))
-        XCTAssertTrue(source.contains("activeMode: model.mode"))
-        XCTAssertTrue(source.contains("availableWidth: proxy.size.width"))
-        XCTAssertTrue(source.contains("static func inactiveStoneFrame(for mode: LauncherMode"))
-        XCTAssertTrue(source.contains("ModeSwitcherLayoutPolicy.activePillFrame("))
-        XCTAssertTrue(source.contains(".glassEffectTransition(.matchedGeometry)"))
-    }
-
-    func testActivePillExpansionFrameGrowsFromSelectedStoneSlot() {
-        for availableWidth in [CGFloat(496), 760] {
-            for sourceMode in LauncherMode.ordered {
-                for destinationMode in LauncherMode.ordered where destinationMode != sourceMode {
-                    let sourceIndex = LauncherMode.ordered.firstIndex(of: sourceMode)!
-                    let destinationIndex = LauncherMode.ordered.firstIndex(of: destinationMode)!
-
-                    if destinationIndex < sourceIndex {
-                        assertActivePillExpandsFromLeadingStoneEdge(
-                            mode: destinationMode,
-                            previousMode: sourceMode,
-                            availableWidth: availableWidth
-                        )
-                    } else {
-                        assertActivePillExpandsFromTrailingStoneEdge(
-                            mode: destinationMode,
-                            previousMode: sourceMode,
-                            availableWidth: availableWidth
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    func testOutgoingActivePillShrinksBackToInactiveStoneSlot() {
-        for availableWidth in [CGFloat(496), 760] {
-            for outgoingMode in LauncherMode.ordered {
-                for nextMode in LauncherMode.ordered where nextMode != outgoingMode {
-                    let startFrame = ModeSwitcherLayoutPolicy.activePillShrinkFrame(
-                        for: outgoingMode,
-                        nextMode: nextMode,
-                        availableWidth: availableWidth,
-                        shrinkProgress: 1
-                    )
-                    let halfwayFrame = ModeSwitcherLayoutPolicy.activePillShrinkFrame(
-                        for: outgoingMode,
-                        nextMode: nextMode,
-                        availableWidth: availableWidth,
-                        shrinkProgress: 0.5
-                    )
-                    let endFrame = ModeSwitcherLayoutPolicy.activePillShrinkFrame(
-                        for: outgoingMode,
-                        nextMode: nextMode,
-                        availableWidth: availableWidth,
-                        shrinkProgress: 0
-                    )
-
-                    XCTAssertEqual(
-                        startFrame,
-                        ModeSwitcherLayoutPolicy.activePillFrame(for: outgoingMode, availableWidth: availableWidth)
-                    )
-                    XCTAssertEqual(
-                        endFrame,
-                        ModeSwitcherLayoutPolicy.inactiveStoneFrame(
-                            for: outgoingMode,
-                            activeMode: nextMode,
-                            availableWidth: availableWidth
-                        )
-                    )
-                    XCTAssertGreaterThan(halfwayFrame.width, endFrame.width)
-                    XCTAssertLessThan(halfwayFrame.width, startFrame.width)
-                    XCTAssertGreaterThanOrEqual(
-                        halfwayFrame.minX,
-                        min(startFrame.minX, endFrame.minX)
-                    )
-                    XCTAssertLessThanOrEqual(
-                        halfwayFrame.maxX,
-                        max(startFrame.maxX, endFrame.maxX)
-                    )
-                }
-            }
-        }
-    }
-
-    func testModeSwitcherAnimatesActivePillExpansionAboveStableStoneLayer() throws {
-        let source = try modeSwitcherSource()
-
-        XCTAssertTrue(source.contains("@State private var activePillExpansionProgress"))
-        XCTAssertTrue(source.contains("@State private var previousModeForActivePillExpansion"))
-        XCTAssertTrue(source.contains("@State private var outgoingActivePillMode"))
-        XCTAssertTrue(source.contains("@State private var outgoingPillShrinkProgress"))
-        XCTAssertTrue(source.contains("expansionProgress: activePillExpansionProgress"))
-        XCTAssertTrue(source.contains("previousMode: previousModeForActivePillExpansion"))
-        XCTAssertTrue(source.contains("shrinkProgress: outgoingPillShrinkProgress"))
-        XCTAssertTrue(source.contains("previousModeForActivePillExpansion = previousMode"))
-        XCTAssertTrue(source.contains("lastModeForActivePillExpansion = model.mode"))
-        XCTAssertTrue(source.contains("outgoingActivePillMode = previousMode"))
-        XCTAssertTrue(source.contains("DispatchQueue.main.asyncAfter"))
-        XCTAssertTrue(source.contains("DispatchQueue.main.async {\n            guard lastModeForActivePillExpansion == targetMode"))
-        XCTAssertTrue(source.contains("withAnimation(.easeOut(duration: ModeSwitcherLayoutPolicy.activePillTransitionDuration))"))
-        XCTAssertTrue(source.contains(".clipped()"))
-        XCTAssertTrue(source.contains(".zIndex(ModeSwitcherLayoutPolicy.activePillZIndex)"))
-        XCTAssertTrue(source.contains(".zIndex(ModeSwitcherLayoutPolicy.outgoingPillZIndex)"))
-        XCTAssertTrue(source.contains(".zIndex(ModeSwitcherLayoutPolicy.inactiveStoneZIndex)"))
-        XCTAssertTrue(source.contains(".onChange(of: model.mode)"))
-    }
-
-    func testSlidingActivePillStartsAtItsInactiveStoneSlot() {
-        for availableWidth in [CGFloat(496), 520, 760] {
-            for mode in LauncherMode.ordered {
-                let inactiveFrame = ModeSwitcherLayoutPolicy.inactiveStoneFrame(
-                    for: mode,
-                    availableWidth: availableWidth
-                )
-                let activeFrame = ModeSwitcherLayoutPolicy.activePillFrame(
-                    for: mode,
-                    availableWidth: availableWidth
-                )
-
-                XCTAssertEqual(activeFrame.minX, inactiveFrame.minX)
-                XCTAssertEqual(activeFrame.height, inactiveFrame.height)
-            }
-        }
-    }
-
-    func testInactiveStoneSlotsUseCompactModeOrder() {
-        for availableWidth in [CGFloat(496), 520, 760] {
-            let slotWidth = ModeSwitcherLayoutPolicy.inactiveStoneSlotWidth
-            let slotStride = slotWidth + ModeSwitcherLayoutPolicy.modeSwitcherSpacing
-
-            for (index, mode) in LauncherMode.ordered.enumerated() {
-                XCTAssertEqual(
-                    ModeSwitcherLayoutPolicy.inactiveStoneFrame(for: mode, availableWidth: availableWidth).minX,
-                    CGFloat(index) * slotStride
-                )
-                XCTAssertEqual(
-                    ModeSwitcherLayoutPolicy.inactiveStoneFrame(for: mode, availableWidth: availableWidth).width,
-                    slotWidth
-                )
-            }
-        }
-    }
-
-    func testInactiveStoneFramesStayOutsideActivePillFrame() {
-        for availableWidth in [CGFloat(496), 520, 760] {
-            for activeMode in LauncherMode.ordered {
-                let activeFrame = ModeSwitcherLayoutPolicy.activePillFrame(
-                    for: activeMode,
-                    availableWidth: availableWidth
-                )
-
-                for inactiveMode in LauncherMode.ordered where inactiveMode != activeMode {
-                    let inactiveFrame = ModeSwitcherLayoutPolicy.inactiveStoneFrame(
-                        for: inactiveMode,
-                        activeMode: activeMode,
-                        availableWidth: availableWidth
-                    )
-                    let gap = max(
-                        activeFrame.minX - inactiveFrame.maxX,
-                        inactiveFrame.minX - activeFrame.maxX
-                    )
-
-                    XCTAssertFalse(
-                        activeFrame.intersects(inactiveFrame),
-                        "\(inactiveMode) overlaps \(activeMode) active pill at \(availableWidth)"
-                    )
-                    XCTAssertGreaterThanOrEqual(gap, ModeSwitcherLayoutPolicy.modeSwitcherSpacing)
-                }
-            }
-        }
-    }
-
-    func testInactiveStoneFramesRespectActiveModeAreas() {
-        let availableWidth = CGFloat(760)
-
-        for activeMode in LauncherMode.ordered {
-            let activeIndex = LauncherMode.ordered.firstIndex(of: activeMode)!
-            let activeFrame = ModeSwitcherLayoutPolicy.activePillFrame(
-                for: activeMode,
-                availableWidth: availableWidth
-            )
-
-            for (modeIndex, mode) in LauncherMode.ordered.enumerated() where mode != activeMode {
-                let frame = ModeSwitcherLayoutPolicy.inactiveStoneFrame(
-                    for: mode,
-                    activeMode: activeMode,
-                    availableWidth: availableWidth
-                )
-
-                if modeIndex < activeIndex {
-                    XCTAssertEqual(
-                        frame,
-                        ModeSwitcherLayoutPolicy.inactiveStoneFrame(for: mode, availableWidth: availableWidth)
-                    )
-                } else {
-                    let trailingIndex = modeIndex - activeIndex - 1
-                    let expectedMinX = activeFrame.maxX
-                        + ModeSwitcherLayoutPolicy.modeSwitcherSpacing
-                        + CGFloat(trailingIndex)
-                            * (ModeSwitcherLayoutPolicy.inactiveStoneSlotWidth + ModeSwitcherLayoutPolicy.modeSwitcherSpacing)
-                    XCTAssertEqual(frame.minX, expectedMinX)
-                }
-            }
-        }
     }
 
     func testActiveTextPillOwnsForegroundLegibilityOutsideGlass() throws {
@@ -387,101 +182,4 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
             .appendingPathComponent("Sources/Bucky/UI/SwiftUI/ModeSwitcherView.swift")
         return try String(contentsOf: sourceURL, encoding: .utf8)
     }
-
-    private func assertActivePillExpandsFromLeadingStoneEdge(
-        mode: LauncherMode,
-        previousMode: LauncherMode,
-        availableWidth: CGFloat,
-        file: StaticString = #filePath,
-        line: UInt = #line
-    ) {
-        let finalFrame = ModeSwitcherLayoutPolicy.activePillFrame(
-            for: mode,
-            availableWidth: availableWidth
-        )
-        let sourceStoneFrame = ModeSwitcherLayoutPolicy.inactiveStoneFrame(
-            for: mode,
-            activeMode: previousMode,
-            availableWidth: availableWidth
-        )
-        let startFrame = ModeSwitcherLayoutPolicy.activePillFrame(
-            for: mode,
-            previousMode: previousMode,
-            availableWidth: availableWidth,
-            expansionProgress: 0
-        )
-        let halfwayFrame = ModeSwitcherLayoutPolicy.activePillFrame(
-            for: mode,
-            previousMode: previousMode,
-            availableWidth: availableWidth,
-            expansionProgress: 0.5
-        )
-
-        XCTAssertEqual(startFrame, sourceStoneFrame, file: file, line: line)
-        XCTAssertEqual(startFrame.minX, finalFrame.minX, file: file, line: line)
-        XCTAssertEqual(startFrame.width, ModeSwitcherLayoutPolicy.inactiveStoneSlotWidth, file: file, line: line)
-        XCTAssertEqual(halfwayFrame.minX, finalFrame.minX, file: file, line: line)
-        XCTAssertGreaterThan(halfwayFrame.width, startFrame.width, file: file, line: line)
-        XCTAssertLessThan(halfwayFrame.width, finalFrame.width, file: file, line: line)
-        XCTAssertEqual(
-            ModeSwitcherLayoutPolicy.activePillFrame(
-                for: mode,
-                previousMode: previousMode,
-                availableWidth: availableWidth,
-                expansionProgress: 1
-            ),
-            finalFrame,
-            file: file,
-            line: line
-        )
-    }
-
-    private func assertActivePillExpandsFromTrailingStoneEdge(
-        mode: LauncherMode,
-        previousMode: LauncherMode,
-        availableWidth: CGFloat,
-        file: StaticString = #filePath,
-        line: UInt = #line
-    ) {
-        let finalFrame = ModeSwitcherLayoutPolicy.activePillFrame(
-            for: mode,
-            availableWidth: availableWidth
-        )
-        let sourceStoneFrame = ModeSwitcherLayoutPolicy.inactiveStoneFrame(
-            for: mode,
-            activeMode: previousMode,
-            availableWidth: availableWidth
-        )
-        let startFrame = ModeSwitcherLayoutPolicy.activePillFrame(
-            for: mode,
-            previousMode: previousMode,
-            availableWidth: availableWidth,
-            expansionProgress: 0
-        )
-        let halfwayFrame = ModeSwitcherLayoutPolicy.activePillFrame(
-            for: mode,
-            previousMode: previousMode,
-            availableWidth: availableWidth,
-            expansionProgress: 0.5
-        )
-
-        XCTAssertEqual(startFrame, sourceStoneFrame, file: file, line: line)
-        XCTAssertEqual(startFrame.maxX, finalFrame.maxX, file: file, line: line)
-        XCTAssertEqual(startFrame.width, ModeSwitcherLayoutPolicy.inactiveStoneSlotWidth, file: file, line: line)
-        XCTAssertEqual(halfwayFrame.maxX, finalFrame.maxX, file: file, line: line)
-        XCTAssertGreaterThan(halfwayFrame.width, startFrame.width, file: file, line: line)
-        XCTAssertLessThan(halfwayFrame.width, finalFrame.width, file: file, line: line)
-        XCTAssertEqual(
-            ModeSwitcherLayoutPolicy.activePillFrame(
-                for: mode,
-                previousMode: previousMode,
-                availableWidth: availableWidth,
-                expansionProgress: 1
-            ),
-            finalFrame,
-            file: file,
-            line: line
-        )
-    }
-
 }
