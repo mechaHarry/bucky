@@ -449,7 +449,6 @@ struct LiquidGlassLauncherView: View {
             RoundedRectangle(cornerRadius: 30, style: .continuous)
                 .strokeBorder(LauncherVisualStyle.surfaceRim.opacity(0.30), lineWidth: 1)
         }
-        .shadow(color: .black.opacity(0.22), radius: 30, x: 0, y: 20)
         .padding(2)
     }
 

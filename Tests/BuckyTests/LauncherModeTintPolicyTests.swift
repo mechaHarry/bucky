@@ -39,6 +39,13 @@ final class LauncherModeTintPolicyTests: XCTestCase {
         XCTAssertTrue(launcher.contains("LauncherVisualStyle.windowModeTintOpacity"))
     }
 
+    func testLauncherBackdropDoesNotAddOuterWindowShadow() throws {
+        let launcher = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
+
+        XCTAssertTrue(launcher.contains("private var windowBackdrop: some View"))
+        XCTAssertFalse(launcher.contains(".shadow(color: .black.opacity(0.22), radius: 30, x: 0, y: 20)"))
+    }
+
     func testModeTintIsWiredToSelectionHighlightsAndFileIndicator() throws {
         let launcher = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
         let resultList = try source(named: "Sources/Bucky/UI/SwiftUI/LauncherResultListView.swift")
