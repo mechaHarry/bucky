@@ -610,7 +610,6 @@ private struct FileBrowserRow: View {
                         width: FileBrowserRowFocusIndicatorPolicy.activeIndicatorWidth,
                         height: FileBrowserRowFocusIndicatorPolicy.activeIndicatorHeight
                     )
-                    .shadow(color: selectionTint.opacity(0.5), radius: 5)
                     .padding(.leading, 6)
                     .allowsHitTesting(false)
             }

@@ -10,10 +10,25 @@ final class LauncherModeTintPolicyTests: XCTestCase {
     }
 
     func testCalculatorModeUsesContrastingIconInk() {
+        XCTAssertEqual(LauncherModeTintPolicy.tint(for: .applications).iconHex, 0x0B3D91)
         XCTAssertEqual(LauncherModeTintPolicy.tint(for: .calculator).iconHex, 0x3A2B00)
+        XCTAssertEqual(LauncherModeTintPolicy.tint(for: .dictionary).iconHex, 0x6E1977)
+        XCTAssertEqual(LauncherModeTintPolicy.tint(for: .files).iconHex, 0x7A0018)
+        XCTAssertNotEqual(
+            LauncherModeTintPolicy.tint(for: .applications).iconHex,
+            LauncherModeTintPolicy.tint(for: .applications).activeHex
+        )
         XCTAssertNotEqual(
             LauncherModeTintPolicy.tint(for: .calculator).iconHex,
             LauncherModeTintPolicy.tint(for: .calculator).activeHex
+        )
+        XCTAssertNotEqual(
+            LauncherModeTintPolicy.tint(for: .dictionary).iconHex,
+            LauncherModeTintPolicy.tint(for: .dictionary).activeHex
+        )
+        XCTAssertNotEqual(
+            LauncherModeTintPolicy.tint(for: .files).iconHex,
+            LauncherModeTintPolicy.tint(for: .files).activeHex
         )
     }
 
@@ -39,6 +54,7 @@ final class LauncherModeTintPolicyTests: XCTestCase {
 
         XCTAssertTrue(modeSwitcher.contains("LauncherModeTintPolicy.activeColor(for: mode)"))
         XCTAssertTrue(modeSwitcher.contains("LauncherModeTintPolicy.iconColor(for: mode)"))
+        XCTAssertTrue(modeSwitcher.contains("LauncherModeTintPolicy.iconColor(for: .files)"))
         XCTAssertTrue(modeSwitcher.contains("LauncherModeTintPolicy.inactiveOrbIconColor(for: mode)"))
         XCTAssertTrue(modeSwitcher.contains("TextInputPillGlassSurface(tint:"))
         XCTAssertTrue(modeSwitcher.contains(".tint(LauncherModeTintPolicy.inactiveOrbColor(for: mode))"))
@@ -71,7 +87,7 @@ final class LauncherModeTintPolicyTests: XCTestCase {
         XCTAssertTrue(resultList.contains("selectionTint.opacity(0.42)"))
         XCTAssertTrue(fileBrowser.contains("let selectionTint: Color"))
         XCTAssertTrue(fileBrowser.contains(".fill(selectionTint)"))
-        XCTAssertTrue(fileBrowser.contains(".shadow(color: selectionTint.opacity(0.5), radius: 5)"))
+        XCTAssertFalse(fileBrowser.contains(".shadow(color: selectionTint.opacity(0.5), radius: 5)"))
     }
 
     func testPillTooltipsIncludeCommandShortcutNumbers() throws {

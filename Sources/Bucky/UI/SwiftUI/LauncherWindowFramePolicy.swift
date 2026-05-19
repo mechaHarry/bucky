@@ -36,7 +36,7 @@ struct LauncherWindowFramePolicy {
 }
 
 struct LauncherWindowDragPolicy {
-    static let isMovableByWindowBackground = false
+    static let isMovableByWindowBackground = true
 }
 
 struct FileBrowserPreviewWindowFramePolicy {

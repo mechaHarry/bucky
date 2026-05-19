@@ -80,6 +80,7 @@ struct ModeSwitcherView: View {
                     path: displayedFileURL.path
                 )
                 let modeTint = LauncherModeTintPolicy.activeColor(for: mode)
+                let iconTint = LauncherModeTintPolicy.iconColor(for: .files)
 
                 HStack(spacing: ModeSwitcherLayoutPolicy.filesContentSpacing) {
                     Button {
@@ -88,7 +89,7 @@ struct ModeSwitcherView: View {
                         HStack(spacing: ModeSwitcherLayoutPolicy.filesPathIconSpacing) {
                             Image(systemName: symbol(for: mode))
                                 .font(.system(size: 18, weight: .semibold))
-                                .foregroundStyle(modeTint)
+                                .foregroundStyle(iconTint)
                                 .frame(width: ModeSwitcherLayoutPolicy.filesPathIconWidth)
 
                             FadeMarqueeText(
