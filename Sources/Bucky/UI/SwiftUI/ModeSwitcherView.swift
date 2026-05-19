@@ -183,7 +183,7 @@ struct ModeSwitcherView: View {
 struct ModeSwitcherLayoutPolicy {
     static let activePillHeight: CGFloat = 48
     static var launcherHeaderTopInset: CGFloat { activePillHeight / 12 }
-    static var launcherHeaderHorizontalInset: CGFloat { activePillHeight / 24 }
+    static var launcherHeaderHorizontalInset: CGFloat { 0 }
     static var launcherHeaderBottomInset: CGFloat { activePillHeight / 24 }
     static var activeTextPillHorizontalInset: CGFloat { activePillHeight / 3 }
     static var activeTextPillVerticalInset: CGFloat { activePillHeight * 3 / 16 }

@@ -74,7 +74,6 @@ struct FileBrowserView: View {
                 .opacity(model.focusState == .pinnedItems ? 0.46 : 1)
                 .blur(radius: model.focusState == .pinnedItems ? 2.0 : 0)
         }
-        .padding(10)
         .overlay {
             if isTransferPending {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -125,12 +124,6 @@ struct FileBrowserView: View {
             }
 
             Spacer(minLength: 0)
-        }
-        .padding(12)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.22), lineWidth: 1)
         }
     }
 
@@ -185,13 +178,7 @@ struct FileBrowserView: View {
 
             Spacer(minLength: 0)
         }
-        .padding(10)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.22), lineWidth: 1)
-        }
     }
 
     private var actionOverlay: some View {

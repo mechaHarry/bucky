@@ -87,6 +87,7 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
             ModeSwitcherLayoutPolicy.launcherHeaderTopInset,
             ModeSwitcherLayoutPolicy.activePillHeight / 12
         )
+        XCTAssertEqual(ModeSwitcherLayoutPolicy.launcherHeaderHorizontalInset, 0)
     }
 
     func testTextInputModesUseMarginsInsteadOfVerticalOffsets() throws {
