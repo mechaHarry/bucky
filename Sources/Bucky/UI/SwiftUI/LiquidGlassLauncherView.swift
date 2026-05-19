@@ -268,7 +268,7 @@ struct LiquidGlassLauncherView: View {
         ) {
             HStack(spacing: 14) {
                 HStack(spacing: 14) {
-                    ApplicationIconView(url: item.url, animationTiming: model.animationTiming)
+                    ApplicationIconView(url: item.url)
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text(item.title)
@@ -489,18 +489,21 @@ struct LiquidGlassLauncherView: View {
 
     private func preloadApplicationIcons() {
         guard model.mode == .applications, model.isPresented else { return }
-        let urls = Array(model.filteredItems.prefix(18).map(\.url))
+        let urls = AppIconPreloadPolicy.preloadURLs(for: model.filteredItems)
         guard !urls.isEmpty else { return }
 
         iconPreloadTask?.cancel()
         iconPreloadTask = Task(priority: .utility) {
-            try? await Task.sleep(nanoseconds: 120_000_000)
+            try? await Task.sleep(nanoseconds: AppIconPreloadPolicy.initialDelayNanoseconds)
             guard !Task.isCancelled else { return }
 
             for (index, url) in urls.enumerated() {
                 if Task.isCancelled { return }
                 _ = await AppIconCache.shared.icon(for: url)
-                if index % 4 == 3 {
+                if index == AppIconPreloadPolicy.initialVisibleLimit - 1 {
+                    try? await Task.sleep(nanoseconds: AppIconPreloadPolicy.tailDelayNanoseconds)
+                }
+                if AppIconPreloadPolicy.shouldYield(afterLoadingItemAt: index) {
                     await Task.yield()
                 }
             }
@@ -610,7 +613,6 @@ private extension View {
 @available(macOS 26.0, *)
 private struct ApplicationIconView: View {
     let url: URL
-    let animationTiming: LauncherAnimationTiming
 
     @State private var icon: NSImage?
 
@@ -643,9 +645,24 @@ private struct ApplicationIconView: View {
         let loadedIcon = await AppIconCache.shared.icon(for: url)
 
         guard !Task.isCancelled else { return }
-        withAnimation(animationTiming.animation(duration: 0.12)) {
-            icon = loadedIcon
-        }
+        icon = loadedIcon
+    }
+}
+
+@available(macOS 26.0, *)
+struct AppIconPreloadPolicy {
+    static let initialVisibleLimit = 24
+    static let preloadLimit = 512
+    static let initialDelayNanoseconds: UInt64 = 40_000_000
+    static let tailDelayNanoseconds: UInt64 = 140_000_000
+    static let yieldStride = 16
+
+    static func preloadURLs(for items: [LaunchItem]) -> [URL] {
+        Array(items.prefix(preloadLimit).map(\.url))
+    }
+
+    static func shouldYield(afterLoadingItemAt index: Int) -> Bool {
+        (index + 1) % yieldStride == 0
     }
 }
 
@@ -660,8 +677,8 @@ private actor AppIconCache {
     private let maxConcurrentLoads = 2
 
     private init() {
-        cache.countLimit = 192
-        cache.totalCostLimit = 64 * 1024 * 1024
+        cache.countLimit = AppIconPreloadPolicy.preloadLimit
+        cache.totalCostLimit = 128 * 1024 * 1024
     }
 
     func cachedIcon(for url: URL) -> NSImage? {

@@ -32,6 +32,28 @@ final class LiquidGlassLauncherFilterTests: XCTestCase {
         ])
     }
 
+    func testApplicationIconPreloadPolicyWarmsBeyondFirstViewport() {
+        let items = (0..<80).map { index in
+            launchItem(title: "App \(index)", searchText: "app \(index)")
+        }
+
+        let urls = AppIconPreloadPolicy.preloadURLs(for: items)
+
+        XCTAssertEqual(urls.count, 80)
+        XCTAssertEqual(urls.last?.lastPathComponent, "App 79.app")
+        XCTAssertGreaterThan(AppIconPreloadPolicy.preloadLimit, AppIconPreloadPolicy.initialVisibleLimit)
+    }
+
+    func testApplicationIconPreloadPolicyCapsLargeResultSets() {
+        let items = (0..<600).map { index in
+            launchItem(title: "App \(index)", searchText: "app \(index)")
+        }
+
+        XCTAssertEqual(AppIconPreloadPolicy.preloadURLs(for: items).count, AppIconPreloadPolicy.preloadLimit)
+        XCTAssertTrue(AppIconPreloadPolicy.shouldYield(afterLoadingItemAt: 15))
+        XCTAssertFalse(AppIconPreloadPolicy.shouldYield(afterLoadingItemAt: 14))
+    }
+
     private func launchItem(title: String, searchText: String) -> LaunchItem {
         LaunchItem(
             title: title,

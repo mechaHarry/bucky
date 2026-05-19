@@ -444,6 +444,31 @@ final class LauncherModeRoutingTests: XCTestCase {
 
     @MainActor
     @available(macOS 26.0, *)
+    func testDictionaryLookupIsDeferredAndPublishesOnlyLatestSnapshot() {
+        let lookup = RecordingDictionaryLookup()
+        let model = makeDictionaryLauncherModel(
+            dictionaryHistoryStore: DictionaryHistoryStore(fileURL: temporaryDictionaryHistoryFileURL()),
+            dictionaryLookup: { query in lookup.results(for: query) }
+        )
+
+        model.show(mode: .dictionary)
+        model.query = "app"
+        model.queryDidChange()
+
+        XCTAssertEqual(lookup.queries, [])
+        XCTAssertEqual(model.toolItems, [])
+
+        model.query = "apple"
+        model.queryDidChange()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.18))
+
+        XCTAssertEqual(lookup.queries, ["apple"])
+        XCTAssertEqual(model.toolItems.map(\.title), ["apple"])
+        XCTAssertEqual(model.toolItems.map(\.subtitle), ["Definition for apple"])
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
     func testCalculatorLiveResultSelectsAndScrollsToTopRowWhileTyping() {
         let model = LiquidGlassLauncherModel(
             settingsStore: SettingsStore(),
@@ -619,7 +644,8 @@ final class LauncherModeRoutingTests: XCTestCase {
     @MainActor
     @available(macOS 26.0, *)
     private func makeDictionaryLauncherModel(
-        dictionaryHistoryStore: DictionaryHistoryStore
+        dictionaryHistoryStore: DictionaryHistoryStore,
+        dictionaryLookup: @escaping @Sendable (String) -> [DictionaryResult] = { DictionaryLookup.results(for: $0) }
     ) -> LiquidGlassLauncherModel {
         LiquidGlassLauncherModel(
             settingsStore: SettingsStore(),
@@ -627,6 +653,7 @@ final class LauncherModeRoutingTests: XCTestCase {
             exclusionStore: ExclusionStore(),
             calculationHistoryStore: CalculationHistoryStore(),
             dictionaryHistoryStore: dictionaryHistoryStore,
+            dictionaryLookup: dictionaryLookup,
             dictionaryOpenHandler: { _ in },
             fileBrowserModel: FileBrowserModel(
                 fileSystem: StubFileSystemClient(home: URL(fileURLWithPath: "/Users/test"), entriesByDirectory: [:]),
@@ -634,6 +661,30 @@ final class LauncherModeRoutingTests: XCTestCase {
                 directoryStream: ImmediateDirectoryStream()
             )
         )
+    }
+
+    private final class RecordingDictionaryLookup: @unchecked Sendable {
+        private let lock = NSLock()
+        private var recordedQueries: [String] = []
+
+        var queries: [String] {
+            lock.lock()
+            defer { lock.unlock() }
+            return recordedQueries
+        }
+
+        func results(for query: String) -> [DictionaryResult] {
+            lock.lock()
+            recordedQueries.append(query)
+            lock.unlock()
+
+            return [
+                DictionaryResult(
+                    term: query,
+                    definition: "Definition for \(query)"
+                )
+            ]
+        }
     }
 
     private func temporaryDictionaryHistoryFileURL() -> URL {
