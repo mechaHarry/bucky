@@ -9,6 +9,14 @@ final class LauncherModeTintPolicyTests: XCTestCase {
         XCTAssertEqual(LauncherModeTintPolicy.tint(for: .files).activeHex, 0xFF0130)
     }
 
+    func testCalculatorModeUsesContrastingIconInk() {
+        XCTAssertEqual(LauncherModeTintPolicy.tint(for: .calculator).iconHex, 0x3A2B00)
+        XCTAssertNotEqual(
+            LauncherModeTintPolicy.tint(for: .calculator).iconHex,
+            LauncherModeTintPolicy.tint(for: .calculator).activeHex
+        )
+    }
+
     func testModeTintPaletteUsesDarkPanelCompanions() {
         XCTAssertEqual(LauncherModeTintPolicy.tint(for: .applications).panelHex, 0x08578A)
         XCTAssertEqual(LauncherModeTintPolicy.tint(for: .calculator).panelHex, 0xFFC239)
@@ -30,6 +38,7 @@ final class LauncherModeTintPolicyTests: XCTestCase {
         let launcher = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
 
         XCTAssertTrue(modeSwitcher.contains("LauncherModeTintPolicy.activeColor(for: mode)"))
+        XCTAssertTrue(modeSwitcher.contains("LauncherModeTintPolicy.iconColor(for: mode)"))
         XCTAssertTrue(modeSwitcher.contains("LauncherModeTintPolicy.inactiveOrbIconColor(for: mode)"))
         XCTAssertTrue(modeSwitcher.contains("TextInputPillGlassSurface(tint:"))
         XCTAssertTrue(modeSwitcher.contains(".tint(LauncherModeTintPolicy.inactiveOrbColor(for: mode))"))
@@ -73,6 +82,13 @@ final class LauncherModeTintPolicyTests: XCTestCase {
         XCTAssertTrue(modeSwitcher.contains("Command+2"))
         XCTAssertTrue(modeSwitcher.contains("Command+3"))
         XCTAssertTrue(modeSwitcher.contains("Command+4"))
+    }
+
+    func testCalculatorModeUsesNumberIconInsteadOfFunctionIcon() throws {
+        let modeSwitcher = try source(named: "Sources/Bucky/UI/SwiftUI/ModeSwitcherView.swift")
+
+        XCTAssertTrue(modeSwitcher.contains("return \"123.rectangle.fill\""))
+        XCTAssertFalse(modeSwitcher.contains("return \"function\""))
     }
 
     private func source(named path: String) throws -> String {
