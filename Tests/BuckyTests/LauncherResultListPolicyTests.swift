@@ -2,9 +2,9 @@ import XCTest
 @testable import Bucky
 
 final class LauncherResultListPolicyTests: XCTestCase {
-    func testSharedResultListUsesAppsSpacingAndContentMargins() {
+    func testSharedResultListUsesAppsSpacingAndMainPanelAlignment() {
         XCTAssertEqual(LauncherResultListLayoutPolicy.rowSpacing, 5)
-        XCTAssertEqual(LauncherResultListLayoutPolicy.contentMargin, 10)
+        XCTAssertEqual(LauncherResultListLayoutPolicy.contentMargin, 0)
         XCTAssertEqual(LauncherResultListLayoutPolicy.rowCornerRadius, 18)
     }
 

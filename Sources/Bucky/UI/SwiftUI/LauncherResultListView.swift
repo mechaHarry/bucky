@@ -2,7 +2,7 @@ import SwiftUI
 
 struct LauncherResultListLayoutPolicy {
     static let rowSpacing: CGFloat = 5
-    static let contentMargin: CGFloat = 10
+    static let contentMargin: CGFloat = 0
     static let rowCornerRadius: CGFloat = 18
     static let rowSelectionAnimationSeconds = 0.18
     static let rowReconstructionAnimationSeconds = 0.18
