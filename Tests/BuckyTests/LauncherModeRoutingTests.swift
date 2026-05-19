@@ -34,6 +34,13 @@ final class LauncherModeRoutingTests: XCTestCase {
         XCTAssertFalse(LauncherMode.files.acceptsTextInput)
     }
 
+    @available(macOS 26.0, *)
+    func testNearestSelectionScrollTracksImmediatelyForKeyRepeat() {
+        XCTAssertFalse(SelectionScrollAnimationPolicy.shouldAnimate(anchor: .nearest))
+        XCTAssertTrue(SelectionScrollAnimationPolicy.shouldAnimate(anchor: .top))
+        XCTAssertTrue(SelectionScrollAnimationPolicy.shouldAnimate(anchor: .bottom))
+    }
+
     func testFilesRenameFocusDoesNotRouteAlphaNumericKeysAwayFromTextField() {
         XCTAssertTrue(LauncherKeyRoutingPolicy.shouldRouteAlphaNumeric(
             mode: .files,
