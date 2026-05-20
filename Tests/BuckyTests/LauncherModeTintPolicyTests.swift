@@ -79,7 +79,7 @@ final class LauncherModeTintPolicyTests: XCTestCase {
 
         XCTAssertTrue(launcher.contains("resultsPane"))
         XCTAssertTrue(launcher.contains("ZStack {\n            resultsPaneBackdrop"))
-        XCTAssertFalse(launcher.contains("resultsPaneEdgeVeil"))
+        XCTAssertTrue(launcher.contains("resultsPaneEdgeVeil"))
         XCTAssertFalse(launcher.contains("headerGlassBackdrop"))
         XCTAssertFalse(launcher.contains(".background {\n                header"))
     }
