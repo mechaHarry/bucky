@@ -62,16 +62,19 @@ struct ModeSwitcherView: View {
             )
         case .files:
             GeometryReader { proxy in
+                let displayedPath = displayedFilePath
                 let pathWidth = ModeSwitcherLayoutPolicy.filesPathTextWidth(
                     in: proxy.size.width,
-                    path: displayedFileURL.path
+                    path: displayedPath
                 )
                 let modeTint = LauncherModeTintPolicy.activeColor(for: mode)
                 let iconTint = LauncherModeTintPolicy.iconColor(for: .files, colorScheme: colorScheme)
 
                 HStack(spacing: ModeSwitcherLayoutPolicy.filesContentSpacing) {
                     Button {
-                        try? MacFileServices().copyPathsToPasteboard([displayedFileURL])
+                        if let displayedFileURL {
+                            try? MacFileServices().copyPathsToPasteboard([displayedFileURL])
+                        }
                     } label: {
                         HStack(spacing: ModeSwitcherLayoutPolicy.filesPathIconSpacing) {
                             Image(systemName: symbol(for: mode))
@@ -80,7 +83,7 @@ struct ModeSwitcherView: View {
                                 .frame(width: ModeSwitcherLayoutPolicy.filesPathIconWidth)
 
                             FadeMarqueeText(
-                                text: displayedFileURL.path,
+                                text: displayedPath,
                                 font: .system(size: 16, weight: .semibold),
                                 constrainedWidth: pathWidth
                             )
@@ -116,18 +119,25 @@ struct ModeSwitcherView: View {
         }
     }
 
-    private var displayedFileURL: URL {
-        if let selectedEntry = model.fileBrowserModel.selectedEntry,
+    private var displayedFileURL: URL? {
+        guard let fileBrowserModel = model.activeFileBrowserModel else {
+            return nil
+        }
+        if let selectedEntry = fileBrowserModel.selectedEntry,
            selectedEntry.kind != .directory {
             return selectedEntry.url
         }
-        return model.fileBrowserModel.currentDirectory
+        return fileBrowserModel.currentDirectory
+    }
+
+    private var displayedFilePath: String {
+        displayedFileURL?.path ?? "Loading files"
     }
 
     private var sortMenu: some View {
         Picker("Sort", selection: Binding(
-            get: { model.fileBrowserModel.sort },
-            set: { model.fileBrowserModel.setSort($0) }
+            get: { model.activeFileBrowserModel?.sort ?? .name },
+            set: { model.activeFileBrowserModel?.setSort($0) }
         )) {
             ForEach(FileBrowserSort.allCases, id: \.self) { sort in
                 Text(sort.displayName).tag(sort)

@@ -295,8 +295,8 @@ final class LauncherModeRoutingTests: XCTestCase {
 
         XCTAssertTrue(source.contains("transaction.disablesAnimations = true"))
         XCTAssertTrue(source.contains("withTransaction(transaction) {\n                model.isPresented = true\n            }\n            finishShow(transitionID: visibilityTransitionID)"))
-        XCTAssertTrue(source.contains("scheduleApplicationReindexIfNeeded(mode: mode)"))
-        XCTAssertTrue(source.contains("guard self.visibilityTransitionID == transitionID,\n                      self.visibilityState == .shown"))
+        XCTAssertFalse(source.contains("scheduleApplicationReindexIfNeeded"))
+        XCTAssertTrue(source.contains("startApplicationIndexSourceStream()"))
         XCTAssertFalse(source.contains("withAnimation(presentationAnimation, completionCriteria: .removed) {\n                model.isPresented = true"))
         XCTAssertFalse(source.contains("if mode == .applications {\n            DispatchQueue.main.async"))
     }
@@ -320,7 +320,54 @@ final class LauncherModeRoutingTests: XCTestCase {
         let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherModel.swift")
 
         XCTAssertFalse(source.contains("calculationHistoryStore.load()\n            dictionaryHistoryStore.load()"))
-        XCTAssertTrue(source.contains("case .calculator, .dictionary:\n            applyToolsResults()"))
+        XCTAssertTrue(source.contains("scheduleModeSnapshot(for: nextMode"))
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testSwitchingToApplicationsDoesNotSynchronouslyRequestReindex() {
+        let model = LiquidGlassLauncherModel(
+            settingsStore: SettingsStore(),
+            inclusionStore: InclusionStore(),
+            exclusionStore: ExclusionStore(),
+            calculationHistoryStore: CalculationHistoryStore()
+        )
+        var reindexCount = 0
+        model.reindexAction = { reindexCount += 1 }
+
+        model.show(mode: .calculator)
+        _ = model.handle(command: .switchMode(.applications))
+
+        XCTAssertEqual(model.mode, .applications)
+        XCTAssertEqual(reindexCount, 0)
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testModeSwitchPublishesModeBeforeDeferredSnapshotWork() {
+        var activationCount = 0
+        let model = LiquidGlassLauncherModel(
+            settingsStore: SettingsStore(),
+            inclusionStore: InclusionStore(),
+            exclusionStore: ExclusionStore(),
+            calculationHistoryStore: CalculationHistoryStore(),
+            fileBrowserModelFactory: {
+                activationCount += 1
+                return FileBrowserModel(
+                    fileSystem: StubFileSystemClient(home: URL(fileURLWithPath: "/Users/test"), entriesByDirectory: [:]),
+                    store: InMemoryFileBrowserStore(state: .defaultValue),
+                    directoryStream: ImmediateDirectoryStream()
+                )
+            }
+        )
+
+        model.show(mode: .applications)
+        XCTAssertEqual(activationCount, 0)
+
+        _ = model.handle(command: .switchMode(.files))
+
+        XCTAssertEqual(model.mode, .files)
+        XCTAssertEqual(activationCount, 0)
     }
 
     @available(macOS 26.0, *)

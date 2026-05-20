@@ -103,7 +103,8 @@ final class LauncherModeTintPolicyTests: XCTestCase {
         let fileBrowser = try source(named: "Sources/Bucky/UI/SwiftUI/FileBrowserView.swift")
 
         XCTAssertTrue(launcher.contains("selectionTint: LauncherModeTintPolicy.selectionColor(for: model.mode)"))
-        XCTAssertTrue(launcher.contains("FileBrowserView(\n                model: model.fileBrowserModel,\n                selectionTint: LauncherModeTintPolicy.selectionColor(for: model.mode)\n            )"))
+        XCTAssertTrue(launcher.contains("if let fileBrowserModel = model.activeFileBrowserModel"))
+        XCTAssertTrue(launcher.contains("FileBrowserView(\n                    model: fileBrowserModel,\n                    selectionTint: LauncherModeTintPolicy.selectionColor(for: model.mode)\n                )"))
         XCTAssertTrue(resultList.contains("let selectionTint: Color"))
         XCTAssertTrue(resultList.contains("tint: selectionTint,"))
         XCTAssertTrue(resultList.contains("selectionTint.opacity(0.42)"))
