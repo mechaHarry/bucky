@@ -76,6 +76,7 @@ final class LauncherModeTintPolicyTests: XCTestCase {
         XCTAssertFalse(launcher.contains(".clipShape(launcherOuterShape)"))
         XCTAssertFalse(launcher.contains("headerGlassBackdrop"))
         XCTAssertTrue(launcher.contains("static let windowCornerRadius: CGFloat = 30"))
+        XCTAssertTrue(launcher.contains(".padding(LauncherWindowFramePolicy.shadowBleed)"))
         XCTAssertFalse(launcher.contains(".shadow(color: .black.opacity(0.22), radius: 30, x: 0, y: 20)"))
     }
 

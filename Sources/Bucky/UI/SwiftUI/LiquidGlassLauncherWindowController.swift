@@ -35,7 +35,12 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             dictionaryHistoryStore: dictionaryHistoryStore
         )
         window = LiquidGlassWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 760, height: 460),
+            contentRect: NSRect(
+                x: 0,
+                y: 0,
+                width: LauncherWindowFramePolicy.defaultSize.width,
+                height: LauncherWindowFramePolicy.defaultSize.height
+            ),
             styleMask: [.borderless, .resizable],
             backing: .buffered,
             defer: false
@@ -165,7 +170,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         window.backgroundColor = .clear
         window.hasShadow = false
         window.isMovableByWindowBackground = LauncherWindowDragPolicy.isMovableByWindowBackground
-        window.minSize = NSSize(width: 520, height: 340)
+        window.minSize = LauncherWindowFramePolicy.minimumSize
         window.delegate = self
         window.commandHandler = { [weak self] command in
             self?.handleLauncherCommand(command) ?? false

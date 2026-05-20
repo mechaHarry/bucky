@@ -68,6 +68,7 @@ struct LiquidGlassLauncherView: View {
         .padding(10)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
+        .padding(LauncherWindowFramePolicy.shadowBleed)
     }
 
     private func synchronizeSearchFocus() {

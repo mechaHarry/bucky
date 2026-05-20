@@ -248,7 +248,7 @@ final class LauncherModeRoutingTests: XCTestCase {
             visibleFrame: visibleFrame
         )
 
-        XCTAssertEqual(frame.size, CGSize(width: 760, height: 460))
+        XCTAssertEqual(frame.size, LauncherWindowFramePolicy.defaultSize)
         XCTAssertTrue(visibleFrame.contains(frame))
     }
 
@@ -281,7 +281,7 @@ final class LauncherModeRoutingTests: XCTestCase {
     }
 
     @available(macOS 26.0, *)
-    func testDefaultWindowFrameKeepsBaselineLauncherSize() {
+    func testDefaultWindowFrameAddsInvisibleShadowBleedAroundVisualLauncherSize() {
         let visibleFrame = CGRect(x: 0, y: 0, width: 1_440, height: 900)
         let frame = LauncherWindowFramePolicy.frame(
             mode: .applications,
@@ -289,7 +289,16 @@ final class LauncherModeRoutingTests: XCTestCase {
             visibleFrame: visibleFrame
         )
 
-        XCTAssertEqual(frame.size, CGSize(width: 760, height: 460))
+        XCTAssertEqual(LauncherWindowFramePolicy.visualContentSize, CGSize(width: 760, height: 460))
+        XCTAssertGreaterThan(LauncherWindowFramePolicy.shadowBleed, 0)
+        XCTAssertEqual(frame.size, LauncherWindowFramePolicy.defaultSize)
+        XCTAssertEqual(
+            frame.size,
+            CGSize(
+                width: LauncherWindowFramePolicy.visualContentSize.width + LauncherWindowFramePolicy.shadowBleed * 2,
+                height: LauncherWindowFramePolicy.visualContentSize.height + LauncherWindowFramePolicy.shadowBleed * 2
+            )
+        )
     }
 
     @available(macOS 26.0, *)
