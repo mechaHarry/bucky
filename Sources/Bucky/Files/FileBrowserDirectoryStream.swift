@@ -9,6 +9,17 @@ protocol FileBrowserDirectoryStreaming {
     )
 }
 
+protocol FileBrowserDirectoryObserving: AnyObject {
+    func observe(
+        directory: URL,
+        onChange: @escaping @MainActor () -> Void
+    ) -> FileBrowserDirectoryObservation?
+}
+
+protocol FileBrowserDirectoryObservation: AnyObject {
+    func cancel()
+}
+
 @MainActor
 final class FileBrowserDirectoryStream: FileBrowserDirectoryStreaming {
     private let fileSystem: FileSystemClientProtocol
