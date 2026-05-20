@@ -14,7 +14,7 @@ final class LauncherResultListPolicyTests: XCTestCase {
     func testSharedResultListKeepsScrollContentOutOfHeaderWhileGivingShadowsAir() throws {
         let source = try source(named: "Sources/Bucky/UI/SwiftUI/LauncherResultListView.swift")
 
-        XCTAssertTrue(source.contains(".scrollClipDisabled(true)"))
+        XCTAssertFalse(source.contains(".scrollClipDisabled(true)"))
         XCTAssertTrue(source.contains(".contentMargins(.horizontal, LauncherResultListLayoutPolicy.horizontalShadowBleed"))
         XCTAssertTrue(source.contains(".contentMargins(.vertical, LauncherResultListLayoutPolicy.verticalShadowClearance"))
         XCTAssertTrue(source.contains(".padding(.horizontal, -LauncherResultListLayoutPolicy.horizontalShadowBleed)"))
@@ -26,9 +26,18 @@ final class LauncherResultListPolicyTests: XCTestCase {
 
         XCTAssertFalse(source.contains(".mask(alignment: .center)"))
         XCTAssertFalse(source.contains("resultListVerticalEdgeMask"))
-        XCTAssertTrue(source.contains(".overlay(alignment: .center)"))
-        XCTAssertTrue(source.contains("resultListVerticalEdgeFog"))
-        XCTAssertTrue(source.contains("resultListVerticalEdgeMaterialFog"))
+        XCTAssertFalse(source.contains("resultListVerticalEdgeFog"))
+        XCTAssertFalse(source.contains("resultListVerticalEdgeMaterialFog"))
+    }
+
+    func testResultsPaneOwnsMaterialEdgeVeilAtPaneBoundary() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
+
+        XCTAssertTrue(source.contains("resultsPaneEdgeVeil"))
+        XCTAssertTrue(source.contains("resultsPaneEdgeMaterialVeil"))
+        XCTAssertTrue(source.contains("ZStack {\n            resultsPaneBackdrop"))
+        XCTAssertTrue(source.contains("            resultsPaneEdgeVeil\n        }"))
+        XCTAssertTrue(source.contains(".clipShape(resultsPaneShape)"))
         XCTAssertTrue(source.contains(".fill(.regularMaterial)"))
         XCTAssertTrue(source.contains("LauncherResultListLayoutPolicy.verticalEdgeFadeLength"))
         XCTAssertTrue(source.contains(".allowsHitTesting(false)"))

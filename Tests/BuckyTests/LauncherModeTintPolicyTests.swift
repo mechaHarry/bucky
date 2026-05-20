@@ -74,7 +74,8 @@ final class LauncherModeTintPolicyTests: XCTestCase {
         let launcher = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
 
         XCTAssertTrue(launcher.contains("resultsPane"))
-        XCTAssertTrue(launcher.contains(".background {\n                resultsPaneBackdrop\n            }"))
+        XCTAssertTrue(launcher.contains("ZStack {\n            resultsPaneBackdrop"))
+        XCTAssertTrue(launcher.contains("resultsPaneEdgeVeil"))
         XCTAssertFalse(launcher.contains("headerGlassBackdrop"))
         XCTAssertFalse(launcher.contains(".background {\n                header"))
     }

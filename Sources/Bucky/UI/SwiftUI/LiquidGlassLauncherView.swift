@@ -90,13 +90,52 @@ struct LiquidGlassLauncherView: View {
     }
 
     private var resultsPane: some View {
-        results
-            .padding(LauncherVisualStyle.resultsPaneContentInset)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background {
-                resultsPaneBackdrop
+        ZStack {
+            resultsPaneBackdrop
+
+            results
+                .padding(LauncherVisualStyle.resultsPaneContentInset)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipShape(resultsPaneShape)
+
+            resultsPaneEdgeVeil
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(resultsPaneShape)
+    }
+
+    private var resultsPaneEdgeVeil: some View {
+        GeometryReader { proxy in
+            let height = max(proxy.size.height, 1)
+            let fadeLength = min(LauncherResultListLayoutPolicy.verticalEdgeFadeLength, height / 2)
+
+            VStack(spacing: 0) {
+                resultsPaneEdgeMaterialVeil(startOpacity: 0.82, endOpacity: 0)
+                    .frame(height: fadeLength)
+
+                Spacer(minLength: 0)
+
+                resultsPaneEdgeMaterialVeil(startOpacity: 0, endOpacity: 0.82)
+                    .frame(height: fadeLength)
             }
-            .contentShape(resultsPaneShape)
+        }
+        .clipShape(resultsPaneShape)
+        .allowsHitTesting(false)
+    }
+
+    private func resultsPaneEdgeMaterialVeil(startOpacity: Double, endOpacity: Double) -> some View {
+        Rectangle()
+            .fill(.regularMaterial)
+            .mask {
+                LinearGradient(
+                    colors: [
+                        Color.black.opacity(startOpacity),
+                        Color.black.opacity(endOpacity)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
     }
 
     private var resultsPaneBackdrop: some View {
