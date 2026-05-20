@@ -2,13 +2,13 @@ import SwiftUI
 
 struct LauncherResultListLayoutPolicy {
     static let rowSpacing: CGFloat = 14
-    static let contentMargin: CGFloat = 0
-    static let horizontalShadowBleed: CGFloat = 24
+    static let contentMargin: CGFloat = 12
+    static let horizontalShadowBleed: CGFloat = contentMargin
     static let verticalShadowClearance: CGFloat = 20
     static let verticalEdgeFadeLength: CGFloat = 28
     static let rowCornerRadius: CGFloat = 18
-    static let rowSelectionAnimationSeconds = 0.18
-    static let rowReconstructionAnimationSeconds = 0.18
+    static let rowSelectionAnimationSeconds = 0.10
+    static let rowReconstructionAnimationSeconds = 0.10
 }
 
 @available(macOS 26.0, *)
@@ -41,7 +41,7 @@ struct LauncherResultList<RowID: Hashable, Content: View>: View {
         ScrollView(.vertical, showsIndicators: false) {
             scrollContent
         }
-        .contentMargins(.horizontal, LauncherResultListLayoutPolicy.horizontalShadowBleed, for: .scrollContent)
+        .contentMargins(.horizontal, LauncherResultListLayoutPolicy.contentMargin, for: .scrollContent)
         .contentMargins(.vertical, LauncherResultListLayoutPolicy.verticalShadowClearance, for: .scrollContent)
         .scrollPosition(id: $scrollTargetID, anchor: scrollTargetAnchor)
         .scrollIndicators(.hidden)

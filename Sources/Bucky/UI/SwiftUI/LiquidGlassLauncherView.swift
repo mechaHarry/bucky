@@ -6,26 +6,21 @@ struct LiquidGlassLauncherView: View {
     @ObservedObject var model: LiquidGlassLauncherModel
     @FocusState private var isSearchFocused: Bool
     @Namespace private var selectionGlassNamespace
-    @Namespace private var headerGlassNamespace
     @State private var handledSelectionScrollRequestID = 0
     @State private var iconPreloadTask: Task<Void, Never>?
     @State private var scrollTargetID: ResultRowID?
     @State private var scrollTargetAnchor: UnitPoint?
 
     private var resultUpdateAnimation: Animation {
-        model.animationTiming.animation(duration: 0.22)
+        model.animationTiming.animation(duration: 0.08)
     }
 
     private var selectionScrollAnimation: Animation {
-        model.animationTiming.animation(duration: 0.16)
+        model.animationTiming.animation(duration: 0.08)
     }
 
     private var toolSnapshotUpdateAnimation: Animation {
-        model.animationTiming.animation(duration: 0.14)
-    }
-
-    private var headerControlAnimation: Animation {
-        model.animationTiming.animation(duration: 0.18)
+        model.animationTiming.animation(duration: 0.08)
     }
 
     var body: some View {
@@ -33,7 +28,6 @@ struct LiquidGlassLauncherView: View {
             if model.isPresented {
                 launcherSurface
                     .modifier(LauncherWindowFocusVisualModifier(isKeyWindow: model.isWindowKey))
-                    .glassEffectTransition(.materialize)
             }
         }
         .onAppear {
@@ -61,10 +55,7 @@ struct LiquidGlassLauncherView: View {
     }
 
     private var launcherSurface: some View {
-        VStack(spacing: LauncherVisualStyle.aetherContentSpacing) {
-            header
-            resultsPane
-        }
+        resultsPane
         .padding(10)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
@@ -87,54 +78,24 @@ struct LiquidGlassLauncherView: View {
             .padding(.top, ModeSwitcherLayoutPolicy.launcherHeaderTopInset)
             .padding(.horizontal, ModeSwitcherLayoutPolicy.launcherHeaderHorizontalInset)
             .padding(.bottom, ModeSwitcherLayoutPolicy.launcherHeaderBottomInset)
+            .padding(.horizontal, LauncherVisualStyle.resultsPaneContentInset)
+            .padding(.top, LauncherVisualStyle.resultsPaneContentInset)
     }
 
     private var resultsPane: some View {
         ZStack {
             resultsPaneBackdrop
 
-            results
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .clipShape(resultsPaneShape)
+            VStack(spacing: LauncherVisualStyle.paneContentSpacing) {
+                header
 
-            resultsPaneEdgeVeil
+                results
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipShape(resultsPaneShape)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(resultsPaneShape)
-    }
-
-    private var resultsPaneEdgeVeil: some View {
-        GeometryReader { proxy in
-            let height = max(proxy.size.height, 1)
-            let fadeLength = min(LauncherResultListLayoutPolicy.verticalEdgeFadeLength, height / 2)
-
-            VStack(spacing: 0) {
-                resultsPaneEdgeMaterialVeil(startOpacity: 0.82, endOpacity: 0)
-                    .frame(height: fadeLength)
-
-                Spacer(minLength: 0)
-
-                resultsPaneEdgeMaterialVeil(startOpacity: 0, endOpacity: 0.82)
-                    .frame(height: fadeLength)
-            }
-        }
-        .clipShape(resultsPaneShape)
-        .allowsHitTesting(false)
-    }
-
-    private func resultsPaneEdgeMaterialVeil(startOpacity: Double, endOpacity: Double) -> some View {
-        Rectangle()
-            .fill(.regularMaterial)
-            .mask {
-                LinearGradient(
-                    colors: [
-                        Color.black.opacity(startOpacity),
-                        Color.black.opacity(endOpacity)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            }
     }
 
     private var resultsPaneBackdrop: some View {
@@ -155,83 +116,6 @@ struct LiquidGlassLauncherView: View {
 
     private var resultsPaneShape: RoundedRectangle {
         RoundedRectangle(cornerRadius: LauncherVisualStyle.resultsPaneCornerRadius, style: .continuous)
-    }
-
-    private var headerControls: some View {
-        HStack(spacing: 8) {
-            if model.mode == .calculator {
-                Button {
-                    _ = model.handle(command: .clearHistory)
-                } label: {
-                    Image(systemName: "trash")
-                        .frame(width: 18, height: 18)
-                }
-                .buttonStyle(.glass)
-                .disabled(!model.canClearHistory)
-                .help("Clear calculation history")
-                .glassEffectID(HeaderGlassEffectID.clearHistory, in: headerGlassNamespace)
-                .glassEffectTransition(.materialize)
-            }
-
-            calculatorModeControl
-            pinControl
-        }
-        .animation(headerControlAnimation, value: model.mode)
-        .animation(headerControlAnimation, value: model.isPinned)
-    }
-
-    @ViewBuilder
-    private var calculatorModeControl: some View {
-        if model.mode == .calculator {
-            Button {
-                _ = model.handle(command: .switchMode(.applications))
-            } label: {
-                Image(systemName: "wrench.and.screwdriver.fill")
-                    .frame(width: 18, height: 18)
-            }
-            .launcherHeaderButtonStyle(LauncherHeaderButtonStylePolicy(isActive: true))
-            .help("Applications (Command+1)")
-            .glassEffectID(HeaderGlassEffectID.calculatorMode, in: headerGlassNamespace)
-            .glassEffectTransition(.matchedGeometry)
-        } else {
-            Button {
-                _ = model.handle(command: .switchMode(.calculator))
-            } label: {
-                Image(systemName: "wrench.and.screwdriver")
-                    .frame(width: 18, height: 18)
-            }
-            .launcherHeaderButtonStyle(LauncherHeaderButtonStylePolicy(isActive: false))
-            .help("Calculator (Command+2)")
-            .glassEffectID(HeaderGlassEffectID.calculatorMode, in: headerGlassNamespace)
-            .glassEffectTransition(.matchedGeometry)
-        }
-    }
-
-    @ViewBuilder
-    private var pinControl: some View {
-        if model.isPinned {
-            Button {
-                _ = model.handle(command: .togglePin)
-            } label: {
-                Image(systemName: "pin.fill")
-                    .frame(width: 18, height: 18)
-            }
-            .launcherHeaderButtonStyle(LauncherHeaderButtonStylePolicy(isActive: true))
-            .help("Unpin window (Command+P)")
-            .glassEffectID(HeaderGlassEffectID.pin, in: headerGlassNamespace)
-            .glassEffectTransition(.matchedGeometry)
-        } else {
-            Button {
-                _ = model.handle(command: .togglePin)
-            } label: {
-                Image(systemName: "pin")
-                    .frame(width: 18, height: 18)
-            }
-            .launcherHeaderButtonStyle(LauncherHeaderButtonStylePolicy(isActive: false))
-            .help("Pin window (Command+P)")
-            .glassEffectID(HeaderGlassEffectID.pin, in: headerGlassNamespace)
-            .glassEffectTransition(.matchedGeometry)
-        }
     }
 
     @ViewBuilder
@@ -340,7 +224,11 @@ struct LiquidGlassLauncherView: View {
                         .frame(width: 16, height: 16)
                         .padding(5)
                 }
-                .buttonStyle(.glass)
+                .buttonStyle(.plain)
+                .background {
+                    Circle()
+                        .fill(Color(nsColor: .controlBackgroundColor).opacity(0.34))
+                }
                 .foregroundStyle(.secondary)
                 .help("Hide from results")
                 .launcherActionButtonRim()
@@ -394,7 +282,11 @@ struct LiquidGlassLauncherView: View {
                             .frame(width: 16, height: 16)
                             .padding(5)
                     }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.plain)
+                    .background {
+                        Circle()
+                            .fill(Color(nsColor: .controlBackgroundColor).opacity(0.34))
+                    }
                     .foregroundStyle(.secondary)
                     .help(actionConfiguration.help)
                     .launcherActionButtonRim()
@@ -572,22 +464,15 @@ private enum ResultRowID: Hashable {
 }
 
 @available(macOS 26.0, *)
-private enum HeaderGlassEffectID: Hashable, Sendable {
-    case clearHistory
-    case calculatorMode
-    case pin
-}
-
-@available(macOS 26.0, *)
 private enum LauncherVisualStyle {
     static let windowCornerRadius: CGFloat = 30
     static let aetherContentSpacing: CGFloat = 14
+    static let paneContentSpacing: CGFloat = 12
     static let resultsPaneCornerRadius: CGFloat = 24
     static let resultsPaneContentInset: CGFloat = 12
     static let resultsPaneModeTintOpacity = 0.08
     static let rowFill = Color(nsColor: .windowBackgroundColor)
     static let selectionFill = Color(nsColor: .selectedContentBackgroundColor)
-    static let activeHeaderControlTint = Color(nsColor: .controlAccentColor)
     static let surfaceRim = Color(nsColor: .separatorColor)
     static let resultsPaneRim = Color(nsColor: .separatorColor)
     static let selectionRim = Color(nsColor: .selectedContentBackgroundColor)
@@ -624,17 +509,6 @@ private extension SelectionScrollAnchor {
 
 @available(macOS 26.0, *)
 private extension View {
-    @ViewBuilder
-    func launcherHeaderButtonStyle(_ policy: LauncherHeaderButtonStylePolicy) -> some View {
-        switch policy.style {
-        case .stockGlass:
-            buttonStyle(.glass)
-        case .prominentAccentGlass:
-            buttonStyle(.glassProminent)
-                .tint(LauncherVisualStyle.activeHeaderControlTint)
-        }
-    }
-
     func launcherActionButtonRim() -> some View {
         self.overlay {
             Circle()

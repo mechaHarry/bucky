@@ -4,8 +4,8 @@ import XCTest
 final class LauncherResultListPolicyTests: XCTestCase {
     func testSharedResultListUsesAppsSpacingAndMainPanelAlignment() {
         XCTAssertEqual(LauncherResultListLayoutPolicy.rowSpacing, 14)
-        XCTAssertEqual(LauncherResultListLayoutPolicy.contentMargin, 0)
-        XCTAssertGreaterThanOrEqual(LauncherResultListLayoutPolicy.horizontalShadowBleed, 18)
+        XCTAssertEqual(LauncherResultListLayoutPolicy.contentMargin, 12)
+        XCTAssertEqual(LauncherResultListLayoutPolicy.horizontalShadowBleed, LauncherResultListLayoutPolicy.contentMargin)
         XCTAssertGreaterThanOrEqual(LauncherResultListLayoutPolicy.verticalShadowClearance, 18)
         XCTAssertGreaterThanOrEqual(LauncherResultListLayoutPolicy.verticalEdgeFadeLength, 24)
         XCTAssertEqual(LauncherResultListLayoutPolicy.rowCornerRadius, 18)
@@ -15,7 +15,7 @@ final class LauncherResultListPolicyTests: XCTestCase {
         let source = try source(named: "Sources/Bucky/UI/SwiftUI/LauncherResultListView.swift")
 
         XCTAssertFalse(source.contains(".scrollClipDisabled(true)"))
-        XCTAssertTrue(source.contains(".contentMargins(.horizontal, LauncherResultListLayoutPolicy.horizontalShadowBleed"))
+        XCTAssertTrue(source.contains(".contentMargins(.horizontal, LauncherResultListLayoutPolicy.contentMargin"))
         XCTAssertTrue(source.contains(".contentMargins(.vertical, LauncherResultListLayoutPolicy.verticalShadowClearance"))
         XCTAssertFalse(source.contains(".padding(.horizontal, -LauncherResultListLayoutPolicy.horizontalShadowBleed)"))
         XCTAssertFalse(source.contains("shadowClearance"))
@@ -30,25 +30,23 @@ final class LauncherResultListPolicyTests: XCTestCase {
         XCTAssertFalse(source.contains("resultListVerticalEdgeMaterialFog"))
     }
 
-    func testResultsPaneOwnsMaterialEdgeVeilAtPaneBoundary() throws {
+    func testResultsPaneDoesNotUseEdgeVeil() throws {
         let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
 
-        XCTAssertTrue(source.contains("resultsPaneEdgeVeil"))
-        XCTAssertTrue(source.contains("resultsPaneEdgeMaterialVeil"))
         XCTAssertTrue(source.contains("ZStack {\n            resultsPaneBackdrop"))
-        XCTAssertTrue(source.contains("            resultsPaneEdgeVeil\n        }"))
         XCTAssertTrue(source.contains(".clipShape(resultsPaneShape)"))
+        XCTAssertFalse(source.contains("resultsPaneEdgeVeil"))
+        XCTAssertFalse(source.contains("resultsPaneEdgeMaterialVeil"))
         XCTAssertFalse(source.contains("resultsPaneEdgeGradientVeil"))
-        XCTAssertTrue(source.contains(".fill(.regularMaterial)"))
-        XCTAssertTrue(source.contains("LauncherResultListLayoutPolicy.verticalEdgeFadeLength"))
-        XCTAssertTrue(source.contains(".allowsHitTesting(false)"))
+        XCTAssertFalse(source.contains(".fill(.regularMaterial)\n            .mask"))
     }
 
     func testResultsPaneClipsRowsAtPaneBoundaryNotInsetBounds() throws {
         let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
 
         XCTAssertFalse(source.contains("results\n                .padding(LauncherVisualStyle.resultsPaneContentInset)"))
-        XCTAssertTrue(source.contains("results\n                .frame(maxWidth: .infinity, maxHeight: .infinity)\n                .clipShape(resultsPaneShape)"))
+        XCTAssertTrue(source.contains("results\n                    .frame(maxWidth: .infinity, maxHeight: .infinity)\n                    .clipShape(resultsPaneShape)"))
+        XCTAssertFalse(source.contains(".padding(LauncherVisualStyle.resultsPaneContentInset)\n        }\n        .frame(maxWidth: .infinity, maxHeight: .infinity)"))
     }
 
     func testSharedResultListDoesNotUseAetherEdgeTreatment() throws {
@@ -72,8 +70,18 @@ final class LauncherResultListPolicyTests: XCTestCase {
     }
 
     func testSharedResultListAnimationKeepsRowsFastButVisible() {
-        XCTAssertLessThanOrEqual(LauncherResultListLayoutPolicy.rowSelectionAnimationSeconds, 0.18)
-        XCTAssertLessThanOrEqual(LauncherResultListLayoutPolicy.rowReconstructionAnimationSeconds, 0.22)
+        XCTAssertLessThanOrEqual(LauncherResultListLayoutPolicy.rowSelectionAnimationSeconds, 0.10)
+        XCTAssertLessThanOrEqual(LauncherResultListLayoutPolicy.rowReconstructionAnimationSeconds, 0.10)
+    }
+
+    func testModeDrivenLauncherAnimationsUseShortDurations() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
+
+        XCTAssertTrue(source.contains("model.animationTiming.animation(duration: 0.08)"))
+        XCTAssertFalse(source.contains("model.animationTiming.animation(duration: 0.22)"))
+        XCTAssertFalse(source.contains("model.animationTiming.animation(duration: 0.18)"))
+        XCTAssertFalse(source.contains("model.animationTiming.animation(duration: 0.16)"))
+        XCTAssertFalse(source.contains("model.animationTiming.animation(duration: 0.14)"))
     }
 
     private func source(named path: String) throws -> String {
