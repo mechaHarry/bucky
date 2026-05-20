@@ -416,13 +416,29 @@ struct FileBrowserDragPolicy {
     static let nativeDragThreshold: CGFloat = 3
     static let mouseDownCanMoveWindow = false
     static let maximumDraggingImageSide: CGFloat = 48
+    static let maximumDraggingImageOffsetIndex = 3
+    static let draggingImageOffsetStep: CGFloat = 5
 
     static func draggedURL(for url: URL) -> URL {
         url
     }
 
+    static func draggedURLs(for rowURL: URL, selectedURLs: [URL]) -> [URL] {
+        selectedURLs.contains(rowURL) ? selectedURLs : [rowURL]
+    }
+
+    static func nonEmptyDraggedURLs(rowURL: URL, providedURLs: [URL]) -> [URL] {
+        providedURLs.isEmpty ? [rowURL] : providedURLs
+    }
+
     static func shouldBeginNativeDrag(delta: CGSize) -> Bool {
         hypot(delta.width, delta.height) >= nativeDragThreshold
+    }
+
+    static func draggingImageOffset(forItemAt index: Int) -> CGSize {
+        let cappedIndex = max(0, min(index, maximumDraggingImageOffsetIndex))
+        let offset = CGFloat(cappedIndex) * draggingImageOffsetStep
+        return CGSize(width: offset, height: -offset)
     }
 
     static func draggingImageFrame(

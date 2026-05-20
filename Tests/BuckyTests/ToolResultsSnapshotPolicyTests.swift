@@ -16,16 +16,30 @@ final class ToolResultsSnapshotPolicyTests: XCTestCase {
         )
     }
 
-    func testDictionaryQueriesUpdateImmediately() {
+    func testDictionaryQueriesUseDeferredSnapshotUpdate() {
         XCTAssertEqual(
             ToolResultsSnapshotPolicy.update(for: .dictionary, query: "hello"),
+            .deferred(delayNanoseconds: ToolResultsSnapshotPolicy.dictionaryLookupDelayNanoseconds)
+        )
+    }
+
+    func testBlankDictionaryQueriesUpdateImmediately() {
+        XCTAssertEqual(
+            ToolResultsSnapshotPolicy.update(for: .dictionary, query: "   "),
             .immediate
         )
     }
 
-    func testApplicationQueriesUpdateImmediately() {
+    func testApplicationQueriesUseDeferredSnapshotUpdate() {
         XCTAssertEqual(
             ToolResultsSnapshotPolicy.update(for: .applications, query: "hello"),
+            .deferred(delayNanoseconds: ToolResultsSnapshotPolicy.applicationFilterDelayNanoseconds)
+        )
+    }
+
+    func testBlankApplicationQueriesUpdateImmediately() {
+        XCTAssertEqual(
+            ToolResultsSnapshotPolicy.update(for: .applications, query: "   "),
             .immediate
         )
     }

@@ -1255,6 +1255,33 @@ final class FileBrowserModelTests: XCTestCase {
         XCTAssertEqual(model.selectedEntry?.url, beta)
     }
 
+    func testCurrentDirectoryObservationReloadsOpenDirectoryAndKeepsSelection() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let observer = ManualDirectoryObserver()
+        let stream = ManualDirectoryStream()
+        let model = FileBrowserModel(
+            fileSystem: StubFileSystemClient(home: home, entriesByDirectory: [:]),
+            store: InMemoryFileBrowserStore(state: .defaultValue),
+            directoryStream: stream,
+            directoryObserver: observer
+        )
+
+        let alpha = home.appendingPathComponent("alpha.txt")
+        let beta = home.appendingPathComponent("beta.txt")
+        let gamma = home.appendingPathComponent("gamma.txt")
+        stream.completeRequest(at: 0, with: .success([fileEntry(alpha), fileEntry(beta)]))
+        model.handle(.down)
+        XCTAssertEqual(model.selectedEntry?.url, beta)
+        XCTAssertEqual(observer.observedDirectories, [home.standardizedFileURL])
+
+        observer.triggerLatestChange()
+        XCTAssertEqual(stream.requests.count, 2)
+        stream.completeRequest(at: 1, with: .success([fileEntry(alpha), fileEntry(beta), fileEntry(gamma)]))
+
+        XCTAssertEqual(model.entries.map(\.url), [alpha, beta, gamma])
+        XCTAssertEqual(model.selectedEntry?.url, beta)
+    }
+
     func testDirectorySnapshotsTrackCurrentVisibleDirectoryOnly() {
         let home = URL(fileURLWithPath: "/Users/test")
         let child = home.appendingPathComponent("Projects", isDirectory: true)

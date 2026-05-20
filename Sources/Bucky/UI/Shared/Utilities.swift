@@ -159,6 +159,40 @@ enum LauncherKeyRoutingPolicy {
             && keyCode != UInt16(kVK_ANSI_KeypadEnter)
             && keyCode != UInt16(kVK_Escape)
     }
+
+    static func shouldPassThroughNativeTextEditingCommand(
+        mode: LauncherMode,
+        fileFocusState: FileBrowserFocusState?,
+        charactersIgnoringModifiers: String?,
+        modifierFlags: NSEvent.ModifierFlags,
+        eventType: NSEvent.EventType
+    ) -> Bool {
+        guard eventType == .keyDown || eventType == .keyUp else {
+            return false
+        }
+
+        let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard flags == .command,
+              let key = charactersIgnoringModifiers?.lowercased() else {
+            return false
+        }
+
+        let reservedLauncherKeys: Set<String> = ["1", "2", "3", "4", "r", ",", "p", "[", "]"]
+        guard !reservedLauncherKeys.contains(key) else {
+            return false
+        }
+
+        let nativeEditingKeys: Set<String> = ["a", "c", "v", "x", "z"]
+        guard nativeEditingKeys.contains(key) else {
+            return false
+        }
+
+        if mode == .files {
+            return fileFocusState == .renaming
+        }
+
+        return mode.acceptsTextInput
+    }
 }
 
 extension NSEvent {
@@ -180,6 +214,18 @@ extension NSEvent {
               character.isLetter || character.isNumber else {
             return nil
         }
+        return character
+    }
+
+    var launcherTextInputCharacter: Character? {
+        let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard flags.intersection([.command, .control, .option]).isEmpty,
+              let characters,
+              let character = characters.first,
+              character.isLetter || character.isNumber || character.isPunctuation || character.isSymbol else {
+            return nil
+        }
+
         return character
     }
 

@@ -66,11 +66,11 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
         XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: .applications))
         XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: .calculator))
         XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: .dictionary))
-        XCTAssertTrue(ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: .files))
+        XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: .files))
         XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: .applications))
         XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: .calculator))
         XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: .dictionary))
-        XCTAssertTrue(ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: .files))
+        XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: .files))
         XCTAssertEqual(
             ModeSwitcherLayoutPolicy.activeTextPillIconLeadingInset,
             ModeSwitcherLayoutPolicy.activeTextPillHorizontalInset
@@ -87,6 +87,7 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
             ModeSwitcherLayoutPolicy.launcherHeaderTopInset,
             ModeSwitcherLayoutPolicy.activePillHeight / 12
         )
+        XCTAssertEqual(ModeSwitcherLayoutPolicy.launcherHeaderHorizontalInset, 0)
     }
 
     func testTextInputModesUseMarginsInsteadOfVerticalOffsets() throws {
@@ -120,24 +121,38 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
         XCTAssertTrue(source.contains(".fixedSize(horizontal: false, vertical: true)"))
     }
 
-    func testActiveTextPillKeepsTextFieldOutsideGlassIdentity() throws {
+    func testActiveTextPillKeepsTextFieldOutsideControlBackground() throws {
         let source = try modeSwitcherSource()
 
         XCTAssertTrue(source.contains("modeSwitcherElement(for: mode)"))
-        XCTAssertTrue(source.contains("ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: mode)"))
-        XCTAssertTrue(source.contains("ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: model.mode)"))
-        XCTAssertTrue(source.contains("private struct TextInputPillGlassSurface"))
-        XCTAssertFalse(source.contains("TextInputPillGlassSurface {"))
+        XCTAssertTrue(source.contains("private struct ModeControlBackground<ShapeType: InsettableShape>"))
+        XCTAssertTrue(source.contains("ModeControlBackground(\n                shape: Capsule()"))
+        XCTAssertFalse(source.contains("private struct TextInputPillGlassSurface"))
         XCTAssertFalse(source.contains("TextInputModePill(\n                model: model,\n                mode: mode,\n                symbol: symbol(for: mode),\n                isSearchFocused: $isSearchFocused\n            )\n            .glassEffectID"))
     }
 
-    func testActiveTextPillForegroundSitsAboveGlassSurface() throws {
+    func testActiveTextPillForegroundSitsAboveControlBackground() throws {
         let source = try modeSwitcherSource()
 
         XCTAssertTrue(source.contains("private struct TextInputPillForegroundLayer"))
-        XCTAssertTrue(source.contains(".background {\n            TextInputPillGlassSurface(tint: LauncherModeTintPolicy.activeColor(for: mode))\n        }"))
+        XCTAssertTrue(source.contains(".background {\n            ModeControlBackground("))
         XCTAssertTrue(source.contains("TextInputPillForegroundLayer("))
-        XCTAssertFalse(source.contains(".glassEffect(.regular.interactive(), in: Capsule())\n            .overlay(alignment: .leading)"))
+        XCTAssertFalse(source.contains(".glassEffect(.regular.interactive(), in: Capsule())"))
+    }
+
+    func testModeStonesAndPillsUseCheapRowStyleSurfaces() throws {
+        let source = try modeSwitcherSource()
+
+        XCTAssertTrue(source.contains(".buttonStyle(.plain)"))
+        XCTAssertTrue(source.contains("ModeControlBackground(\n                shape: Circle()"))
+        XCTAssertTrue(source.contains("ModeControlBackground(\n                        shape: Capsule()"))
+        XCTAssertFalse(source.contains(".buttonStyle(.glass)"))
+        XCTAssertFalse(source.contains(".shadow(color: .black.opacity(0.18)"))
+        XCTAssertFalse(source.contains(".glassEffect("))
+        XCTAssertFalse(source.contains(".glassEffectTransition(.matchedGeometry)"))
+        XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: .files))
+        XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: .files))
+        XCTAssertFalse(source.contains("headerGlassBackdrop"))
     }
 
     func testActiveTextPillOwnsForegroundLegibilityOutsideGlass() throws {

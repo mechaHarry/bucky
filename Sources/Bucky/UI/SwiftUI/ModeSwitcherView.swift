@@ -4,17 +4,10 @@ import SwiftUI
 struct ModeSwitcherView: View {
     @ObservedObject var model: LiquidGlassLauncherModel
     @FocusState.Binding var isSearchFocused: Bool
-    @Namespace private var modeGlassNamespace
+    @Environment(\.colorScheme) private var colorScheme
 
-    @ViewBuilder
     var body: some View {
-        if ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: model.mode) {
-            GlassEffectContainer(spacing: 10) {
-                modeSwitcherContent
-            }
-        } else {
-            modeSwitcherContent
-        }
+        modeSwitcherContent
     }
 
     private var modeSwitcherContent: some View {
@@ -29,21 +22,9 @@ struct ModeSwitcherView: View {
     @ViewBuilder
     private func modeSwitcherElement(for mode: LauncherMode) -> some View {
         if mode == model.mode {
-            if ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: mode) {
-                activePill(for: mode)
-                    .glassEffectID(mode, in: modeGlassNamespace)
-                    .glassEffectTransition(.matchedGeometry)
-            } else {
-                activePill(for: mode)
-            }
+            activePill(for: mode)
         } else {
-            if ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: mode) {
-                modeOrb(for: mode)
-                    .glassEffectID(mode, in: modeGlassNamespace)
-                    .glassEffectTransition(.matchedGeometry)
-            } else {
-                modeOrb(for: mode)
-            }
+            modeOrb(for: mode)
         }
     }
 
@@ -53,13 +34,19 @@ struct ModeSwitcherView: View {
         } label: {
             Image(systemName: symbol(for: mode))
                 .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(LauncherModeTintPolicy.inactiveOrbIconColor(for: mode))
+                .foregroundStyle(LauncherModeTintPolicy.inactiveOrbIconColor(for: mode, colorScheme: colorScheme))
                 .frame(width: 20, height: 20)
                 .padding(10)
         }
-        .buttonStyle(.glass)
-        .buttonBorderShape(.circle)
-        .tint(LauncherModeTintPolicy.inactiveOrbColor(for: mode))
+        .buttonStyle(.plain)
+        .background {
+            ModeControlBackground(
+                shape: Circle(),
+                fill: LauncherModeTintPolicy.inactiveOrbColor(for: mode),
+                tint: LauncherModeTintPolicy.activeColor(for: mode),
+                isActive: false
+            )
+        }
         .help(helpText(for: mode))
     }
 
@@ -80,6 +67,7 @@ struct ModeSwitcherView: View {
                     path: displayedFileURL.path
                 )
                 let modeTint = LauncherModeTintPolicy.activeColor(for: mode)
+                let iconTint = LauncherModeTintPolicy.iconColor(for: .files, colorScheme: colorScheme)
 
                 HStack(spacing: ModeSwitcherLayoutPolicy.filesContentSpacing) {
                     Button {
@@ -88,7 +76,7 @@ struct ModeSwitcherView: View {
                         HStack(spacing: ModeSwitcherLayoutPolicy.filesPathIconSpacing) {
                             Image(systemName: symbol(for: mode))
                                 .font(.system(size: 18, weight: .semibold))
-                                .foregroundStyle(modeTint)
+                                .foregroundStyle(iconTint)
                                 .frame(width: ModeSwitcherLayoutPolicy.filesPathIconWidth)
 
                             FadeMarqueeText(
@@ -114,11 +102,14 @@ struct ModeSwitcherView: View {
                 .padding(.leading, ModeSwitcherLayoutPolicy.filesPillLeadingPadding)
                 .padding(.trailing, ModeSwitcherLayoutPolicy.filesPillTrailingPadding)
                 .frame(width: proxy.size.width, height: ModeSwitcherLayoutPolicy.activePillHeight, alignment: .leading)
-                .tint(modeTint)
-                .glassEffect(
-                    .regular.tint(modeTint.opacity(ModeSwitcherTintPolicy.activePillTintOpacity)).interactive(),
-                    in: Capsule()
-                )
+                .background {
+                    ModeControlBackground(
+                        shape: Capsule(),
+                        fill: Color(nsColor: .windowBackgroundColor),
+                        tint: modeTint,
+                        isActive: true
+                    )
+                }
             }
             .frame(minWidth: 0, maxWidth: .infinity, minHeight: ModeSwitcherLayoutPolicy.activePillHeight, maxHeight: ModeSwitcherLayoutPolicy.activePillHeight)
             .layoutPriority(1)
@@ -154,7 +145,7 @@ struct ModeSwitcherView: View {
         case .applications:
             return "square.grid.2x2"
         case .calculator:
-            return "function"
+            return "123.rectangle.fill"
         case .dictionary:
             return "text.book.closed"
         case .files:
@@ -183,7 +174,7 @@ struct ModeSwitcherView: View {
 struct ModeSwitcherLayoutPolicy {
     static let activePillHeight: CGFloat = 48
     static var launcherHeaderTopInset: CGFloat { activePillHeight / 12 }
-    static var launcherHeaderHorizontalInset: CGFloat { activePillHeight / 24 }
+    static var launcherHeaderHorizontalInset: CGFloat { 0 }
     static var launcherHeaderBottomInset: CGFloat { activePillHeight / 24 }
     static var activeTextPillHorizontalInset: CGFloat { activePillHeight / 3 }
     static var activeTextPillVerticalInset: CGFloat { activePillHeight * 3 / 16 }
@@ -230,11 +221,11 @@ struct ModeSwitcherLayoutPolicy {
 
 struct ModeSwitcherGlassTransitionPolicy {
     static func usesMatchedGeometry(for mode: LauncherMode) -> Bool {
-        !mode.acceptsTextInput
+        false
     }
 
-    static func usesOuterContainer(for mode: LauncherMode) -> Bool {
-        !mode.acceptsTextInput
+    static func usesOuterContainer(for _: LauncherMode) -> Bool {
+        false
     }
 }
 
@@ -244,12 +235,13 @@ private struct TextInputModePill: View {
     let mode: LauncherMode
     let symbol: String
     @FocusState.Binding var isSearchFocused: Bool
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         TextInputPillForegroundLayer(
             symbol: symbol,
             placeholder: mode.placeholder,
-            tint: LauncherModeTintPolicy.activeColor(for: mode),
+            tint: LauncherModeTintPolicy.iconColor(for: mode, colorScheme: colorScheme),
             isShowingProgress: model.isIndexing && mode == .applications,
             text: $model.query,
             isSearchFocused: $isSearchFocused,
@@ -267,22 +259,49 @@ private struct TextInputModePill: View {
             alignment: .center
         )
         .background {
-            TextInputPillGlassSurface(tint: LauncherModeTintPolicy.activeColor(for: mode))
+            ModeControlBackground(
+                shape: Capsule(),
+                fill: Color(nsColor: .windowBackgroundColor),
+                tint: LauncherModeTintPolicy.activeColor(for: mode),
+                isActive: true
+            )
         }
         .contentShape(Capsule())
     }
 }
 
-private struct TextInputPillGlassSurface: View {
+private struct ModeControlBackground<ShapeType: InsettableShape>: View {
+    let shape: ShapeType
+    let fill: Color
     let tint: Color
+    let isActive: Bool
 
     var body: some View {
-        Capsule()
-            .fill(Color.clear)
-            .glassEffect(
-                .regular.tint(tint.opacity(ModeSwitcherTintPolicy.activePillTintOpacity)).interactive(),
-                in: Capsule()
-            )
+        shape
+            .fill(fill.opacity(isActive ? 0.34 : 0.26))
+            .overlay {
+                shape
+                    .fill(tint.opacity(isActive ? 0.18 : 0.10))
+            }
+            .overlay {
+                shape
+                    .strokeBorder(tint.opacity(isActive ? 0.38 : 0.24), lineWidth: 1)
+            }
+            .overlay {
+                shape
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(isActive ? 0.36 : 0.24),
+                                Color.white.opacity(0.04),
+                                Color.black.opacity(0.08)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            }
     }
 }
 
@@ -329,7 +348,6 @@ private struct TextInputPillForegroundLayer: View {
                     )
                     .padding(.trailing, ModeSwitcherLayoutPolicy.activeTextPillHorizontalInset)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
-                    .glassEffectTransition(.materialize)
             }
         }
     }
