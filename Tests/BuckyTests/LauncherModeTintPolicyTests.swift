@@ -14,6 +14,10 @@ final class LauncherModeTintPolicyTests: XCTestCase {
         XCTAssertEqual(LauncherModeTintPolicy.tint(for: .calculator).iconHex, 0x3A2B00)
         XCTAssertEqual(LauncherModeTintPolicy.tint(for: .dictionary).iconHex, 0x6E1977)
         XCTAssertEqual(LauncherModeTintPolicy.tint(for: .files).iconHex, 0x7A0018)
+        XCTAssertEqual(LauncherModeTintPolicy.tint(for: .applications).darkModeIconHex, 0x9CC7FF)
+        XCTAssertEqual(LauncherModeTintPolicy.tint(for: .calculator).darkModeIconHex, 0xFFF0A3)
+        XCTAssertEqual(LauncherModeTintPolicy.tint(for: .dictionary).darkModeIconHex, 0xF5B8FF)
+        XCTAssertEqual(LauncherModeTintPolicy.tint(for: .files).darkModeIconHex, 0xFFA6B8)
         XCTAssertNotEqual(
             LauncherModeTintPolicy.tint(for: .applications).iconHex,
             LauncherModeTintPolicy.tint(for: .applications).activeHex
@@ -53,9 +57,9 @@ final class LauncherModeTintPolicyTests: XCTestCase {
         let launcher = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
 
         XCTAssertTrue(modeSwitcher.contains("LauncherModeTintPolicy.activeColor(for: mode)"))
-        XCTAssertTrue(modeSwitcher.contains("LauncherModeTintPolicy.iconColor(for: mode)"))
-        XCTAssertTrue(modeSwitcher.contains("LauncherModeTintPolicy.iconColor(for: .files)"))
-        XCTAssertTrue(modeSwitcher.contains("LauncherModeTintPolicy.inactiveOrbIconColor(for: mode)"))
+        XCTAssertTrue(modeSwitcher.contains("LauncherModeTintPolicy.iconColor(for: mode, colorScheme: colorScheme)"))
+        XCTAssertTrue(modeSwitcher.contains("LauncherModeTintPolicy.iconColor(for: .files, colorScheme: colorScheme)"))
+        XCTAssertTrue(modeSwitcher.contains("LauncherModeTintPolicy.inactiveOrbIconColor(for: mode, colorScheme: colorScheme)"))
         XCTAssertTrue(modeSwitcher.contains("TextInputPillGlassSurface(tint:"))
         XCTAssertTrue(modeSwitcher.contains(".tint(LauncherModeTintPolicy.inactiveOrbColor(for: mode))"))
         XCTAssertTrue(modeSwitcher.contains("ModeSwitcherTintPolicy.activePillTintOpacity"))

@@ -5,6 +5,7 @@ struct ModeSwitcherView: View {
     @ObservedObject var model: LiquidGlassLauncherModel
     @FocusState.Binding var isSearchFocused: Bool
     @Namespace private var modeGlassNamespace
+    @Environment(\.colorScheme) private var colorScheme
 
     @ViewBuilder
     var body: some View {
@@ -53,7 +54,7 @@ struct ModeSwitcherView: View {
         } label: {
             Image(systemName: symbol(for: mode))
                 .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(LauncherModeTintPolicy.inactiveOrbIconColor(for: mode))
+                .foregroundStyle(LauncherModeTintPolicy.inactiveOrbIconColor(for: mode, colorScheme: colorScheme))
                 .frame(width: 20, height: 20)
                 .padding(10)
         }
@@ -81,7 +82,7 @@ struct ModeSwitcherView: View {
                     path: displayedFileURL.path
                 )
                 let modeTint = LauncherModeTintPolicy.activeColor(for: mode)
-                let iconTint = LauncherModeTintPolicy.iconColor(for: .files)
+                let iconTint = LauncherModeTintPolicy.iconColor(for: .files, colorScheme: colorScheme)
 
                 HStack(spacing: ModeSwitcherLayoutPolicy.filesContentSpacing) {
                     Button {
@@ -247,12 +248,13 @@ private struct TextInputModePill: View {
     let mode: LauncherMode
     let symbol: String
     @FocusState.Binding var isSearchFocused: Bool
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         TextInputPillForegroundLayer(
             symbol: symbol,
             placeholder: mode.placeholder,
-            tint: LauncherModeTintPolicy.iconColor(for: mode),
+            tint: LauncherModeTintPolicy.iconColor(for: mode, colorScheme: colorScheme),
             isShowingProgress: model.isIndexing && mode == .applications,
             text: $model.query,
             isSearchFocused: $isSearchFocused,
