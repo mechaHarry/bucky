@@ -1,8 +1,9 @@
 import SwiftUI
 
 struct LauncherResultListLayoutPolicy {
-    static let rowSpacing: CGFloat = 10
-    static let contentMargin: CGFloat = 0
+    static let rowSpacing: CGFloat = 14
+    static let contentMargin: CGFloat = 12
+    static let shadowClearance: CGFloat = 12
     static let rowCornerRadius: CGFloat = 18
     static let rowSelectionAnimationSeconds = 0.18
     static let rowReconstructionAnimationSeconds = 0.18
@@ -50,6 +51,8 @@ struct LauncherResultList<RowID: Hashable, Content: View>: View {
         LazyVStack(spacing: LauncherResultListLayoutPolicy.rowSpacing) {
             content()
         }
+        .padding(.horizontal, LauncherResultListLayoutPolicy.shadowClearance)
+        .padding(.vertical, LauncherResultListLayoutPolicy.shadowClearance)
         .scrollTargetLayout()
         .frame(maxWidth: .infinity)
     }
@@ -138,7 +141,7 @@ private struct LauncherResultRowBackground: View {
             .animation(rowSelectionAnimation, value: isSelected)
             .animation(rowSelectionAnimation, value: isMarked)
         }
-        .shadow(color: .black.opacity(isSelected ? 0.20 : 0.12), radius: isSelected ? 12 : 7, x: 0, y: 5)
+        .shadow(color: .black.opacity(isSelected ? 0.24 : 0.16), radius: isSelected ? 18 : 14, x: 0, y: 2)
     }
 
     private var rowBase: some View {
