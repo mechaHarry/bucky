@@ -23,4 +23,16 @@ final class FileBrowserMotionPolicyTests: XCTestCase {
         XCTAssertFalse(source.contains("        .padding(12)\n        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 14"))
         XCTAssertFalse(source.contains("        .padding(10)\n        .frame(maxWidth: .infinity, maxHeight: .infinity)\n        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 14"))
     }
+
+    func testFileBrowserAppliesAetherEdgesToWholeBrowsePane() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Sources/Bucky/UI/SwiftUI/FileBrowserView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("browsePane\n                .launcherAetherEdgeTreatment()"))
+        XCTAssertFalse(source.contains("LauncherResultList(\n                    scrollTargetID: $pinnedScrollTargetID,\n                    reconstructionID: pinnedReconstructionIdentity\n                ) {\n                    ForEach"))
+    }
 }

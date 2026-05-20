@@ -48,7 +48,7 @@ final class LauncherModeTintPolicyTests: XCTestCase {
         )
     }
 
-    func testModeTintIsWiredToPillsAndMainBackdrop() throws {
+    func testModeTintIsWiredToPillsAndHeaderGlass() throws {
         let modeSwitcher = try source(named: "Sources/Bucky/UI/SwiftUI/ModeSwitcherView.swift")
         let launcher = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
 
@@ -59,8 +59,11 @@ final class LauncherModeTintPolicyTests: XCTestCase {
         XCTAssertTrue(modeSwitcher.contains("TextInputPillGlassSurface(tint:"))
         XCTAssertTrue(modeSwitcher.contains(".tint(LauncherModeTintPolicy.inactiveOrbColor(for: mode))"))
         XCTAssertTrue(modeSwitcher.contains("ModeSwitcherTintPolicy.activePillTintOpacity"))
+        XCTAssertTrue(launcher.contains("headerGlassBackdrop"))
         XCTAssertTrue(launcher.contains("LauncherModeTintPolicy.panelColor(for: model.mode)"))
-        XCTAssertTrue(launcher.contains("LauncherVisualStyle.windowModeTintOpacity"))
+        XCTAssertTrue(launcher.contains("LauncherVisualStyle.headerGlassTintOpacity"))
+        XCTAssertFalse(launcher.contains(".background(windowBackdrop)"))
+        XCTAssertFalse(launcher.contains("private var windowBackdrop: some View"))
         XCTAssertFalse(launcher.contains("private var resultsBackdrop: some View"))
         XCTAssertFalse(launcher.contains("LauncherVisualStyle.panelModeTintOpacity"))
         XCTAssertFalse(launcher.contains("LauncherVisualStyle.panelRim"))
@@ -69,8 +72,8 @@ final class LauncherModeTintPolicyTests: XCTestCase {
     func testLauncherBackdropDoesNotAddOuterWindowShadow() throws {
         let launcher = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
 
-        XCTAssertTrue(launcher.contains("private var windowBackdrop: some View"))
-        XCTAssertTrue(launcher.contains(".clipShape(launcherOuterShape)"))
+        XCTAssertFalse(launcher.contains("private var windowBackdrop: some View"))
+        XCTAssertFalse(launcher.contains(".clipShape(launcherOuterShape)"))
         XCTAssertTrue(launcher.contains("static let windowCornerRadius: CGFloat = 30"))
         XCTAssertFalse(launcher.contains(".shadow(color: .black.opacity(0.22), radius: 30, x: 0, y: 20)"))
     }
