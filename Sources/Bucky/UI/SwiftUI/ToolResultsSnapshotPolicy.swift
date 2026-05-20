@@ -10,8 +10,14 @@ enum ToolResultsSnapshotPolicy {
     }
 
     static let dictionaryLookupDelayNanoseconds: UInt64 = 80_000_000
+    static let applicationFilterDelayNanoseconds: UInt64 = 40_000_000
 
     static func update(for mode: LauncherMode, query: String) -> Update {
+        if mode == .applications,
+           !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return .deferred(delayNanoseconds: applicationFilterDelayNanoseconds)
+        }
+
         if mode == .dictionary,
            !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return .deferred(delayNanoseconds: dictionaryLookupDelayNanoseconds)

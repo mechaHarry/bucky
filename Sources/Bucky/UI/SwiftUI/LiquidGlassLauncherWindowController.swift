@@ -64,6 +64,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         installLocalKeyMonitor()
         installApplicationActivationObserver()
         reindex()
+        model.startBackgroundWarmCaches()
     }
 
     deinit {
@@ -108,22 +109,17 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         model.setWindowKeyState(true)
-        let transitionID = visibilityTransitionID
-
         if shouldMaterialize {
-            withAnimation(presentationAnimation, completionCriteria: .logicallyComplete) {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
                 model.isPresented = true
-            } completion: { [weak self] in
-                self?.finishShow(transitionID: transitionID)
             }
+            finishShow(transitionID: visibilityTransitionID)
+            scheduleApplicationReindexIfNeeded(mode: mode, transitionID: visibilityTransitionID)
         } else {
-            finishShow(transitionID: transitionID)
-        }
-
-        if mode == .applications {
-            DispatchQueue.main.async { [weak self] in
-                self?.reindex()
-            }
+            finishShow(transitionID: visibilityTransitionID)
+            scheduleApplicationReindexIfNeeded(mode: mode)
         }
     }
 
@@ -271,6 +267,12 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             case UInt16(kVK_Escape):
                 return self.handleLauncherCommand(.close) ? nil : event
             default:
+                if self.visibilityState == .showing,
+                   self.model.mode.acceptsTextInput,
+                   let character = event.launcherTextInputCharacter {
+                    self.model.insertTextInput(character)
+                    return nil
+                }
                 if self.model.mode == .files,
                    let routedCharacter = event.fileNavigationAlphaNumericCharacter,
                    LauncherKeyRoutingPolicy.shouldRouteAlphaNumeric(
@@ -558,6 +560,22 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         window.orderOut(nil)
         window.resignKey()
         visibilityState = .hidden
+    }
+
+    private func scheduleApplicationReindexIfNeeded(mode: LauncherMode, transitionID: Int? = nil) {
+        guard mode == .applications else { return }
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            if let transitionID {
+                guard self.visibilityTransitionID == transitionID,
+                      self.visibilityState == .shown else {
+                    return
+                }
+            }
+
+            self.reindex()
+        }
     }
 }
 

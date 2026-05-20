@@ -59,9 +59,7 @@ final class HotKeyController {
                     return OSStatus(eventNotHandledErr)
                 }
 
-                DispatchQueue.main.async {
-                    controller.onHotKey()
-                }
+                controller.triggerHotKey()
                 return noErr
             },
             1,
@@ -87,6 +85,17 @@ final class HotKeyController {
         guard registrationStatus == noErr else {
             throw HotKeyError.register(registrationStatus)
         }
+    }
+
+    private func triggerHotKey() {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in
+                self?.onHotKey()
+            }
+            return
+        }
+
+        onHotKey()
     }
 }
 enum HotKeyError: LocalizedError {

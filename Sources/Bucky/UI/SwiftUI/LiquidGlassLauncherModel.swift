@@ -42,8 +42,11 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private var pendingCalculationHistoryTimer: Timer?
     private var pendingCalculationHistoryExpression: String?
     private var pendingCalculationHistoryResult: String?
+    private var pendingApplicationFilterTask: Task<Void, Never>?
+    private var applicationFilterGeneration = 0
     private var pendingDictionaryLookupTask: Task<Void, Never>?
     private var dictionaryLookupGeneration = 0
+    private var warmCacheTask: Task<Void, Never>?
     private var selectionScrollRequestID = 0
 
     init(
@@ -71,6 +74,12 @@ final class LiquidGlassLauncherModel: ObservableObject {
             }
         }
         animationTiming = settingsStore.settings.animationTiming
+    }
+
+    deinit {
+        pendingApplicationFilterTask?.cancel()
+        pendingDictionaryLookupTask?.cancel()
+        warmCacheTask?.cancel()
     }
 
     var fileBrowserModel: FileBrowserModel {
@@ -150,6 +159,11 @@ final class LiquidGlassLauncherModel: ObservableObject {
         applyCurrentMode(preservePreviousOnEmpty: true)
     }
 
+    func insertTextInput(_ character: Character) {
+        query.append(character)
+        queryDidChange()
+    }
+
     func handle(command: LauncherCommand) -> Bool {
         switch command {
         case .up:
@@ -205,6 +219,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     func reindex() {
+        cancelPendingApplicationFilter()
         cancelPendingDictionaryLookup()
         guard !isIndexing else {
             needsReindexAfterCurrent = true
@@ -231,6 +246,43 @@ final class LiquidGlassLauncherModel: ObservableObject {
                 } else if self.mode == .applications {
                     self.applyFilter()
                 }
+                self.warmCurrentCaches()
+            }
+        }
+    }
+
+    func startBackgroundWarmCaches() {
+        guard warmCacheTask == nil else { return }
+
+        warmCacheTask = Task(priority: .utility) { [weak self] in
+            while !Task.isCancelled {
+                let snapshot = await MainActor.run { [weak self] in
+                    self?.applicationWarmCacheSnapshot()
+                }
+
+                guard let snapshot else {
+                    await MainActor.run { [weak self] in
+                        self?.warmNonApplicationCaches()
+                    }
+                    try? await Task.sleep(nanoseconds: 2_000_000_000)
+                    continue
+                }
+
+                do {
+                    let entries = await Task.detached(priority: .utility) {
+                        Self.warmFilterEntries(
+                            items: snapshot.items,
+                            normalizedQuery: snapshot.normalizedQuery
+                        )
+                    }.value
+
+                    await MainActor.run { [weak self] in
+                        self?.storeWarmFilterEntries(entries)
+                        self?.warmNonApplicationCaches()
+                    }
+                }
+
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
             }
         }
     }
@@ -278,6 +330,12 @@ final class LiquidGlassLauncherModel: ObservableObject {
         pendingDictionaryLookupTask = nil
     }
 
+    private func cancelPendingApplicationFilter() {
+        applicationFilterGeneration += 1
+        pendingApplicationFilterTask?.cancel()
+        pendingApplicationFilterTask = nil
+    }
+
     private func activateFileBrowserModel() -> FileBrowserModel {
         if let activatedFileBrowserModel {
             return activatedFileBrowserModel
@@ -296,10 +354,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
             if visibleItems.isEmpty, !allItems.isEmpty {
                 rebuildVisibleItems()
             }
-            applyFilter(preservePreviousOnEmpty: preservePreviousOnEmpty)
+            applyApplicationFilter(preservePreviousOnEmpty: preservePreviousOnEmpty)
         case .calculator, .dictionary:
-            calculationHistoryStore.load()
-            dictionaryHistoryStore.load()
             applyToolsResults()
         case .files:
             cancelPendingCalculationHistory()
@@ -329,6 +385,67 @@ final class LiquidGlassLauncherModel: ObservableObject {
         clampSelection()
     }
 
+    private func applyApplicationFilter(preservePreviousOnEmpty: Bool = false) {
+        let cacheKey = normalized(query)
+        switch ToolResultsSnapshotPolicy.update(for: .applications, query: query) {
+        case .immediate:
+            cancelPendingApplicationFilter()
+            applyFilter(preservePreviousOnEmpty: preservePreviousOnEmpty)
+        case let .deferred(delayNanoseconds):
+            applyDeferredApplicationFilter(
+                for: cacheKey,
+                delayNanoseconds: delayNanoseconds,
+                preservePreviousOnEmpty: preservePreviousOnEmpty
+            )
+        }
+    }
+
+    private func applyDeferredApplicationFilter(
+        for cacheKey: String,
+        delayNanoseconds: UInt64,
+        preservePreviousOnEmpty: Bool
+    ) {
+        applicationFilterGeneration += 1
+        let generation = applicationFilterGeneration
+        let items = visibleItems
+        pendingApplicationFilterTask?.cancel()
+        pendingApplicationFilterTask = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: delayNanoseconds)
+            } catch {
+                return
+            }
+
+            let nextItems = await Task.detached(priority: .userInitiated) {
+                Self.filter(items, normalizedQuery: cacheKey)
+            }.value
+
+            guard !Task.isCancelled else { return }
+
+            await MainActor.run { [weak self] in
+                guard let self,
+                      self.mode == .applications,
+                      self.applicationFilterGeneration == generation,
+                      normalized(self.query) == cacheKey else {
+                    return
+                }
+
+                self.pendingApplicationFilterTask = nil
+                self.filterCache.store(nextItems, for: cacheKey)
+                if preservePreviousOnEmpty,
+                   nextItems.isEmpty,
+                   !self.filteredItems.isEmpty,
+                   !self.inputIsBlank {
+                    return
+                }
+
+                self.filteredItems = nextItems
+                self.prewarmFilterCache(for: cacheKey)
+                self.clampSelection()
+            }
+        }
+    }
+
     private func rebuildVisibleItems() {
         visibleItems = allItems.filter { !exclusionStore.isExcluded($0) }
         filterCache.removeAll()
@@ -339,6 +456,43 @@ final class LiquidGlassLauncherModel: ObservableObject {
 
         filterCache.prewarmDeletionPath(for: normalizedQuery) { prefix in
             Self.filter(visibleItems, normalizedQuery: prefix)
+        }
+    }
+
+    private func warmCurrentCaches() {
+        warmNonApplicationCaches()
+    }
+
+    private func warmNonApplicationCaches() {
+        _ = calculationHistoryItems()
+        _ = dictionaryHistoryItems()
+        _ = activateFileBrowserModel()
+    }
+
+    private func applicationWarmCacheSnapshot() -> (items: [LaunchItem], normalizedQuery: String)? {
+        guard !visibleItems.isEmpty else { return nil }
+        return (visibleItems, normalized(query))
+    }
+
+    private static func warmFilterEntries(
+        items: [LaunchItem],
+        normalizedQuery: String
+    ) -> [(query: String, results: [LaunchItem])] {
+        var entries: [(query: String, results: [LaunchItem])] = []
+        var prefix = normalizedQuery
+
+        while !prefix.isEmpty {
+            entries.append((prefix, filter(items, normalizedQuery: prefix)))
+            prefix.removeLast()
+        }
+
+        entries.append(("", filter(items, normalizedQuery: "")))
+        return entries
+    }
+
+    private func storeWarmFilterEntries(_ entries: [(query: String, results: [LaunchItem])]) {
+        for entry in entries {
+            filterCache.store(entry.results, for: entry.query)
         }
     }
 
@@ -890,7 +1044,7 @@ private struct ApplicationFilterCache {
         queryOrder.removeAll(keepingCapacity: true)
     }
 
-    private mutating func store(_ results: [LaunchItem], for query: String) {
+    mutating func store(_ results: [LaunchItem], for query: String) {
         resultsByQuery[query] = results
         markUsed(query)
         trimIfNeeded()
