@@ -57,17 +57,15 @@ final class LauncherResultListPolicyTests: XCTestCase {
         XCTAssertFalse(source.contains("appliesAetherEdgeTreatment"))
     }
 
-    func testSharedResultRowsAreIndependentGlassObjects() throws {
+    func testSharedResultRowsAvoidPerRowGlassAndShadows() throws {
         let source = try source(named: "Sources/Bucky/UI/SwiftUI/LauncherResultListView.swift")
 
-        XCTAssertTrue(source.contains("GlassEffectContainer(spacing: 0)"))
-        XCTAssertTrue(source.contains(".glassEffect("))
-        XCTAssertTrue(source.contains(".glassEffectID(LauncherResultRowGlassEffectID.selection"))
-        XCTAssertTrue(source.contains(".glassEffectTransition(.matchedGeometry)"))
-        XCTAssertTrue(source.contains(".shadow("))
-        XCTAssertTrue(source.contains("radius: isSelected ? 13 : 9"))
-        XCTAssertTrue(source.contains("x: 0, y: 2"))
-        XCTAssertTrue(source.contains("isSelected ? 0.18 : 0.10"))
+        XCTAssertFalse(source.contains("GlassEffectContainer(spacing: 0)"))
+        XCTAssertFalse(source.contains(".glassEffect("))
+        XCTAssertFalse(source.contains("LauncherResultRowGlassEffectID"))
+        XCTAssertFalse(source.contains(".shadow("))
+        XCTAssertTrue(source.contains(".fill(LauncherResultListVisualStyle.rowFill.opacity(0.32))"))
+        XCTAssertTrue(source.contains(".fill(tint.opacity(opacity))"))
     }
 
     func testSharedResultListAnimationKeepsRowsFastButVisible() {

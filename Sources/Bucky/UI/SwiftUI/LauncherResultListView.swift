@@ -115,62 +115,46 @@ private struct LauncherResultRowBackground: View {
     }
 
     var body: some View {
-        GlassEffectContainer(spacing: 0) {
-            ZStack {
-                rowBase
+        ZStack {
+            rowBase
 
-                if isMarked && !isSelected {
-                    rowHighlight(
-                        tint: markedTint,
-                        opacity: FileBrowserRowFocusIndicatorPolicy.markedSelectionOpacity,
-                        interactive: false
-                    )
-                    .glassEffectTransition(.materialize)
-                }
+            if isMarked && !isSelected {
+                rowHighlight(
+                    tint: markedTint,
+                    opacity: FileBrowserRowFocusIndicatorPolicy.markedSelectionOpacity
+                )
+            }
 
-                if isSelected {
-                    rowHighlight(
-                        tint: selectionTint,
-                        opacity: FileBrowserRowFocusIndicatorPolicy.activeSelectionOpacity,
-                        interactive: true
-                    )
-                    .glassEffectID(LauncherResultRowGlassEffectID.selection, in: selectionNamespace)
-                    .glassEffectTransition(.matchedGeometry)
-                    .overlay {
-                        rowShape
-                            .strokeBorder(selectionTint.opacity(0.42), lineWidth: 1)
-                    }
+            if isSelected {
+                rowHighlight(
+                    tint: selectionTint,
+                    opacity: FileBrowserRowFocusIndicatorPolicy.activeSelectionOpacity
+                )
+                .overlay {
+                    rowShape
+                        .strokeBorder(selectionTint.opacity(0.42), lineWidth: 1)
                 }
             }
-            .overlay {
-                rowGleam
-            }
-            .overlay {
-                rowShape
-                    .strokeBorder(rowRim, lineWidth: isSelected ? 1.15 : 1)
-            }
-            .animation(rowSelectionAnimation, value: isSelected)
-            .animation(rowSelectionAnimation, value: isMarked)
         }
-        .shadow(color: .black.opacity(isSelected ? 0.18 : 0.10), radius: isSelected ? 13 : 9, x: 0, y: 2)
+        .overlay {
+            rowGleam
+        }
+        .overlay {
+            rowShape
+                .strokeBorder(rowRim, lineWidth: isSelected ? 1.15 : 1)
+        }
+        .animation(rowSelectionAnimation, value: isSelected)
+        .animation(rowSelectionAnimation, value: isMarked)
     }
 
     private var rowBase: some View {
         rowShape
-            .fill(Color.clear)
-            .glassEffect(
-                .regular.tint(LauncherResultListVisualStyle.rowFill.opacity(0.035)).interactive(false),
-                in: rowShape
-            )
+            .fill(LauncherResultListVisualStyle.rowFill.opacity(0.32))
     }
 
-    private func rowHighlight(tint: Color, opacity: Double, interactive: Bool) -> some View {
+    private func rowHighlight(tint: Color, opacity: Double) -> some View {
         rowShape
-            .fill(Color.clear)
-            .glassEffect(
-                .regular.tint(tint.opacity(opacity)).interactive(interactive),
-                in: rowShape
-            )
+            .fill(tint.opacity(opacity))
     }
 
     private var rowGleam: some View {
@@ -203,11 +187,6 @@ private struct LauncherResultRowBackground: View {
         }
         return LauncherResultListVisualStyle.surfaceRim.opacity(0.18)
     }
-}
-
-@available(macOS 26.0, *)
-private enum LauncherResultRowGlassEffectID: Hashable, Sendable {
-    case selection
 }
 
 @available(macOS 26.0, *)
