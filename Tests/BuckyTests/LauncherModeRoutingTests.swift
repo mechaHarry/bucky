@@ -280,6 +280,49 @@ final class LauncherModeRoutingTests: XCTestCase {
         XCTAssertTrue(LauncherWindowRepositionPolicy.shouldReposition(after: .switchMode(.files)))
     }
 
+    func testHotKeyDoesNotAddExtraMainQueueHopWhenAlreadyOnMainThread() throws {
+        let source = try source(named: "Sources/Bucky/App/HotKeyController.swift")
+
+        XCTAssertTrue(source.contains("controller.triggerHotKey()"))
+        XCTAssertTrue(source.contains("guard Thread.isMainThread else"))
+        XCTAssertTrue(source.contains("onHotKey()"))
+        XCTAssertFalse(source.contains("DispatchQueue.main.async {\n                    controller.onHotKey()\n                }"))
+    }
+
+    @available(macOS 26.0, *)
+    func testHotKeyShowUsesNonAnimatedMaterializationForImmediateInput() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
+
+        XCTAssertTrue(source.contains("transaction.disablesAnimations = true"))
+        XCTAssertTrue(source.contains("withTransaction(transaction) {\n                model.isPresented = true\n            }\n            finishShow(transitionID: visibilityTransitionID)"))
+        XCTAssertTrue(source.contains("scheduleApplicationReindexIfNeeded(mode: mode)"))
+        XCTAssertTrue(source.contains("guard self.visibilityTransitionID == transitionID,\n                      self.visibilityState == .shown"))
+        XCTAssertFalse(source.contains("withAnimation(presentationAnimation, completionCriteria: .removed) {\n                model.isPresented = true"))
+        XCTAssertFalse(source.contains("if mode == .applications {\n            DispatchQueue.main.async"))
+    }
+
+    @available(macOS 26.0, *)
+    func testTextInputModesCaptureTypedCharactersDuringShowAnimation() throws {
+        let controller = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
+        let model = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherModel.swift")
+        let utilities = try source(named: "Sources/Bucky/UI/Shared/Utilities.swift")
+
+        XCTAssertTrue(controller.contains("self.visibilityState == .showing,\n                   self.model.mode.acceptsTextInput,\n                   let character = event.launcherTextInputCharacter"))
+        XCTAssertTrue(controller.contains("self.model.insertTextInput(character)"))
+        XCTAssertTrue(model.contains("func insertTextInput(_ character: Character)"))
+        XCTAssertTrue(model.contains("query.append(character)\n        queryDidChange()"))
+        XCTAssertTrue(utilities.contains("var launcherTextInputCharacter: Character?"))
+        XCTAssertTrue(utilities.contains("flags.intersection([.command, .control, .option]).isEmpty"))
+    }
+
+    @available(macOS 26.0, *)
+    func testModeSwitchDoesNotSynchronouslyReloadHistoryStores() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherModel.swift")
+
+        XCTAssertFalse(source.contains("calculationHistoryStore.load()\n            dictionaryHistoryStore.load()"))
+        XCTAssertTrue(source.contains("case .calculator, .dictionary:\n            applyToolsResults()"))
+    }
+
     @available(macOS 26.0, *)
     func testDefaultWindowFrameAddsInvisibleShadowBleedAroundVisualLauncherSize() {
         let visibleFrame = CGRect(x: 0, y: 0, width: 1_440, height: 900)
@@ -322,7 +365,7 @@ final class LauncherModeRoutingTests: XCTestCase {
 
     @MainActor
     @available(macOS 26.0, *)
-    func testFileBrowserModelActivatesOnlyWhenFilesModeIsShown() {
+    func testBackgroundWarmerActivatesFileBrowserCacheBeforeFilesModeIsShown() {
         var activationCount = 0
         let model = LiquidGlassLauncherModel(
             settingsStore: SettingsStore(),
@@ -339,17 +382,21 @@ final class LauncherModeRoutingTests: XCTestCase {
             }
         )
 
-        model.show(mode: .applications)
         XCTAssertEqual(activationCount, 0)
+        model.startBackgroundWarmCaches()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.12))
+        XCTAssertEqual(activationCount, 1)
 
+        model.show(mode: .applications)
+        XCTAssertEqual(activationCount, 1)
         _ = model.handle(command: .switchMode(.calculator))
-        XCTAssertEqual(activationCount, 0)
+        XCTAssertEqual(activationCount, 1)
 
         _ = model.handle(command: .switchMode(.dictionary))
-        XCTAssertEqual(activationCount, 0)
+        XCTAssertEqual(activationCount, 1)
 
         _ = model.handle(command: .switchMode(.applications))
-        XCTAssertEqual(activationCount, 0)
+        XCTAssertEqual(activationCount, 1)
 
         _ = model.handle(command: .switchMode(.files))
         XCTAssertEqual(activationCount, 1)
@@ -678,6 +725,15 @@ final class LauncherModeRoutingTests: XCTestCase {
                 directoryStream: ImmediateDirectoryStream()
             )
         )
+    }
+
+    private func source(named path: String) throws -> String {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent(path)
+        return try String(contentsOf: sourceURL, encoding: .utf8)
     }
 
     private final class RecordingDictionaryLookup: @unchecked Sendable {

@@ -30,9 +30,16 @@ final class ToolResultsSnapshotPolicyTests: XCTestCase {
         )
     }
 
-    func testApplicationQueriesUpdateImmediately() {
+    func testApplicationQueriesUseDeferredSnapshotUpdate() {
         XCTAssertEqual(
             ToolResultsSnapshotPolicy.update(for: .applications, query: "hello"),
+            .deferred(delayNanoseconds: ToolResultsSnapshotPolicy.applicationFilterDelayNanoseconds)
+        )
+    }
+
+    func testBlankApplicationQueriesUpdateImmediately() {
+        XCTAssertEqual(
+            ToolResultsSnapshotPolicy.update(for: .applications, query: "   "),
             .immediate
         )
     }

@@ -217,6 +217,18 @@ extension NSEvent {
         return character
     }
 
+    var launcherTextInputCharacter: Character? {
+        let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard flags.intersection([.command, .control, .option]).isEmpty,
+              let characters,
+              let character = characters.first,
+              character.isLetter || character.isNumber || character.isPunctuation || character.isSymbol else {
+            return nil
+        }
+
+        return character
+    }
+
     var fileNavigationAlphaNumericCharacter: (character: Character, isReverse: Bool)? {
         let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
         guard flags.intersection([.command, .control]).isEmpty,
