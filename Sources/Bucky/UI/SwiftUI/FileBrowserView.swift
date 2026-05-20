@@ -26,7 +26,6 @@ struct FileBrowserView: View {
     var body: some View {
         ZStack(alignment: .trailing) {
             browsePane
-                .launcherAetherEdgeTreatment()
                 .modifier(FileBrowserPaneWobbleEffect(phase: wobblePhase))
 
             if model.focusState == .previewActions {
@@ -98,8 +97,7 @@ struct FileBrowserView: View {
             } else {
                 LauncherResultList(
                     scrollTargetID: $pinnedScrollTargetID,
-                    reconstructionID: pinnedReconstructionIdentity,
-                    appliesAetherEdgeTreatment: false
+                    reconstructionID: pinnedReconstructionIdentity
                 ) {
                     ForEach(Array(model.pinnedDirectories.enumerated()), id: \.element) { index, url in
                         FileBrowserPinnedRow(
@@ -148,8 +146,7 @@ struct FileBrowserView: View {
                 LauncherResultList(
                     scrollTargetID: $browseScrollTargetID,
                     scrollTargetAnchor: browseScrollTargetAnchor,
-                    reconstructionID: entriesReconstructionIdentity,
-                    appliesAetherEdgeTreatment: false
+                    reconstructionID: entriesReconstructionIdentity
                 ) {
                     ForEach(Array(model.entries.enumerated()), id: \.element.url) { _, entry in
                         FileBrowserRow(

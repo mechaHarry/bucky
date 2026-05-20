@@ -48,7 +48,7 @@ final class LauncherModeTintPolicyTests: XCTestCase {
         )
     }
 
-    func testModeTintIsWiredToPillsAndHeaderGlass() throws {
+    func testModeTintIsWiredToIndividualPillsWithoutHeaderGlass() throws {
         let modeSwitcher = try source(named: "Sources/Bucky/UI/SwiftUI/ModeSwitcherView.swift")
         let launcher = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
 
@@ -59,9 +59,9 @@ final class LauncherModeTintPolicyTests: XCTestCase {
         XCTAssertTrue(modeSwitcher.contains("TextInputPillGlassSurface(tint:"))
         XCTAssertTrue(modeSwitcher.contains(".tint(LauncherModeTintPolicy.inactiveOrbColor(for: mode))"))
         XCTAssertTrue(modeSwitcher.contains("ModeSwitcherTintPolicy.activePillTintOpacity"))
-        XCTAssertTrue(launcher.contains("headerGlassBackdrop"))
-        XCTAssertTrue(launcher.contains("LauncherModeTintPolicy.panelColor(for: model.mode)"))
-        XCTAssertTrue(launcher.contains("LauncherVisualStyle.headerGlassTintOpacity"))
+        XCTAssertFalse(launcher.contains("headerGlassBackdrop"))
+        XCTAssertFalse(launcher.contains("headerGlassShape"))
+        XCTAssertFalse(launcher.contains("LauncherVisualStyle.headerGlassTintOpacity"))
         XCTAssertFalse(launcher.contains(".background(windowBackdrop)"))
         XCTAssertFalse(launcher.contains("private var windowBackdrop: some View"))
         XCTAssertFalse(launcher.contains("private var resultsBackdrop: some View"))
@@ -74,6 +74,7 @@ final class LauncherModeTintPolicyTests: XCTestCase {
 
         XCTAssertFalse(launcher.contains("private var windowBackdrop: some View"))
         XCTAssertFalse(launcher.contains(".clipShape(launcherOuterShape)"))
+        XCTAssertFalse(launcher.contains("headerGlassBackdrop"))
         XCTAssertTrue(launcher.contains("static let windowCornerRadius: CGFloat = 30"))
         XCTAssertFalse(launcher.contains(".shadow(color: .black.opacity(0.22), radius: 30, x: 0, y: 20)"))
     }

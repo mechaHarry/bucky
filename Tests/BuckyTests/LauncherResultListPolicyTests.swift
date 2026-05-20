@@ -8,24 +8,23 @@ final class LauncherResultListPolicyTests: XCTestCase {
         XCTAssertEqual(LauncherResultListLayoutPolicy.rowCornerRadius, 18)
     }
 
-    func testSharedResultListUsesAetherEdgeTreatment() throws {
-        XCTAssertEqual(LauncherAetherEdgePolicy.edgeBandHeight, 28)
-        XCTAssertEqual(LauncherAetherEdgePolicy.edgeGlassOpacity, 0.52)
-        XCTAssertEqual(LauncherAetherEdgePolicy.edgeFadeStop, 0.72)
-
+    func testSharedResultListDoesNotUseAetherEdgeTreatment() throws {
         let source = try source(named: "Sources/Bucky/UI/SwiftUI/LauncherResultListView.swift")
 
-        XCTAssertTrue(source.contains("launcherAetherEdgeTreatment()"))
-        XCTAssertTrue(source.contains("LauncherAetherEdgeOverlay(edge: .top)"))
-        XCTAssertTrue(source.contains("LauncherAetherEdgeOverlay(edge: .bottom)"))
+        XCTAssertFalse(source.contains("LauncherAetherEdgePolicy"))
+        XCTAssertFalse(source.contains("launcherAetherEdgeTreatment()"))
+        XCTAssertFalse(source.contains("LauncherAetherEdgeOverlay"))
+        XCTAssertFalse(source.contains("appliesAetherEdgeTreatment"))
     }
 
-    func testSharedResultRowsAvoidShadowCastingGlassSurfaces() throws {
+    func testSharedResultRowsAreIndependentGlassObjects() throws {
         let source = try source(named: "Sources/Bucky/UI/SwiftUI/LauncherResultListView.swift")
 
-        XCTAssertFalse(source.contains("GlassEffectContainer(spacing: 0)"))
-        XCTAssertFalse(source.contains(".glassEffect("))
-        XCTAssertFalse(source.contains(".shadow("))
+        XCTAssertTrue(source.contains("GlassEffectContainer(spacing: 0)"))
+        XCTAssertTrue(source.contains(".glassEffect("))
+        XCTAssertTrue(source.contains(".glassEffectID(LauncherResultRowGlassEffectID.selection"))
+        XCTAssertTrue(source.contains(".glassEffectTransition(.matchedGeometry)"))
+        XCTAssertTrue(source.contains(".shadow("))
     }
 
     func testSharedResultListAnimationKeepsRowsFastButVisible() {

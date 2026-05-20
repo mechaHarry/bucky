@@ -86,29 +86,6 @@ struct LiquidGlassLauncherView: View {
             .padding(.top, ModeSwitcherLayoutPolicy.launcherHeaderTopInset)
             .padding(.horizontal, ModeSwitcherLayoutPolicy.launcherHeaderHorizontalInset)
             .padding(.bottom, ModeSwitcherLayoutPolicy.launcherHeaderBottomInset)
-            .padding(LauncherVisualStyle.headerGlassPadding)
-            .background(headerGlassBackdrop)
-            .clipShape(headerGlassShape)
-    }
-
-    private var headerGlassShape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: LauncherVisualStyle.headerGlassCornerRadius, style: .continuous)
-    }
-
-    private var headerGlassBackdrop: some View {
-        headerGlassShape
-            .fill(Color.clear)
-            .glassEffect(
-                .regular.tint(
-                    LauncherModeTintPolicy.panelColor(for: model.mode)
-                        .opacity(LauncherVisualStyle.headerGlassTintOpacity)
-                ).interactive(),
-                in: headerGlassShape
-            )
-            .overlay {
-                headerGlassShape
-                    .strokeBorder(LauncherVisualStyle.surfaceRim.opacity(0.30), lineWidth: 1)
-            }
     }
 
     private var headerControls: some View {
@@ -534,8 +511,6 @@ private enum HeaderGlassEffectID: Hashable, Sendable {
 private enum LauncherVisualStyle {
     static let windowCornerRadius: CGFloat = 30
     static let aetherContentSpacing: CGFloat = 8
-    static let headerGlassPadding: CGFloat = 2
-    static let headerGlassCornerRadius: CGFloat = 31
     static let rowFill = Color(nsColor: .windowBackgroundColor)
     static let selectionFill = Color(nsColor: .selectedContentBackgroundColor)
     static let activeHeaderControlTint = Color(nsColor: .controlAccentColor)
@@ -543,7 +518,6 @@ private enum LauncherVisualStyle {
     static let selectionRim = Color(nsColor: .selectedContentBackgroundColor)
     static let actionRim = Color(nsColor: .separatorColor)
 
-    static let headerGlassTintOpacity = 0.050
 }
 
 @available(macOS 26.0, *)

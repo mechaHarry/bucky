@@ -141,6 +141,14 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
         XCTAssertFalse(source.contains(".glassEffect(.regular.interactive(), in: Capsule())\n            .overlay(alignment: .leading)"))
     }
 
+    func testModeStonesAndPillsCastIndividualShadows() throws {
+        let source = try modeSwitcherSource()
+
+        XCTAssertTrue(source.contains(".buttonStyle(.glass)"))
+        XCTAssertGreaterThanOrEqual(source.components(separatedBy: ".shadow(color: .black.opacity(0.18)").count - 1, 3)
+        XCTAssertFalse(source.contains("headerGlassBackdrop"))
+    }
+
     func testActiveTextPillOwnsForegroundLegibilityOutsideGlass() throws {
         let source = try modeSwitcherSource()
 
