@@ -141,7 +141,7 @@ private struct LauncherResultRowBackground: View {
             .animation(rowSelectionAnimation, value: isSelected)
             .animation(rowSelectionAnimation, value: isMarked)
         }
-        .shadow(color: .black.opacity(isSelected ? 0.24 : 0.16), radius: isSelected ? 18 : 14, x: 0, y: 2)
+        .shadow(color: .black.opacity(isSelected ? 0.18 : 0.10), radius: isSelected ? 13 : 9, x: 0, y: 2)
     }
 
     private var rowBase: some View {

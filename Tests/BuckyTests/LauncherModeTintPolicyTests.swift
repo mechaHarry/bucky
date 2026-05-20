@@ -64,9 +64,19 @@ final class LauncherModeTintPolicyTests: XCTestCase {
         XCTAssertFalse(launcher.contains("LauncherVisualStyle.headerGlassTintOpacity"))
         XCTAssertFalse(launcher.contains(".background(windowBackdrop)"))
         XCTAssertFalse(launcher.contains("private var windowBackdrop: some View"))
-        XCTAssertFalse(launcher.contains("private var resultsBackdrop: some View"))
-        XCTAssertFalse(launcher.contains("LauncherVisualStyle.panelModeTintOpacity"))
-        XCTAssertFalse(launcher.contains("LauncherVisualStyle.panelRim"))
+        XCTAssertTrue(launcher.contains("private var resultsPaneBackdrop: some View"))
+        XCTAssertTrue(launcher.contains("LauncherVisualStyle.resultsPaneModeTintOpacity"))
+        XCTAssertTrue(launcher.contains("LauncherVisualStyle.resultsPaneRim"))
+        XCTAssertTrue(launcher.contains("LauncherModeTintPolicy.panelColor(for: model.mode)"))
+    }
+
+    func testResultsPaneReturnsWithoutWrappingModeStones() throws {
+        let launcher = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
+
+        XCTAssertTrue(launcher.contains("resultsPane"))
+        XCTAssertTrue(launcher.contains(".background {\n                resultsPaneBackdrop\n            }"))
+        XCTAssertFalse(launcher.contains("headerGlassBackdrop"))
+        XCTAssertFalse(launcher.contains(".background {\n                header"))
     }
 
     func testLauncherBackdropDoesNotAddOuterWindowShadow() throws {
