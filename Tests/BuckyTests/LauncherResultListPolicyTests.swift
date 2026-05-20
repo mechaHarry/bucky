@@ -3,9 +3,24 @@ import XCTest
 
 final class LauncherResultListPolicyTests: XCTestCase {
     func testSharedResultListUsesAppsSpacingAndMainPanelAlignment() {
-        XCTAssertEqual(LauncherResultListLayoutPolicy.rowSpacing, 10)
-        XCTAssertEqual(LauncherResultListLayoutPolicy.contentMargin, 0)
+        XCTAssertEqual(LauncherResultListLayoutPolicy.rowSpacing, 14)
+        XCTAssertEqual(LauncherResultListLayoutPolicy.contentMargin, 12)
+        XCTAssertEqual(LauncherResultListLayoutPolicy.shadowClearance, 12)
         XCTAssertEqual(LauncherResultListLayoutPolicy.rowCornerRadius, 18)
+    }
+
+    func testSharedResultListProvidesUnclippedShadowAir() throws {
+        XCTAssertGreaterThanOrEqual(LauncherResultListLayoutPolicy.contentMargin, 12)
+        XCTAssertGreaterThanOrEqual(LauncherResultListLayoutPolicy.shadowClearance, 12)
+        XCTAssertGreaterThanOrEqual(
+            LauncherResultListLayoutPolicy.contentMargin,
+            LauncherResultListLayoutPolicy.shadowClearance
+        )
+
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/LauncherResultListView.swift")
+
+        XCTAssertTrue(source.contains(".padding(.horizontal, LauncherResultListLayoutPolicy.shadowClearance)"))
+        XCTAssertTrue(source.contains(".padding(.vertical, LauncherResultListLayoutPolicy.shadowClearance)"))
     }
 
     func testSharedResultListDoesNotUseAetherEdgeTreatment() throws {
@@ -25,6 +40,8 @@ final class LauncherResultListPolicyTests: XCTestCase {
         XCTAssertTrue(source.contains(".glassEffectID(LauncherResultRowGlassEffectID.selection"))
         XCTAssertTrue(source.contains(".glassEffectTransition(.matchedGeometry)"))
         XCTAssertTrue(source.contains(".shadow("))
+        XCTAssertTrue(source.contains("radius: isSelected ? 18 : 14"))
+        XCTAssertTrue(source.contains("x: 0, y: 2"))
     }
 
     func testSharedResultListAnimationKeepsRowsFastButVisible() {
