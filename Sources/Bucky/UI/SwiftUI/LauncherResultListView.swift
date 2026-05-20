@@ -2,8 +2,7 @@ import SwiftUI
 
 struct LauncherResultListLayoutPolicy {
     static let rowSpacing: CGFloat = 14
-    static let contentMargin: CGFloat = 12
-    static let shadowClearance: CGFloat = 12
+    static let contentMargin: CGFloat = 0
     static let rowCornerRadius: CGFloat = 18
     static let rowSelectionAnimationSeconds = 0.18
     static let rowReconstructionAnimationSeconds = 0.18
@@ -38,6 +37,7 @@ struct LauncherResultList<RowID: Hashable, Content: View>: View {
         }
         .contentMargins(.horizontal, LauncherResultListLayoutPolicy.contentMargin, for: .scrollContent)
         .contentMargins(.vertical, LauncherResultListLayoutPolicy.contentMargin, for: .scrollContent)
+        .scrollClipDisabled(true)
         .scrollPosition(id: $scrollTargetID, anchor: scrollTargetAnchor)
         .scrollIndicators(.hidden)
         .scrollIndicatorsFlash(trigger: false)
@@ -51,8 +51,6 @@ struct LauncherResultList<RowID: Hashable, Content: View>: View {
         LazyVStack(spacing: LauncherResultListLayoutPolicy.rowSpacing) {
             content()
         }
-        .padding(.horizontal, LauncherResultListLayoutPolicy.shadowClearance)
-        .padding(.vertical, LauncherResultListLayoutPolicy.shadowClearance)
         .scrollTargetLayout()
         .frame(maxWidth: .infinity)
     }

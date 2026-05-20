@@ -70,7 +70,7 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
         XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: .applications))
         XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: .calculator))
         XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: .dictionary))
-        XCTAssertTrue(ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: .files))
+        XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: .files))
         XCTAssertEqual(
             ModeSwitcherLayoutPolicy.activeTextPillIconLeadingInset,
             ModeSwitcherLayoutPolicy.activeTextPillHorizontalInset
@@ -146,6 +146,7 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
 
         XCTAssertTrue(source.contains(".buttonStyle(.glass)"))
         XCTAssertGreaterThanOrEqual(source.components(separatedBy: ".shadow(color: .black.opacity(0.18)").count - 1, 3)
+        XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: .files))
         XCTAssertFalse(source.contains("headerGlassBackdrop"))
     }
 
