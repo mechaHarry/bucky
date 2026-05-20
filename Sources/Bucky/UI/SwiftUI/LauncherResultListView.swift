@@ -41,8 +41,9 @@ struct LauncherResultList<RowID: Hashable, Content: View>: View {
         .contentMargins(.horizontal, LauncherResultListLayoutPolicy.horizontalShadowBleed, for: .scrollContent)
         .contentMargins(.vertical, LauncherResultListLayoutPolicy.verticalShadowClearance, for: .scrollContent)
         .padding(.horizontal, -LauncherResultListLayoutPolicy.horizontalShadowBleed)
-        .mask(alignment: .center) {
-            resultListVerticalEdgeMask
+        .scrollClipDisabled(true)
+        .overlay(alignment: .center) {
+            resultListVerticalEdgeFog
         }
         .scrollPosition(id: $scrollTargetID, anchor: scrollTargetAnchor)
         .scrollIndicators(.hidden)
@@ -61,22 +62,33 @@ struct LauncherResultList<RowID: Hashable, Content: View>: View {
         .frame(maxWidth: .infinity)
     }
 
-    private var resultListVerticalEdgeMask: some View {
+    private var resultListVerticalEdgeFog: some View {
         GeometryReader { proxy in
             let height = max(proxy.size.height, 1)
-            let fadeLocation = min(LauncherResultListLayoutPolicy.verticalEdgeFadeLength / height, 0.5)
+            let fadeLength = min(LauncherResultListLayoutPolicy.verticalEdgeFadeLength, height / 2)
 
-            LinearGradient(
-                stops: [
-                    .init(color: .clear, location: 0),
-                    .init(color: .black, location: fadeLocation),
-                    .init(color: .black, location: 1 - fadeLocation),
-                    .init(color: .clear, location: 1)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
+            VStack(spacing: 0) {
+                verticalEdgeFogGradient(startOpacity: 0.72, endOpacity: 0)
+                    .frame(height: fadeLength)
+
+                Spacer(minLength: 0)
+
+                verticalEdgeFogGradient(startOpacity: 0, endOpacity: 0.72)
+                    .frame(height: fadeLength)
+            }
         }
+        .allowsHitTesting(false)
+    }
+
+    private func verticalEdgeFogGradient(startOpacity: Double, endOpacity: Double) -> LinearGradient {
+        LinearGradient(
+            colors: [
+                LauncherResultListVisualStyle.edgeFog.opacity(startOpacity),
+                LauncherResultListVisualStyle.edgeFog.opacity(endOpacity)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
     }
 }
 
@@ -229,4 +241,5 @@ enum LauncherResultListVisualStyle {
     static let surfaceRim = Color(nsColor: .separatorColor)
     static let selectionRim = Color(nsColor: .selectedContentBackgroundColor)
     static let markedRim = Color(nsColor: .controlAccentColor)
+    static let edgeFog = Color(nsColor: .windowBackgroundColor)
 }
