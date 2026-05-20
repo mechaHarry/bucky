@@ -96,41 +96,9 @@ struct LiquidGlassLauncherView: View {
             results
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .clipShape(resultsPaneShape)
-
-            resultsPaneEdgeVeil
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(resultsPaneShape)
-    }
-
-    private var resultsPaneEdgeVeil: some View {
-        GeometryReader { proxy in
-            let height = max(proxy.size.height, 1)
-            let fadeLength = min(LauncherResultListLayoutPolicy.verticalEdgeFadeLength, height / 2)
-
-            VStack(spacing: 0) {
-                resultsPaneEdgeGradientVeil(startOpacity: 0.74, endOpacity: 0)
-                    .frame(height: fadeLength)
-
-                Spacer(minLength: 0)
-
-                resultsPaneEdgeGradientVeil(startOpacity: 0, endOpacity: 0.74)
-                    .frame(height: fadeLength)
-            }
-        }
-        .clipShape(resultsPaneShape)
-        .allowsHitTesting(false)
-    }
-
-    private func resultsPaneEdgeGradientVeil(startOpacity: Double, endOpacity: Double) -> some View {
-        LinearGradient(
-            colors: [
-                LauncherModeTintPolicy.panelColor(for: model.mode).opacity(startOpacity),
-                LauncherModeTintPolicy.panelColor(for: model.mode).opacity(endOpacity)
-            ],
-            startPoint: .top,
-            endPoint: .bottom
-        )
     }
 
     private var resultsPaneBackdrop: some View {

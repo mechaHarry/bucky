@@ -87,11 +87,6 @@ struct FileBrowserView: View {
 
     private var pinnedRail: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label("Pinned", systemImage: "pin")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .labelStyle(.titleAndIcon)
-
             if model.pinnedDirectories.isEmpty {
                 placeholder("Pinned items will appear here")
             } else {
@@ -122,26 +117,12 @@ struct FileBrowserView: View {
                 }
                 .frame(maxHeight: .infinity)
             }
-
-            Spacer(minLength: 0)
         }
+        .frame(maxHeight: .infinity)
     }
 
     private var currentDirectoryColumn: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Text(title(for: model.currentDirectory))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-
-                Spacer(minLength: 6)
-
-                Text("\(model.entries.count)")
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.tertiary)
-            }
-
             ZStack {
                 LauncherResultList(
                     scrollTargetID: $browseScrollTargetID,
@@ -166,6 +147,7 @@ struct FileBrowserView: View {
                         .transition(.opacity)
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .onAppear {
                 scrollSelectedEntry(animated: false)
             }
@@ -175,8 +157,6 @@ struct FileBrowserView: View {
             .onChange(of: model.selectionScrollEvent?.id) { _, _ in
                 scrollSelectionEvent()
             }
-
-            Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
