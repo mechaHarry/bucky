@@ -37,8 +37,9 @@ final class LauncherResultListPolicyTests: XCTestCase {
         XCTAssertTrue(source.contains(".glassEffectID(LauncherResultRowGlassEffectID.selection"))
         XCTAssertTrue(source.contains(".glassEffectTransition(.matchedGeometry)"))
         XCTAssertTrue(source.contains(".shadow("))
-        XCTAssertTrue(source.contains("radius: isSelected ? 18 : 14"))
+        XCTAssertTrue(source.contains("radius: isSelected ? 13 : 9"))
         XCTAssertTrue(source.contains("x: 0, y: 2"))
+        XCTAssertTrue(source.contains("isSelected ? 0.18 : 0.10"))
     }
 
     func testSharedResultListAnimationKeepsRowsFastButVisible() {

@@ -63,7 +63,7 @@ struct LiquidGlassLauncherView: View {
     private var launcherSurface: some View {
         VStack(spacing: LauncherVisualStyle.aetherContentSpacing) {
             header
-            results
+            resultsPane
         }
         .padding(10)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -87,6 +87,36 @@ struct LiquidGlassLauncherView: View {
             .padding(.top, ModeSwitcherLayoutPolicy.launcherHeaderTopInset)
             .padding(.horizontal, ModeSwitcherLayoutPolicy.launcherHeaderHorizontalInset)
             .padding(.bottom, ModeSwitcherLayoutPolicy.launcherHeaderBottomInset)
+    }
+
+    private var resultsPane: some View {
+        results
+            .padding(LauncherVisualStyle.resultsPaneContentInset)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background {
+                resultsPaneBackdrop
+            }
+            .contentShape(resultsPaneShape)
+    }
+
+    private var resultsPaneBackdrop: some View {
+        resultsPaneShape
+            .fill(Color.clear)
+            .glassEffect(
+                .regular
+                    .tint(LauncherModeTintPolicy.panelColor(for: model.mode).opacity(LauncherVisualStyle.resultsPaneModeTintOpacity))
+                    .interactive(false),
+                in: resultsPaneShape
+            )
+            .overlay {
+                resultsPaneShape
+                    .strokeBorder(LauncherVisualStyle.resultsPaneRim.opacity(0.24), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.14), radius: 16, x: 0, y: 8)
+    }
+
+    private var resultsPaneShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: LauncherVisualStyle.resultsPaneCornerRadius, style: .continuous)
     }
 
     private var headerControls: some View {
@@ -511,11 +541,15 @@ private enum HeaderGlassEffectID: Hashable, Sendable {
 @available(macOS 26.0, *)
 private enum LauncherVisualStyle {
     static let windowCornerRadius: CGFloat = 30
-    static let aetherContentSpacing: CGFloat = 8
+    static let aetherContentSpacing: CGFloat = 14
+    static let resultsPaneCornerRadius: CGFloat = 24
+    static let resultsPaneContentInset: CGFloat = 12
+    static let resultsPaneModeTintOpacity = 0.08
     static let rowFill = Color(nsColor: .windowBackgroundColor)
     static let selectionFill = Color(nsColor: .selectedContentBackgroundColor)
     static let activeHeaderControlTint = Color(nsColor: .controlAccentColor)
     static let surfaceRim = Color(nsColor: .separatorColor)
+    static let resultsPaneRim = Color(nsColor: .separatorColor)
     static let selectionRim = Color(nsColor: .selectedContentBackgroundColor)
     static let actionRim = Color(nsColor: .separatorColor)
 
