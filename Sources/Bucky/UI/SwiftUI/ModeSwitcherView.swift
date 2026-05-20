@@ -60,6 +60,7 @@ struct ModeSwitcherView: View {
         .buttonStyle(.glass)
         .buttonBorderShape(.circle)
         .tint(LauncherModeTintPolicy.inactiveOrbColor(for: mode))
+        .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 4)
         .help(helpText(for: mode))
     }
 
@@ -123,6 +124,7 @@ struct ModeSwitcherView: View {
             }
             .frame(minWidth: 0, maxWidth: .infinity, minHeight: ModeSwitcherLayoutPolicy.activePillHeight, maxHeight: ModeSwitcherLayoutPolicy.activePillHeight)
             .layoutPriority(1)
+            .shadow(color: .black.opacity(0.18), radius: 10, x: 0, y: 5)
         }
     }
 
@@ -271,6 +273,7 @@ private struct TextInputModePill: View {
             TextInputPillGlassSurface(tint: LauncherModeTintPolicy.activeColor(for: mode))
         }
         .contentShape(Capsule())
+        .shadow(color: .black.opacity(0.18), radius: 10, x: 0, y: 5)
     }
 }
 

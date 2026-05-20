@@ -8,43 +8,27 @@ struct LauncherResultListLayoutPolicy {
     static let rowReconstructionAnimationSeconds = 0.18
 }
 
-struct LauncherAetherEdgePolicy {
-    static let edgeBandHeight: CGFloat = 28
-    static let edgeGlassOpacity = 0.52
-    static let edgeFadeStop = 0.72
-}
-
 @available(macOS 26.0, *)
 struct LauncherResultList<RowID: Hashable, Content: View>: View {
     @Binding var scrollTargetID: RowID?
     let scrollTargetAnchor: UnitPoint?
     let reconstructionID: AnyHashable?
-    let appliesAetherEdgeTreatment: Bool
     @ViewBuilder let content: () -> Content
 
     init(
         scrollTargetID: Binding<RowID?> = .constant(nil),
         scrollTargetAnchor: UnitPoint? = nil,
         reconstructionID: AnyHashable? = nil,
-        appliesAetherEdgeTreatment: Bool = true,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self._scrollTargetID = scrollTargetID
         self.scrollTargetAnchor = scrollTargetAnchor
         self.reconstructionID = reconstructionID
-        self.appliesAetherEdgeTreatment = appliesAetherEdgeTreatment
         self.content = content
     }
 
     var body: some View {
-        Group {
-            if appliesAetherEdgeTreatment {
-                scrollView
-                    .launcherAetherEdgeTreatment()
-            } else {
-                scrollView
-            }
-        }
+        scrollView
     }
 
     private var scrollView: some View {
@@ -68,71 +52,6 @@ struct LauncherResultList<RowID: Hashable, Content: View>: View {
         }
         .scrollTargetLayout()
         .frame(maxWidth: .infinity)
-    }
-}
-
-@available(macOS 26.0, *)
-extension View {
-    func launcherAetherEdgeTreatment() -> some View {
-        self
-            .mask {
-                VStack(spacing: 0) {
-                    LinearGradient(
-                        stops: [
-                            .init(color: .clear, location: 0),
-                            .init(color: .black, location: LauncherAetherEdgePolicy.edgeFadeStop)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .frame(height: LauncherAetherEdgePolicy.edgeBandHeight)
-
-                    Rectangle()
-                        .fill(.black)
-
-                    LinearGradient(
-                        stops: [
-                            .init(color: .black, location: 1 - LauncherAetherEdgePolicy.edgeFadeStop),
-                            .init(color: .clear, location: 1)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .frame(height: LauncherAetherEdgePolicy.edgeBandHeight)
-                }
-            }
-            .overlay(alignment: .top) {
-                LauncherAetherEdgeOverlay(edge: .top)
-            }
-            .overlay(alignment: .bottom) {
-                LauncherAetherEdgeOverlay(edge: .bottom)
-            }
-            .clipped()
-    }
-}
-
-@available(macOS 26.0, *)
-private enum LauncherAetherEdge {
-    case top
-    case bottom
-}
-
-@available(macOS 26.0, *)
-private struct LauncherAetherEdgeOverlay: View {
-    let edge: LauncherAetherEdge
-
-    var body: some View {
-        LinearGradient(
-            colors: edge == .top
-                ? [Color.white.opacity(0.20), Color.white.opacity(0)]
-                : [Color.white.opacity(0), Color.white.opacity(0.20)],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-        .background(.regularMaterial)
-        .opacity(LauncherAetherEdgePolicy.edgeGlassOpacity)
-        .frame(height: LauncherAetherEdgePolicy.edgeBandHeight)
-        .allowsHitTesting(false)
     }
 }
 
@@ -182,44 +101,79 @@ private struct LauncherResultRowBackground: View {
     }
 
     var body: some View {
-        ZStack {
-            rowBase
+        GlassEffectContainer(spacing: 0) {
+            ZStack {
+                rowBase
 
-            if isMarked && !isSelected {
-                rowHighlight(
-                    tint: markedTint,
-                    opacity: FileBrowserRowFocusIndicatorPolicy.markedSelectionOpacity
-                )
-                .transition(.opacity)
-            }
+                if isMarked && !isSelected {
+                    rowHighlight(
+                        tint: markedTint,
+                        opacity: FileBrowserRowFocusIndicatorPolicy.markedSelectionOpacity,
+                        interactive: false
+                    )
+                    .glassEffectTransition(.materialize)
+                }
 
-            if isSelected {
-                rowHighlight(
-                    tint: selectionTint,
-                    opacity: FileBrowserRowFocusIndicatorPolicy.activeSelectionOpacity
-                )
-                .overlay {
-                    rowShape
-                        .strokeBorder(selectionTint.opacity(0.42), lineWidth: 1)
+                if isSelected {
+                    rowHighlight(
+                        tint: selectionTint,
+                        opacity: FileBrowserRowFocusIndicatorPolicy.activeSelectionOpacity,
+                        interactive: true
+                    )
+                    .glassEffectID(LauncherResultRowGlassEffectID.selection, in: selectionNamespace)
+                    .glassEffectTransition(.matchedGeometry)
+                    .overlay {
+                        rowShape
+                            .strokeBorder(selectionTint.opacity(0.42), lineWidth: 1)
+                    }
                 }
             }
+            .overlay {
+                rowGleam
+            }
+            .overlay {
+                rowShape
+                    .strokeBorder(rowRim, lineWidth: isSelected ? 1.15 : 1)
+            }
+            .animation(rowSelectionAnimation, value: isSelected)
+            .animation(rowSelectionAnimation, value: isMarked)
         }
-        .overlay {
-            rowShape
-                .strokeBorder(rowRim, lineWidth: isSelected ? 1.15 : 1)
-        }
-        .animation(rowSelectionAnimation, value: isSelected)
-        .animation(rowSelectionAnimation, value: isMarked)
+        .shadow(color: .black.opacity(isSelected ? 0.20 : 0.12), radius: isSelected ? 12 : 7, x: 0, y: 5)
     }
 
     private var rowBase: some View {
         rowShape
-            .fill(LauncherResultListVisualStyle.rowFill.opacity(0.44))
+            .fill(Color.clear)
+            .glassEffect(
+                .regular.tint(LauncherResultListVisualStyle.rowFill.opacity(0.035)).interactive(false),
+                in: rowShape
+            )
     }
 
-    private func rowHighlight(tint: Color, opacity: Double) -> some View {
+    private func rowHighlight(tint: Color, opacity: Double, interactive: Bool) -> some View {
         rowShape
-            .fill(tint.opacity(opacity))
+            .fill(Color.clear)
+            .glassEffect(
+                .regular.tint(tint.opacity(opacity)).interactive(interactive),
+                in: rowShape
+            )
+    }
+
+    private var rowGleam: some View {
+        rowShape
+            .strokeBorder(
+                LinearGradient(
+                    colors: [
+                        Color.white.opacity(isSelected ? 0.46 : 0.28),
+                        Color.white.opacity(0.04),
+                        Color.black.opacity(0.10)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                lineWidth: 1
+            )
+            .allowsHitTesting(false)
     }
 
     private var rowShape: RoundedRectangle {
@@ -235,6 +189,11 @@ private struct LauncherResultRowBackground: View {
         }
         return LauncherResultListVisualStyle.surfaceRim.opacity(0.18)
     }
+}
+
+@available(macOS 26.0, *)
+private enum LauncherResultRowGlassEffectID: Hashable, Sendable {
+    case selection
 }
 
 @available(macOS 26.0, *)
