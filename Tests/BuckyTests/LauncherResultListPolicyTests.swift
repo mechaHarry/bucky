@@ -43,6 +43,13 @@ final class LauncherResultListPolicyTests: XCTestCase {
         XCTAssertTrue(source.contains(".allowsHitTesting(false)"))
     }
 
+    func testResultsPaneClipsRowsAtPaneBoundaryNotInsetBounds() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
+
+        XCTAssertFalse(source.contains("results\n                .padding(LauncherVisualStyle.resultsPaneContentInset)"))
+        XCTAssertTrue(source.contains("results\n                .frame(maxWidth: .infinity, maxHeight: .infinity)\n                .clipShape(resultsPaneShape)"))
+    }
+
     func testSharedResultListDoesNotUseAetherEdgeTreatment() throws {
         let source = try source(named: "Sources/Bucky/UI/SwiftUI/LauncherResultListView.swift")
 

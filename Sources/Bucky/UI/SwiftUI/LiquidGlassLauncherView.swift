@@ -94,7 +94,6 @@ struct LiquidGlassLauncherView: View {
             resultsPaneBackdrop
 
             results
-                .padding(LauncherVisualStyle.resultsPaneContentInset)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .clipShape(resultsPaneShape)
 
