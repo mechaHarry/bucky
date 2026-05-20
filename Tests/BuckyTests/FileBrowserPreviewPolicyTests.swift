@@ -198,6 +198,44 @@ final class FileBrowserPreviewPolicyTests: XCTestCase {
         )
         XCTAssertNil(FileBrowserIconPolicy.systemSymbolOverride(for: URL(fileURLWithPath: "/Users/test/Documents")))
     }
+
+    func testFileIconPreloadPolicyWarmsTraversalBeyondVisibleRows() {
+        let entries = (0..<900).map { index in
+            FileBrowserEntry(
+                url: URL(fileURLWithPath: "/Users/test/file-\(index).txt"),
+                kind: .file,
+                size: nil,
+                createdAt: nil,
+                modifiedAt: nil,
+                isHidden: false
+            )
+        }
+        let pinned = [
+            URL(fileURLWithPath: "/Users/test/.Trash"),
+            URL(fileURLWithPath: "/Users/test/Documents")
+        ]
+
+        let urls = FileIconPreloadPolicy.preloadURLs(entries: entries, pinnedDirectories: pinned)
+
+        XCTAssertEqual(urls.count, FileIconPreloadPolicy.preloadLimit)
+        XCTAssertEqual(urls.first?.path, "/Users/test/Documents")
+        XCTAssertFalse(urls.contains(URL(fileURLWithPath: "/Users/test/.Trash")))
+        XCTAssertTrue(FileIconPreloadPolicy.shouldYield(afterLoadingItemAt: FileIconPreloadPolicy.yieldStride - 1))
+    }
+
+    func testFileRowsUseAsyncSharedIconCache() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Sources/Bucky/UI/SwiftUI/FileBrowserView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("FileIconCache.shared.cachedIcon(for: url)"))
+        XCTAssertTrue(source.contains("FileIconCache.shared.icon(for: url)"))
+        XCTAssertTrue(source.contains("preloadFileIcons()"))
+        XCTAssertFalse(source.contains("icon = model.icon(for: url)"))
+    }
 }
 
 private extension NSColor {

@@ -16,17 +16,20 @@ struct LauncherResultList<RowID: Hashable, Content: View>: View {
     @Binding var scrollTargetID: RowID?
     let scrollTargetAnchor: UnitPoint?
     let reconstructionID: AnyHashable?
+    let usesEagerRows: Bool
     @ViewBuilder let content: () -> Content
 
     init(
         scrollTargetID: Binding<RowID?> = .constant(nil),
         scrollTargetAnchor: UnitPoint? = nil,
         reconstructionID: AnyHashable? = nil,
+        usesEagerRows: Bool = false,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self._scrollTargetID = scrollTargetID
         self.scrollTargetAnchor = scrollTargetAnchor
         self.reconstructionID = reconstructionID
+        self.usesEagerRows = usesEagerRows
         self.content = content
     }
 
@@ -50,8 +53,16 @@ struct LauncherResultList<RowID: Hashable, Content: View>: View {
     }
 
     private var scrollContent: some View {
-        LazyVStack(spacing: LauncherResultListLayoutPolicy.rowSpacing) {
-            content()
+        Group {
+            if usesEagerRows {
+                VStack(spacing: LauncherResultListLayoutPolicy.rowSpacing) {
+                    content()
+                }
+            } else {
+                LazyVStack(spacing: LauncherResultListLayoutPolicy.rowSpacing) {
+                    content()
+                }
+            }
         }
         .scrollTargetLayout()
         .frame(maxWidth: .infinity)
