@@ -31,6 +31,12 @@
 # Agentic reosurces for future iterations.
 !.agents/
 !.agents/**
+!docs/
+!docs/superpowers/
+!docs/superpowers/plans/
+!docs/superpowers/plans/2026-05-14-bucky-refinements-implementation-plan.md
+!docs/superpowers/specs/
+!docs/superpowers/specs/**
 !README.md
 !AGENTS.md
 !CHANGELOG.md

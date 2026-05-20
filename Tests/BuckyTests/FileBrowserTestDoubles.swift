@@ -175,6 +175,45 @@ struct ImmediateDirectoryStream: FileBrowserDirectoryStreaming {
     }
 }
 
+final class ManualDirectoryObserver: FileBrowserDirectoryObserving {
+    private(set) var observedDirectories: [URL] = []
+    private var observations: [ManualDirectoryObservation] = []
+
+    func observe(
+        directory: URL,
+        onChange: @escaping @MainActor () -> Void
+    ) -> FileBrowserDirectoryObservation? {
+        observedDirectories.append(directory.standardizedFileURL)
+        let observation = ManualDirectoryObservation(onChange: onChange)
+        observations.append(observation)
+        return observation
+    }
+
+    @MainActor
+    func triggerLatestChange() {
+        observations.last?.trigger()
+    }
+}
+
+private final class ManualDirectoryObservation: FileBrowserDirectoryObservation {
+    private let onChange: @MainActor () -> Void
+    private(set) var isCancelled = false
+
+    init(onChange: @escaping @MainActor () -> Void) {
+        self.onChange = onChange
+    }
+
+    func cancel() {
+        isCancelled = true
+    }
+
+    @MainActor
+    func trigger() {
+        guard !isCancelled else { return }
+        onChange()
+    }
+}
+
 private extension Dictionary where Key == URL, Value == [FileBrowserEntry] {
     func matching(_ directory: URL) -> [FileBrowserEntry]? {
         first { $0.key.standardizedFileURL.path == directory.standardizedFileURL.path }?.value

@@ -5,6 +5,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let inclusionStore = InclusionStore()
     private let exclusionStore = ExclusionStore()
     private let calculationHistoryStore = CalculationHistoryStore()
+    private let dictionaryHistoryStore = DictionaryHistoryStore()
     private var launcherController: LauncherControlling?
     private var settingsWindowController: SettingsWindowController?
     private var statusMenuController: StatusMenuController?
@@ -37,6 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 inclusionStore: inclusionStore,
                 exclusionStore: exclusionStore,
                 calculationHistoryStore: calculationHistoryStore,
+                dictionaryHistoryStore: dictionaryHistoryStore,
                 openSettingsAction: { [weak self] in self?.showSettings() }
             )
         }

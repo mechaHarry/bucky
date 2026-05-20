@@ -4,21 +4,25 @@ import SwiftUI
 @available(macOS 26.0, *)
 struct NativeFileDragSourceView: NSViewRepresentable {
     let url: URL
+    let urlsProvider: () -> [URL]
 
     func makeNSView(context: Context) -> NativeFileDragSourceNSView {
         let view = NativeFileDragSourceNSView()
         view.url = url
+        view.urlsProvider = urlsProvider
         return view
     }
 
     func updateNSView(_ nsView: NativeFileDragSourceNSView, context: Context) {
         nsView.url = url
+        nsView.urlsProvider = urlsProvider
     }
 }
 
 @available(macOS 26.0, *)
 final class NativeFileDragSourceNSView: NSView, NSDraggingSource {
     var url: URL?
+    var urlsProvider: (() -> [URL])?
     private var mouseDownEvent: NSEvent?
     private var didBeginDrag = false
 
@@ -48,18 +52,26 @@ final class NativeFileDragSourceNSView: NSView, NSDraggingSource {
         }
 
         didBeginDrag = true
-        let icon = NSWorkspace.shared.icon(forFile: url.path)
+        let urls = FileBrowserDragPolicy.nonEmptyDraggedURLs(
+            rowURL: url,
+            providedURLs: urlsProvider?() ?? []
+        )
         let pointerLocation = convert(event.locationInWindow, from: nil)
-        let draggingItem = NSDraggingItem(pasteboardWriter: FileBrowserDragPolicy.draggedURL(for: url) as NSURL)
-        draggingItem.setDraggingFrame(
-            FileBrowserDragPolicy.draggingImageFrame(
+        let draggingItems = urls.enumerated().map { index, draggedURL in
+            let icon = NSWorkspace.shared.icon(forFile: draggedURL.path)
+            let draggingItem = NSDraggingItem(
+                pasteboardWriter: FileBrowserDragPolicy.draggedURL(for: draggedURL) as NSURL
+            )
+            let itemOffset = FileBrowserDragPolicy.draggingImageOffset(forItemAt: index)
+            let frame = FileBrowserDragPolicy.draggingImageFrame(
                 in: bounds,
                 iconSize: icon.size,
                 pointerLocation: pointerLocation
-            ),
-            contents: icon
-        )
-        beginDraggingSession(with: [draggingItem], event: event, source: self)
+            ).offsetBy(dx: itemOffset.width, dy: itemOffset.height)
+            draggingItem.setDraggingFrame(frame, contents: icon)
+            return draggingItem
+        }
+        beginDraggingSession(with: draggingItems, event: event, source: self)
     }
 
     override func mouseUp(with event: NSEvent) {

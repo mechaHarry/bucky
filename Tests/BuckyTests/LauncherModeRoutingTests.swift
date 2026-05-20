@@ -34,6 +34,13 @@ final class LauncherModeRoutingTests: XCTestCase {
         XCTAssertFalse(LauncherMode.files.acceptsTextInput)
     }
 
+    @available(macOS 26.0, *)
+    func testNearestSelectionScrollTracksImmediatelyForKeyRepeat() {
+        XCTAssertFalse(SelectionScrollAnimationPolicy.shouldAnimate(anchor: .nearest))
+        XCTAssertTrue(SelectionScrollAnimationPolicy.shouldAnimate(anchor: .top))
+        XCTAssertTrue(SelectionScrollAnimationPolicy.shouldAnimate(anchor: .bottom))
+    }
+
     func testFilesRenameFocusDoesNotRouteAlphaNumericKeysAwayFromTextField() {
         XCTAssertTrue(LauncherKeyRoutingPolicy.shouldRouteAlphaNumeric(
             mode: .files,
@@ -72,6 +79,120 @@ final class LauncherModeRoutingTests: XCTestCase {
             mode: .files,
             fileFocusState: .renaming,
             keyCode: UInt16(kVK_Escape),
+            eventType: .keyDown
+        ))
+    }
+
+    func testTextInputModesPassThroughNativeEditingCommands() {
+        XCTAssertTrue(LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
+            mode: .calculator,
+            fileFocusState: nil,
+            charactersIgnoringModifiers: "v",
+            modifierFlags: .command,
+            eventType: .keyDown
+        ))
+        XCTAssertTrue(LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
+            mode: .dictionary,
+            fileFocusState: nil,
+            charactersIgnoringModifiers: "a",
+            modifierFlags: .command,
+            eventType: .keyDown
+        ))
+        XCTAssertTrue(LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
+            mode: .applications,
+            fileFocusState: nil,
+            charactersIgnoringModifiers: "c",
+            modifierFlags: .command,
+            eventType: .keyDown
+        ))
+    }
+
+    func testTextInputModesPassThroughNativeEditingCommandsOnKeyUp() {
+        XCTAssertTrue(LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
+            mode: .calculator,
+            fileFocusState: nil,
+            charactersIgnoringModifiers: "x",
+            modifierFlags: .command,
+            eventType: .keyUp
+        ))
+    }
+
+    func testModifiedNativeEditingCommandsDoNotPassThrough() {
+        XCTAssertFalse(LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
+            mode: .calculator,
+            fileFocusState: nil,
+            charactersIgnoringModifiers: "v",
+            modifierFlags: [.command, .shift],
+            eventType: .keyDown
+        ))
+        XCTAssertFalse(LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
+            mode: .calculator,
+            fileFocusState: nil,
+            charactersIgnoringModifiers: "v",
+            modifierFlags: [.command, .option],
+            eventType: .keyDown
+        ))
+    }
+
+    func testLauncherCommandsDoNotPassThroughAsTextEditingCommands() {
+        XCTAssertFalse(LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
+            mode: .calculator,
+            fileFocusState: nil,
+            charactersIgnoringModifiers: "2",
+            modifierFlags: .command,
+            eventType: .keyDown
+        ))
+        XCTAssertFalse(LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
+            mode: .applications,
+            fileFocusState: nil,
+            charactersIgnoringModifiers: "r",
+            modifierFlags: .command,
+            eventType: .keyDown
+        ))
+        XCTAssertFalse(LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
+            mode: .applications,
+            fileFocusState: nil,
+            charactersIgnoringModifiers: "p",
+            modifierFlags: .command,
+            eventType: .keyDown
+        ))
+    }
+
+    func testReservedLauncherCommandKeysDoNotPassThroughAsTextEditingCommands() {
+        for key in ["1", "2", "3", "4", "r", ",", "p", "[", "]"] {
+            XCTAssertFalse(
+                LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
+                    mode: .applications,
+                    fileFocusState: nil,
+                    charactersIgnoringModifiers: key,
+                    modifierFlags: .command,
+                    eventType: .keyDown
+                ),
+                "Expected Command+\(key) to remain reserved for launcher routing"
+            )
+        }
+    }
+
+    func testFilesRenamePassesThroughNativeEditingCommands() {
+        XCTAssertTrue(LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
+            mode: .files,
+            fileFocusState: .renaming,
+            charactersIgnoringModifiers: "v",
+            modifierFlags: .command,
+            eventType: .keyDown
+        ))
+        XCTAssertFalse(LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
+            mode: .files,
+            fileFocusState: .browse,
+            charactersIgnoringModifiers: "v",
+            modifierFlags: .command,
+            eventType: .keyDown
+        ))
+        XCTAssertFalse(LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
+            mode: .files,
+            fileFocusState: .previewActions,
+            charactersIgnoringModifiers: "v",
+            modifierFlags: .command,
             eventType: .keyDown
         ))
     }
@@ -127,7 +248,7 @@ final class LauncherModeRoutingTests: XCTestCase {
             visibleFrame: visibleFrame
         )
 
-        XCTAssertEqual(frame.size, CGSize(width: 760, height: 460))
+        XCTAssertEqual(frame.size, LauncherWindowFramePolicy.defaultSize)
         XCTAssertTrue(visibleFrame.contains(frame))
     }
 
@@ -145,8 +266,9 @@ final class LauncherModeRoutingTests: XCTestCase {
     }
 
     @available(macOS 26.0, *)
-    func testLauncherWindowBackgroundDoesNotDragRowsAwayFromNativeFileDragging() {
-        XCTAssertFalse(LauncherWindowDragPolicy.isMovableByWindowBackground)
+    func testLauncherWindowBackgroundCanDragFromMainPanel() {
+        XCTAssertTrue(LauncherWindowDragPolicy.isMovableByWindowBackground)
+        XCTAssertFalse(FileBrowserDragPolicy.mouseDownCanMoveWindow)
     }
 
     @available(macOS 26.0, *)
@@ -158,8 +280,51 @@ final class LauncherModeRoutingTests: XCTestCase {
         XCTAssertTrue(LauncherWindowRepositionPolicy.shouldReposition(after: .switchMode(.files)))
     }
 
+    func testHotKeyDoesNotAddExtraMainQueueHopWhenAlreadyOnMainThread() throws {
+        let source = try source(named: "Sources/Bucky/App/HotKeyController.swift")
+
+        XCTAssertTrue(source.contains("controller.triggerHotKey()"))
+        XCTAssertTrue(source.contains("guard Thread.isMainThread else"))
+        XCTAssertTrue(source.contains("onHotKey()"))
+        XCTAssertFalse(source.contains("DispatchQueue.main.async {\n                    controller.onHotKey()\n                }"))
+    }
+
     @available(macOS 26.0, *)
-    func testDefaultWindowFrameKeepsBaselineLauncherSize() {
+    func testHotKeyShowUsesNonAnimatedMaterializationForImmediateInput() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
+
+        XCTAssertTrue(source.contains("transaction.disablesAnimations = true"))
+        XCTAssertTrue(source.contains("withTransaction(transaction) {\n                model.isPresented = true\n            }\n            finishShow(transitionID: visibilityTransitionID)"))
+        XCTAssertTrue(source.contains("scheduleApplicationReindexIfNeeded(mode: mode)"))
+        XCTAssertTrue(source.contains("guard self.visibilityTransitionID == transitionID,\n                      self.visibilityState == .shown"))
+        XCTAssertFalse(source.contains("withAnimation(presentationAnimation, completionCriteria: .removed) {\n                model.isPresented = true"))
+        XCTAssertFalse(source.contains("if mode == .applications {\n            DispatchQueue.main.async"))
+    }
+
+    @available(macOS 26.0, *)
+    func testTextInputModesCaptureTypedCharactersDuringShowAnimation() throws {
+        let controller = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
+        let model = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherModel.swift")
+        let utilities = try source(named: "Sources/Bucky/UI/Shared/Utilities.swift")
+
+        XCTAssertTrue(controller.contains("self.visibilityState == .showing,\n                   self.model.mode.acceptsTextInput,\n                   let character = event.launcherTextInputCharacter"))
+        XCTAssertTrue(controller.contains("self.model.insertTextInput(character)"))
+        XCTAssertTrue(model.contains("func insertTextInput(_ character: Character)"))
+        XCTAssertTrue(model.contains("query.append(character)\n        queryDidChange()"))
+        XCTAssertTrue(utilities.contains("var launcherTextInputCharacter: Character?"))
+        XCTAssertTrue(utilities.contains("flags.intersection([.command, .control, .option]).isEmpty"))
+    }
+
+    @available(macOS 26.0, *)
+    func testModeSwitchDoesNotSynchronouslyReloadHistoryStores() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherModel.swift")
+
+        XCTAssertFalse(source.contains("calculationHistoryStore.load()\n            dictionaryHistoryStore.load()"))
+        XCTAssertTrue(source.contains("case .calculator, .dictionary:\n            applyToolsResults()"))
+    }
+
+    @available(macOS 26.0, *)
+    func testDefaultWindowFrameAddsInvisibleShadowBleedAroundVisualLauncherSize() {
         let visibleFrame = CGRect(x: 0, y: 0, width: 1_440, height: 900)
         let frame = LauncherWindowFramePolicy.frame(
             mode: .applications,
@@ -167,7 +332,16 @@ final class LauncherModeRoutingTests: XCTestCase {
             visibleFrame: visibleFrame
         )
 
-        XCTAssertEqual(frame.size, CGSize(width: 760, height: 460))
+        XCTAssertEqual(LauncherWindowFramePolicy.visualContentSize, CGSize(width: 760, height: 460))
+        XCTAssertGreaterThan(LauncherWindowFramePolicy.shadowBleed, 0)
+        XCTAssertEqual(frame.size, LauncherWindowFramePolicy.defaultSize)
+        XCTAssertEqual(
+            frame.size,
+            CGSize(
+                width: LauncherWindowFramePolicy.visualContentSize.width + LauncherWindowFramePolicy.shadowBleed * 2,
+                height: LauncherWindowFramePolicy.visualContentSize.height + LauncherWindowFramePolicy.shadowBleed * 2
+            )
+        )
     }
 
     @available(macOS 26.0, *)
@@ -191,7 +365,7 @@ final class LauncherModeRoutingTests: XCTestCase {
 
     @MainActor
     @available(macOS 26.0, *)
-    func testFileBrowserModelActivatesOnlyWhenFilesModeIsShown() {
+    func testBackgroundWarmerActivatesFileBrowserCacheBeforeFilesModeIsShown() {
         var activationCount = 0
         let model = LiquidGlassLauncherModel(
             settingsStore: SettingsStore(),
@@ -208,17 +382,21 @@ final class LauncherModeRoutingTests: XCTestCase {
             }
         )
 
-        model.show(mode: .applications)
         XCTAssertEqual(activationCount, 0)
+        model.startBackgroundWarmCaches()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.12))
+        XCTAssertEqual(activationCount, 1)
 
+        model.show(mode: .applications)
+        XCTAssertEqual(activationCount, 1)
         _ = model.handle(command: .switchMode(.calculator))
-        XCTAssertEqual(activationCount, 0)
+        XCTAssertEqual(activationCount, 1)
 
         _ = model.handle(command: .switchMode(.dictionary))
-        XCTAssertEqual(activationCount, 0)
+        XCTAssertEqual(activationCount, 1)
 
         _ = model.handle(command: .switchMode(.applications))
-        XCTAssertEqual(activationCount, 0)
+        XCTAssertEqual(activationCount, 1)
 
         _ = model.handle(command: .switchMode(.files))
         XCTAssertEqual(activationCount, 1)
@@ -261,6 +439,101 @@ final class LauncherModeRoutingTests: XCTestCase {
     @MainActor
     @available(macOS 26.0, *)
     func testBlankDictionaryModeDoesNotUseCalculatorHistoryMessage() {
+        let model = makeDictionaryLauncherModel(
+            dictionaryHistoryStore: DictionaryHistoryStore(fileURL: temporaryDictionaryHistoryFileURL())
+        )
+
+        model.show(mode: .dictionary)
+
+        XCTAssertEqual(model.toolItems, [])
+        XCTAssertNil(model.emptyMessage)
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testBlankDictionaryModeShowsPersistedHistoryRows() {
+        let dictionaryHistoryStore = DictionaryHistoryStore(fileURL: temporaryDictionaryHistoryFileURL())
+        dictionaryHistoryStore.add(term: "apple")
+        dictionaryHistoryStore.add(term: "banana")
+        let model = makeDictionaryLauncherModel(dictionaryHistoryStore: dictionaryHistoryStore)
+
+        model.show(mode: .dictionary)
+
+        XCTAssertEqual(model.toolItems.map(\.kind), [.dictionaryHistory, .dictionaryHistory])
+        XCTAssertEqual(model.toolItems.map(\.title), ["banana", "apple"])
+        XCTAssertTrue(model.toolItems.allSatisfy { $0.copyText == nil })
+        XCTAssertNil(model.emptyMessage)
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testDictionaryHistoryRowCanBeRemovedIndividually() {
+        let dictionaryHistoryStore = DictionaryHistoryStore(fileURL: temporaryDictionaryHistoryFileURL())
+        dictionaryHistoryStore.add(term: "apple")
+        dictionaryHistoryStore.add(term: "banana")
+        let model = makeDictionaryLauncherModel(dictionaryHistoryStore: dictionaryHistoryStore)
+
+        model.show(mode: .dictionary)
+        guard let banana = model.toolItems.first(where: { $0.title == "banana" }) else {
+            return XCTFail("Expected banana dictionary history row")
+        }
+
+        model.removeDictionaryHistory(banana)
+
+        XCTAssertEqual(model.toolItems.map(\.title), ["apple"])
+        XCTAssertEqual(dictionaryHistoryStore.words.map(\.term), ["apple"])
+        XCTAssertNil(model.emptyMessage)
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testDictionaryHistoryActivationMovesTermToTop() {
+        let dictionaryHistoryStore = DictionaryHistoryStore(fileURL: temporaryDictionaryHistoryFileURL())
+        dictionaryHistoryStore.add(term: "apple")
+        dictionaryHistoryStore.add(term: "banana")
+        let model = makeDictionaryLauncherModel(dictionaryHistoryStore: dictionaryHistoryStore)
+
+        model.show(mode: .dictionary)
+        model.isPinned = true
+        model.selectedIndex = 1
+        model.selectionScrollRequest = nil
+        _ = model.handle(command: .open)
+
+        XCTAssertEqual(dictionaryHistoryStore.words.map(\.term), ["apple", "banana"])
+        XCTAssertEqual(model.toolItems.first?.title, "apple")
+        XCTAssertEqual(model.selectedIndex, 0)
+        XCTAssertEqual(model.selectionScrollRequest?.index, 0)
+        XCTAssertEqual(model.selectionScrollRequest?.anchor, .top)
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testDictionaryLookupIsDeferredAndPublishesOnlyLatestSnapshot() {
+        let lookup = RecordingDictionaryLookup()
+        let model = makeDictionaryLauncherModel(
+            dictionaryHistoryStore: DictionaryHistoryStore(fileURL: temporaryDictionaryHistoryFileURL()),
+            dictionaryLookup: { query in lookup.results(for: query) }
+        )
+
+        model.show(mode: .dictionary)
+        model.query = "app"
+        model.queryDidChange()
+
+        XCTAssertEqual(lookup.queries, [])
+        XCTAssertEqual(model.toolItems, [])
+
+        model.query = "apple"
+        model.queryDidChange()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.18))
+
+        XCTAssertEqual(lookup.queries, ["apple"])
+        XCTAssertEqual(model.toolItems.map(\.title), ["apple"])
+        XCTAssertEqual(model.toolItems.map(\.subtitle), ["Definition for apple"])
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testCalculatorLiveResultSelectsAndScrollsToTopRowWhileTyping() {
         let model = LiquidGlassLauncherModel(
             settingsStore: SettingsStore(),
             inclusionStore: InclusionStore(),
@@ -273,9 +546,52 @@ final class LauncherModeRoutingTests: XCTestCase {
             )
         )
 
-        model.show(mode: .dictionary)
+        model.show(mode: .calculator)
+        model.query = "1 + 1"
+        model.queryDidChange()
+        model.selectedIndex = 1
 
-        XCTAssertNil(model.emptyMessage)
+        model.query = "2 + 2 ="
+        model.queryDidChange()
+
+        XCTAssertEqual(model.toolItems.first?.kind, .calculation)
+        XCTAssertEqual(model.toolItems.first?.title, "4")
+        XCTAssertEqual(model.selectedIndex, 0)
+        XCTAssertEqual(model.selectionScrollRequest?.index, 0)
+        XCTAssertEqual(model.selectionScrollRequest?.anchor, .top)
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testCalculatorHistoryCommitDoesNotStealHistorySelection() {
+        let calculationHistoryStore = CalculationHistoryStore()
+        calculationHistoryStore.clear()
+        defer { calculationHistoryStore.clear() }
+        calculationHistoryStore.add(expression: "3 + 3", result: "6")
+        let model = LiquidGlassLauncherModel(
+            settingsStore: SettingsStore(),
+            inclusionStore: InclusionStore(),
+            exclusionStore: ExclusionStore(),
+            calculationHistoryStore: calculationHistoryStore,
+            fileBrowserModel: FileBrowserModel(
+                fileSystem: StubFileSystemClient(home: URL(fileURLWithPath: "/Users/test"), entriesByDirectory: [:]),
+                store: InMemoryFileBrowserStore(state: .defaultValue),
+                directoryStream: ImmediateDirectoryStream()
+            )
+        )
+
+        model.show(mode: .calculator)
+        model.query = "2 + 2"
+        model.queryDidChange()
+        model.selectedIndex = 1
+        model.selectionScrollRequest = nil
+
+        RunLoop.current.run(until: Date().addingTimeInterval(0.8))
+
+        XCTAssertEqual(model.toolItems.first?.kind, .calculation)
+        XCTAssertEqual(model.toolItems.first?.title, "4")
+        XCTAssertEqual(model.selectedIndex, 1)
+        XCTAssertNil(model.selectionScrollRequest)
     }
 
     @MainActor
@@ -387,6 +703,66 @@ final class LauncherModeRoutingTests: XCTestCase {
         _ = model.handle(command: .switchMode(.calculator))
 
         XCTAssertEqual(model.fileBrowserModel.focusState, .browse)
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    private func makeDictionaryLauncherModel(
+        dictionaryHistoryStore: DictionaryHistoryStore,
+        dictionaryLookup: @escaping @Sendable (String) -> [DictionaryResult] = { DictionaryLookup.results(for: $0) }
+    ) -> LiquidGlassLauncherModel {
+        LiquidGlassLauncherModel(
+            settingsStore: SettingsStore(),
+            inclusionStore: InclusionStore(),
+            exclusionStore: ExclusionStore(),
+            calculationHistoryStore: CalculationHistoryStore(),
+            dictionaryHistoryStore: dictionaryHistoryStore,
+            dictionaryLookup: dictionaryLookup,
+            dictionaryOpenHandler: { _ in },
+            fileBrowserModel: FileBrowserModel(
+                fileSystem: StubFileSystemClient(home: URL(fileURLWithPath: "/Users/test"), entriesByDirectory: [:]),
+                store: InMemoryFileBrowserStore(state: .defaultValue),
+                directoryStream: ImmediateDirectoryStream()
+            )
+        )
+    }
+
+    private func source(named path: String) throws -> String {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent(path)
+        return try String(contentsOf: sourceURL, encoding: .utf8)
+    }
+
+    private final class RecordingDictionaryLookup: @unchecked Sendable {
+        private let lock = NSLock()
+        private var recordedQueries: [String] = []
+
+        var queries: [String] {
+            lock.lock()
+            defer { lock.unlock() }
+            return recordedQueries
+        }
+
+        func results(for query: String) -> [DictionaryResult] {
+            lock.lock()
+            recordedQueries.append(query)
+            lock.unlock()
+
+            return [
+                DictionaryResult(
+                    term: query,
+                    definition: "Definition for \(query)"
+                )
+            ]
+        }
+    }
+
+    private func temporaryDictionaryHistoryFileURL() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("BuckyDictionaryHistory-\(UUID().uuidString).json")
     }
 
     @MainActor

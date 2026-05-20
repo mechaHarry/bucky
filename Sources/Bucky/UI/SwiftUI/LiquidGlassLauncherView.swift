@@ -6,26 +6,21 @@ struct LiquidGlassLauncherView: View {
     @ObservedObject var model: LiquidGlassLauncherModel
     @FocusState private var isSearchFocused: Bool
     @Namespace private var selectionGlassNamespace
-    @Namespace private var headerGlassNamespace
     @State private var handledSelectionScrollRequestID = 0
     @State private var iconPreloadTask: Task<Void, Never>?
     @State private var scrollTargetID: ResultRowID?
     @State private var scrollTargetAnchor: UnitPoint?
 
     private var resultUpdateAnimation: Animation {
-        model.animationTiming.animation(duration: 0.22)
+        model.animationTiming.animation(duration: 0.08)
     }
 
     private var selectionScrollAnimation: Animation {
-        model.animationTiming.animation(duration: 0.16)
+        model.animationTiming.animation(duration: 0.08)
     }
 
     private var toolSnapshotUpdateAnimation: Animation {
-        model.animationTiming.animation(duration: 0.14)
-    }
-
-    private var headerControlAnimation: Animation {
-        model.animationTiming.animation(duration: 0.18)
+        model.animationTiming.animation(duration: 0.08)
     }
 
     var body: some View {
@@ -33,7 +28,6 @@ struct LiquidGlassLauncherView: View {
             if model.isPresented {
                 launcherSurface
                     .modifier(LauncherWindowFocusVisualModifier(isKeyWindow: model.isWindowKey))
-                    .glassEffectTransition(.materialize)
             }
         }
         .onAppear {
@@ -61,13 +55,11 @@ struct LiquidGlassLauncherView: View {
     }
 
     private var launcherSurface: some View {
-        VStack(spacing: 8) {
-            header
-            results
-        }
+        resultsPane
         .padding(10)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(windowBackdrop)
+        .contentShape(Rectangle())
+        .padding(LauncherWindowFramePolicy.shadowBleed)
     }
 
     private func synchronizeSearchFocus() {
@@ -86,99 +78,48 @@ struct LiquidGlassLauncherView: View {
             .padding(.top, ModeSwitcherLayoutPolicy.launcherHeaderTopInset)
             .padding(.horizontal, ModeSwitcherLayoutPolicy.launcherHeaderHorizontalInset)
             .padding(.bottom, ModeSwitcherLayoutPolicy.launcherHeaderBottomInset)
+            .padding(.horizontal, LauncherVisualStyle.resultsPaneContentInset)
+            .padding(.top, LauncherVisualStyle.resultsPaneContentInset)
     }
 
-    private var headerControls: some View {
-        HStack(spacing: 8) {
-            if model.mode == .calculator {
-                Button {
-                    _ = model.handle(command: .clearHistory)
-                } label: {
-                    Image(systemName: "trash")
-                        .frame(width: 18, height: 18)
-                }
-                .buttonStyle(.glass)
-                .disabled(!model.canClearHistory)
-                .help("Clear calculation history")
-                .glassEffectID(HeaderGlassEffectID.clearHistory, in: headerGlassNamespace)
-                .glassEffectTransition(.materialize)
-            }
-
-            calculatorModeControl
-            pinControl
-        }
-        .animation(headerControlAnimation, value: model.mode)
-        .animation(headerControlAnimation, value: model.isPinned)
-    }
-
-    @ViewBuilder
-    private var calculatorModeControl: some View {
-        if model.mode == .calculator {
-            Button {
-                _ = model.handle(command: .switchMode(.applications))
-            } label: {
-                Image(systemName: "wrench.and.screwdriver.fill")
-                    .frame(width: 18, height: 18)
-            }
-            .launcherHeaderButtonStyle(LauncherHeaderButtonStylePolicy(isActive: true))
-            .help("Applications (Command+1)")
-            .glassEffectID(HeaderGlassEffectID.calculatorMode, in: headerGlassNamespace)
-            .glassEffectTransition(.matchedGeometry)
-        } else {
-            Button {
-                _ = model.handle(command: .switchMode(.calculator))
-            } label: {
-                Image(systemName: "wrench.and.screwdriver")
-                    .frame(width: 18, height: 18)
-            }
-            .launcherHeaderButtonStyle(LauncherHeaderButtonStylePolicy(isActive: false))
-            .help("Calculator (Command+2)")
-            .glassEffectID(HeaderGlassEffectID.calculatorMode, in: headerGlassNamespace)
-            .glassEffectTransition(.matchedGeometry)
-        }
-    }
-
-    @ViewBuilder
-    private var pinControl: some View {
-        if model.isPinned {
-            Button {
-                _ = model.handle(command: .togglePin)
-            } label: {
-                Image(systemName: "pin.fill")
-                    .frame(width: 18, height: 18)
-            }
-            .launcherHeaderButtonStyle(LauncherHeaderButtonStylePolicy(isActive: true))
-            .help("Unpin window (Command+P)")
-            .glassEffectID(HeaderGlassEffectID.pin, in: headerGlassNamespace)
-            .glassEffectTransition(.matchedGeometry)
-        } else {
-            Button {
-                _ = model.handle(command: .togglePin)
-            } label: {
-                Image(systemName: "pin")
-                    .frame(width: 18, height: 18)
-            }
-            .launcherHeaderButtonStyle(LauncherHeaderButtonStylePolicy(isActive: false))
-            .help("Pin window (Command+P)")
-            .glassEffectID(HeaderGlassEffectID.pin, in: headerGlassNamespace)
-            .glassEffectTransition(.matchedGeometry)
-        }
-    }
-
-    private var results: some View {
+    private var resultsPane: some View {
         ZStack {
-            resultsBackdrop
-            resultContent
+            resultsPaneBackdrop
+
+            VStack(spacing: LauncherVisualStyle.paneContentSpacing) {
+                header
+
+                results
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipShape(resultsPaneShape)
+            }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .strokeBorder(LauncherVisualStyle.panelRim.opacity(0.26), lineWidth: 1)
-        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(resultsPaneShape)
+    }
+
+    private var resultsPaneBackdrop: some View {
+        resultsPaneShape
+            .fill(Color.clear)
+            .glassEffect(
+                .regular
+                    .tint(LauncherModeTintPolicy.panelColor(for: model.mode).opacity(LauncherVisualStyle.resultsPaneModeTintOpacity))
+                    .interactive(false),
+                in: resultsPaneShape
+            )
+            .overlay {
+                resultsPaneShape
+                    .strokeBorder(LauncherVisualStyle.resultsPaneRim.opacity(0.24), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.14), radius: 16, x: 0, y: 8)
+    }
+
+    private var resultsPaneShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: LauncherVisualStyle.resultsPaneCornerRadius, style: .continuous)
     }
 
     @ViewBuilder
-    private var resultContent: some View {
+    private var results: some View {
         if model.mode == .files {
             FileBrowserView(
                 model: model.fileBrowserModel,
@@ -195,7 +136,7 @@ struct LiquidGlassLauncherView: View {
             Group {
                 switch model.mode {
                 case .applications:
-                    resultScrollView(reconstructionID: applicationsReconstructionIdentity) {
+                    resultScrollView(reconstructionID: applicationsReconstructionIdentity, usesEagerRows: true) {
                         ForEach(Array(model.filteredItems.enumerated()), id: \.element.url) { index, item in
                             applicationRow(item: item, index: index)
                         }
@@ -221,28 +162,16 @@ struct LiquidGlassLauncherView: View {
         }
     }
 
-    private var resultsBackdrop: some View {
-        GlassEffectContainer(spacing: 0) {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(Color.clear)
-                .glassEffect(
-                    .regular.tint(
-                        LauncherModeTintPolicy.panelColor(for: model.mode)
-                            .opacity(LauncherVisualStyle.panelModeTintOpacity(resultCount: model.resultCount))
-                    ),
-                    in: RoundedRectangle(cornerRadius: 24, style: .continuous)
-                )
-        }
-    }
-
     private func resultScrollView<Content: View>(
         reconstructionID: AnyHashable,
+        usesEagerRows: Bool = false,
         @ViewBuilder content: @escaping () -> Content
     ) -> some View {
         LauncherResultList(
             scrollTargetID: $scrollTargetID,
             scrollTargetAnchor: scrollTargetAnchor,
             reconstructionID: reconstructionID,
+            usesEagerRows: usesEagerRows,
             content: content
         )
         .onAppear {
@@ -268,7 +197,7 @@ struct LiquidGlassLauncherView: View {
         ) {
             HStack(spacing: 14) {
                 HStack(spacing: 14) {
-                    ApplicationIconView(url: item.url, animationTiming: model.animationTiming)
+                    ApplicationIconView(url: item.url)
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text(item.title)
@@ -295,7 +224,11 @@ struct LiquidGlassLauncherView: View {
                         .frame(width: 16, height: 16)
                         .padding(5)
                 }
-                .buttonStyle(.glass)
+                .buttonStyle(.plain)
+                .background {
+                    Circle()
+                        .fill(Color(nsColor: .controlBackgroundColor).opacity(0.34))
+                }
                 .foregroundStyle(.secondary)
                 .help("Hide from results")
                 .launcherActionButtonRim()
@@ -343,13 +276,17 @@ struct LiquidGlassLauncherView: View {
                 if let actionConfiguration {
                     Button {
                         model.selectedIndex = index
-                        _ = model.handle(command: .open)
+                        performToolRowAction(actionConfiguration.action, item: item)
                     } label: {
                         Image(systemName: actionConfiguration.symbol)
                             .frame(width: 16, height: 16)
                             .padding(5)
                     }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.plain)
+                    .background {
+                        Circle()
+                            .fill(Color(nsColor: .controlBackgroundColor).opacity(0.34))
+                    }
                     .foregroundStyle(.secondary)
                     .help(actionConfiguration.help)
                     .launcherActionButtonRim()
@@ -357,6 +294,15 @@ struct LiquidGlassLauncherView: View {
             }
         }
         .id(rowID)
+    }
+
+    private func performToolRowAction(_ action: RowAction, item: ToolItem) {
+        switch action {
+        case .open:
+            _ = model.handle(command: .open)
+        case .removeDictionaryHistory:
+            model.removeDictionaryHistory(item)
+        }
     }
 
     private func handleSelectionScrollRequest(_ request: SelectionScrollRequest) {
@@ -367,6 +313,16 @@ struct LiquidGlassLauncherView: View {
 
     private func scrollSelectedRow(_ request: SelectionScrollRequest) {
         guard let rowID = resultRowID(for: request.index) else {
+            return
+        }
+
+        guard SelectionScrollAnimationPolicy.shouldAnimate(anchor: request.anchor) else {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                scrollTargetAnchor = request.anchor.unitPoint
+                scrollTargetID = rowID
+            }
             return
         }
 
@@ -414,26 +370,6 @@ struct LiquidGlassLauncherView: View {
         }
     }
 
-    private var windowBackdrop: some View {
-        GlassEffectContainer(spacing: 0) {
-            RoundedRectangle(cornerRadius: 30, style: .continuous)
-                .fill(Color.clear)
-                .glassEffect(
-                    .regular.tint(
-                        LauncherModeTintPolicy.panelColor(for: model.mode)
-                            .opacity(LauncherVisualStyle.windowModeTintOpacity(resultCount: model.resultCount))
-                    ),
-                    in: RoundedRectangle(cornerRadius: 30, style: .continuous)
-                )
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: 30, style: .continuous)
-                .strokeBorder(LauncherVisualStyle.surfaceRim.opacity(0.30), lineWidth: 1)
-        }
-        .shadow(color: .black.opacity(0.22), radius: 30, x: 0, y: 20)
-        .padding(2)
-    }
-
     private func toolSymbol(for kind: ToolItem.Kind) -> String {
         switch kind {
         case .calculation:
@@ -442,6 +378,8 @@ struct LiquidGlassLauncherView: View {
             return "clock.arrow.circlepath"
         case .dictionary:
             return "text.book.closed"
+        case .dictionaryHistory:
+            return "clock.arrow.circlepath"
         case .message:
             return "info.circle"
         }
@@ -451,7 +389,7 @@ struct LiquidGlassLauncherView: View {
         switch kind {
         case .calculation, .calculationHistory:
             return .cyan
-        case .dictionary:
+        case .dictionary, .dictionaryHistory:
             return .mint
         case .message:
             return .secondary
@@ -462,9 +400,15 @@ struct LiquidGlassLauncherView: View {
         switch item.kind {
         case .calculation, .calculationHistory:
             guard item.copyText != nil else { return nil }
-            return RowActionConfiguration(symbol: "doc.on.doc", help: "Copy result")
+            return RowActionConfiguration(symbol: "doc.on.doc", help: "Copy result", action: .open)
         case .dictionary:
-            return RowActionConfiguration(symbol: "book", help: "Open in Dictionary")
+            return RowActionConfiguration(symbol: "book", help: "Open in Dictionary", action: .open)
+        case .dictionaryHistory:
+            return RowActionConfiguration(
+                symbol: "trash",
+                help: "Remove from dictionary history",
+                action: .removeDictionaryHistory
+            )
         case .message:
             return nil
         }
@@ -472,18 +416,21 @@ struct LiquidGlassLauncherView: View {
 
     private func preloadApplicationIcons() {
         guard model.mode == .applications, model.isPresented else { return }
-        let urls = Array(model.filteredItems.prefix(18).map(\.url))
+        let urls = AppIconPreloadPolicy.preloadURLs(for: model.filteredItems)
         guard !urls.isEmpty else { return }
 
         iconPreloadTask?.cancel()
         iconPreloadTask = Task(priority: .utility) {
-            try? await Task.sleep(nanoseconds: 120_000_000)
+            try? await Task.sleep(nanoseconds: AppIconPreloadPolicy.initialDelayNanoseconds)
             guard !Task.isCancelled else { return }
 
             for (index, url) in urls.enumerated() {
                 if Task.isCancelled { return }
                 _ = await AppIconCache.shared.icon(for: url)
-                if index % 4 == 3 {
+                if index == AppIconPreloadPolicy.initialVisibleLimit - 1 {
+                    try? await Task.sleep(nanoseconds: AppIconPreloadPolicy.tailDelayNanoseconds)
+                }
+                if AppIconPreloadPolicy.shouldYield(afterLoadingItemAt: index) {
                     await Task.yield()
                 }
             }
@@ -517,35 +464,33 @@ private enum ResultRowID: Hashable {
 }
 
 @available(macOS 26.0, *)
-private enum HeaderGlassEffectID: Hashable, Sendable {
-    case clearHistory
-    case calculatorMode
-    case pin
-}
-
-@available(macOS 26.0, *)
 private enum LauncherVisualStyle {
+    static let windowCornerRadius: CGFloat = 30
+    static let aetherContentSpacing: CGFloat = 14
+    static let paneContentSpacing: CGFloat = 12
+    static let resultsPaneCornerRadius: CGFloat = 24
+    static let resultsPaneContentInset: CGFloat = 12
+    static let resultsPaneModeTintOpacity = 0.08
     static let rowFill = Color(nsColor: .windowBackgroundColor)
     static let selectionFill = Color(nsColor: .selectedContentBackgroundColor)
-    static let activeHeaderControlTint = Color(nsColor: .controlAccentColor)
     static let surfaceRim = Color(nsColor: .separatorColor)
-    static let panelRim = Color(nsColor: .separatorColor)
+    static let resultsPaneRim = Color(nsColor: .separatorColor)
     static let selectionRim = Color(nsColor: .selectedContentBackgroundColor)
     static let actionRim = Color(nsColor: .separatorColor)
 
-    static func panelModeTintOpacity(resultCount: Int) -> Double {
-        resultCount == 0 ? 0.026 : 0.045
-    }
-
-    static func windowModeTintOpacity(resultCount: Int) -> Double {
-        resultCount == 0 ? 0.028 : 0.040
-    }
 }
 
 @available(macOS 26.0, *)
 private struct RowActionConfiguration {
     let symbol: String
     let help: String
+    let action: RowAction
+}
+
+@available(macOS 26.0, *)
+private enum RowAction {
+    case open
+    case removeDictionaryHistory
 }
 
 @available(macOS 26.0, *)
@@ -564,17 +509,6 @@ private extension SelectionScrollAnchor {
 
 @available(macOS 26.0, *)
 private extension View {
-    @ViewBuilder
-    func launcherHeaderButtonStyle(_ policy: LauncherHeaderButtonStylePolicy) -> some View {
-        switch policy.style {
-        case .stockGlass:
-            buttonStyle(.glass)
-        case .prominentAccentGlass:
-            buttonStyle(.glassProminent)
-                .tint(LauncherVisualStyle.activeHeaderControlTint)
-        }
-    }
-
     func launcherActionButtonRim() -> some View {
         self.overlay {
             Circle()
@@ -586,7 +520,6 @@ private extension View {
 @available(macOS 26.0, *)
 private struct ApplicationIconView: View {
     let url: URL
-    let animationTiming: LauncherAnimationTiming
 
     @State private var icon: NSImage?
 
@@ -619,9 +552,24 @@ private struct ApplicationIconView: View {
         let loadedIcon = await AppIconCache.shared.icon(for: url)
 
         guard !Task.isCancelled else { return }
-        withAnimation(animationTiming.animation(duration: 0.12)) {
-            icon = loadedIcon
-        }
+        icon = loadedIcon
+    }
+}
+
+@available(macOS 26.0, *)
+struct AppIconPreloadPolicy {
+    static let initialVisibleLimit = 80
+    static let preloadLimit = 256
+    static let initialDelayNanoseconds: UInt64 = 0
+    static let tailDelayNanoseconds: UInt64 = 0
+    static let yieldStride = 8
+
+    static func preloadURLs(for items: [LaunchItem]) -> [URL] {
+        Array(items.prefix(preloadLimit).map(\.url))
+    }
+
+    static func shouldYield(afterLoadingItemAt index: Int) -> Bool {
+        (index + 1) % yieldStride == 0
     }
 }
 
@@ -633,11 +581,11 @@ private actor AppIconCache {
     private var inFlightTasks: [String: Task<NSImage, Never>] = [:]
     private var activeLoadCount = 0
     private var loadWaiters: [CheckedContinuation<Void, Never>] = []
-    private let maxConcurrentLoads = 2
+    private let maxConcurrentLoads = 4
 
     private init() {
-        cache.countLimit = 192
-        cache.totalCostLimit = 64 * 1024 * 1024
+        cache.countLimit = AppIconPreloadPolicy.preloadLimit
+        cache.totalCostLimit = 128 * 1024 * 1024
     }
 
     func cachedIcon(for url: URL) -> NSImage? {
