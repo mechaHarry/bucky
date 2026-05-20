@@ -27,6 +27,7 @@ final class FileBrowserModel: ObservableObject {
     private let fileSystem: FileSystemClientProtocol
     private let store: FileBrowserPersisting
     private let directoryStream: FileBrowserDirectoryStreaming
+    private let directoryObserver: FileBrowserDirectoryObserving?
     private let fileServices: FileBrowserNativeServicing
     private var selectionAnchor: Int?
     private var recentTraversalChain: [URL]
@@ -40,6 +41,8 @@ final class FileBrowserModel: ObservableObject {
     private var pendingSpaceInteractionURL: URL?
     private var snapshotEntryCache: [DirectorySnapshotCacheKey: [FileBrowserEntry]] = [:]
     private var pendingSnapshotRequests: Set<DirectorySnapshotCacheKey> = []
+    private var directoryObservation: FileBrowserDirectoryObservation?
+    private var observedDirectory: URL?
 
     var selectedEntry: FileBrowserEntry? {
         guard selectedIndex >= 0, selectedIndex < entries.count else { return nil }
@@ -72,12 +75,14 @@ final class FileBrowserModel: ObservableObject {
         fileSystem: FileSystemClientProtocol = FileSystemClient(),
         store: FileBrowserPersisting = FileBrowserStore(),
         directoryStream: FileBrowserDirectoryStreaming? = nil,
+        directoryObserver: FileBrowserDirectoryObserving? = FileBrowserDirectoryWatcher(),
         fileServices: FileBrowserNativeServicing = MacFileServices(),
         startDirectory: URL? = nil
     ) {
         self.fileSystem = fileSystem
         self.store = store
         self.directoryStream = directoryStream ?? FileBrowserDirectoryStream(fileSystem: fileSystem, accessStore: store)
+        self.directoryObserver = directoryObserver
         self.fileServices = fileServices
         self.sort = store.state.sort
         self.pinnedDirectories = store.state.pinnedDirectories
@@ -86,7 +91,12 @@ final class FileBrowserModel: ObservableObject {
             selections[item.directory.standardizedFileURL] = item.selection.standardizedFileURL
         }
         self.currentDirectory = store.state.lastDirectory ?? startDirectory ?? fileSystem.homeDirectory()
+        observeCurrentDirectory()
         reloadEntries(fallbackToHomeOnFailure: true)
+    }
+
+    deinit {
+        directoryObservation?.cancel()
     }
 
     func handle(_ command: LauncherCommand) {
@@ -454,6 +464,7 @@ final class FileBrowserModel: ObservableObject {
                 currentDirectory = fallback
                 selectedIndex = 0
                 selectionAnchor = nil
+                observeCurrentDirectory()
                 reloadEntries(fallbackToHomeOnFailure: false, statusAfterLoad: error.localizedDescription)
                 return
             }
@@ -756,6 +767,7 @@ final class FileBrowserModel: ObservableObject {
         currentDirectory = standardizedDirectory
         selectedIndex = 0
         selectionAnchor = nil
+        observeCurrentDirectory()
         if let transition {
             publishNavigationTransition(transition)
         }
@@ -770,6 +782,7 @@ final class FileBrowserModel: ObservableObject {
         selectedIndex = 0
         selectionAnchor = nil
         focusState = .browse
+        observeCurrentDirectory()
         reloadEntries(selecting: rememberedSelection(in: previous))
     }
 
@@ -781,7 +794,25 @@ final class FileBrowserModel: ObservableObject {
         selectedIndex = 0
         selectionAnchor = nil
         focusState = .browse
+        observeCurrentDirectory()
         reloadEntries(selecting: rememberedSelection(in: next))
+    }
+
+    private func observeCurrentDirectory() {
+        let standardizedDirectory = currentDirectory.standardizedFileURL
+        guard observedDirectory?.path != standardizedDirectory.path else { return }
+
+        directoryObservation?.cancel()
+        observedDirectory = standardizedDirectory
+        directoryObservation = directoryObserver?.observe(directory: standardizedDirectory) { [weak self] in
+            self?.reloadObservedDirectory()
+        }
+    }
+
+    private func reloadObservedDirectory() {
+        guard observedDirectory?.path == currentDirectory.standardizedFileURL.path else { return }
+        let preferredSelection = selectedEntry?.url ?? rememberedSelection(in: currentDirectory)
+        reloadEntries(selecting: preferredSelection)
     }
 
     private func selectEntry(matching preferredSelection: URL?) {
