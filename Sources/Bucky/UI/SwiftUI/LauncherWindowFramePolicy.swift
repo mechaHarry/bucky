@@ -1,8 +1,17 @@
 import CoreGraphics
 
 struct LauncherWindowFramePolicy {
-    static let defaultSize = CGSize(width: 760, height: 460)
-    static let minimumSize = CGSize(width: 520, height: 340)
+    static let visualContentSize = CGSize(width: 760, height: 460)
+    static let visualMinimumSize = CGSize(width: 520, height: 340)
+    static let shadowBleed: CGFloat = 36
+    static let defaultSize = CGSize(
+        width: visualContentSize.width + shadowBleed * 2,
+        height: visualContentSize.height + shadowBleed * 2
+    )
+    static let minimumSize = CGSize(
+        width: visualMinimumSize.width + shadowBleed * 2,
+        height: visualMinimumSize.height + shadowBleed * 2
+    )
     static let defaultVisibleInset: CGFloat = 120
 
     static func frame(
