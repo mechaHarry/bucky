@@ -48,7 +48,7 @@ struct LiquidGlassLauncherView: View {
                 iconPreloadTask = nil
             }
         }
-        .onChange(of: model.filteredItems) {
+        .onChange(of: model.filteredItemIDs) {
             preloadApplicationIcons()
         }
         .animation(resultUpdateAnimation, value: model.mode)
@@ -109,7 +109,10 @@ struct LiquidGlassLauncherView: View {
             )
             .overlay {
                 resultsPaneShape
-                    .strokeBorder(LauncherVisualStyle.resultsPaneRim.opacity(0.24), lineWidth: 1)
+                    .strokeBorder(
+                        LauncherPinnedBorderPolicy.color(isPinned: model.isPinned),
+                        lineWidth: LauncherPinnedBorderPolicy.lineWidth(isPinned: model.isPinned)
+                    )
             }
             .shadow(color: .black.opacity(0.14), radius: 16, x: 0, y: 8)
     }
@@ -121,11 +124,22 @@ struct LiquidGlassLauncherView: View {
     @ViewBuilder
     private var results: some View {
         if model.mode == .files {
-            FileBrowserView(
-                model: model.fileBrowserModel,
-                selectionTint: LauncherModeTintPolicy.selectionColor(for: model.mode)
-            )
-                .transition(.opacity)
+            if let fileBrowserModel = model.activeFileBrowserModel {
+                FileBrowserView(
+                    model: fileBrowserModel,
+                    selectionTint: LauncherModeTintPolicy.selectionColor(for: model.mode)
+                )
+                    .transition(.opacity)
+            } else {
+                Text("Loading files")
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .task {
+                        await Task.yield()
+                        model.prepareFileBrowserMode()
+                    }
+            }
         } else if let emptyMessage = model.emptyMessage {
             Text(emptyMessage)
                 .font(.system(size: 17, weight: .medium))
@@ -136,9 +150,11 @@ struct LiquidGlassLauncherView: View {
             Group {
                 switch model.mode {
                 case .applications:
-                    resultScrollView(reconstructionID: applicationsReconstructionIdentity, usesEagerRows: true) {
-                        ForEach(Array(model.filteredItems.enumerated()), id: \.element.url) { index, item in
-                            applicationRow(item: item, index: index)
+                    resultScrollView(reconstructionID: applicationsReconstructionIdentity) {
+                        ForEach(Array(model.filteredItemIDs.enumerated()), id: \.element) { index, id in
+                            if let item = model.item(for: id) {
+                                applicationRow(item: item, id: id, index: index)
+                            }
                         }
                     }
                 case .calculator, .dictionary:
@@ -153,10 +169,21 @@ struct LiquidGlassLauncherView: View {
                         value: toolResultsSnapshotIdentity
                     )
                 case .files:
-                    FileBrowserView(
-                        model: model.fileBrowserModel,
-                        selectionTint: LauncherModeTintPolicy.selectionColor(for: model.mode)
-                    )
+                    if let fileBrowserModel = model.activeFileBrowserModel {
+                        FileBrowserView(
+                            model: fileBrowserModel,
+                            selectionTint: LauncherModeTintPolicy.selectionColor(for: model.mode)
+                        )
+                    } else {
+                        Text("Loading files")
+                            .font(.system(size: 17, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .task {
+                                await Task.yield()
+                                model.prepareFileBrowserMode()
+                            }
+                    }
                 }
             }
         }
@@ -186,8 +213,8 @@ struct LiquidGlassLauncherView: View {
         }
     }
 
-    private func applicationRow(item: LaunchItem, index: Int) -> some View {
-        let rowID = ResultRowID.application(item.url)
+    private func applicationRow(item: LaunchItem, id: AppRowID, index: Int) -> some View {
+        let rowID = ResultRowID.application(id)
         let isSelected = index == model.selectedIndex
 
         return LauncherResultRow(
@@ -210,6 +237,12 @@ struct LiquidGlassLauncherView: View {
                     }
 
                     Spacer(minLength: 12)
+
+                    Text(item.category.title)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .accessibilityLabel("Result type: \(item.category.title)")
                 }
                 .contentShape(Rectangle())
                 .onTapGesture {
@@ -335,8 +368,8 @@ struct LiquidGlassLauncherView: View {
     private func resultRowID(for index: Int) -> ResultRowID? {
         switch model.mode {
         case .applications:
-            guard index >= 0, index < model.filteredItems.count else { return nil }
-            return .application(model.filteredItems[index].url)
+            guard index >= 0, index < model.filteredItemIDs.count else { return nil }
+            return .application(model.filteredItemIDs[index])
         case .calculator, .dictionary:
             guard index >= 0, index < model.toolItems.count else { return nil }
             return .tool(model.toolItems[index])
@@ -351,7 +384,7 @@ struct LiquidGlassLauncherView: View {
     }
 
     private var applicationsReconstructionIdentity: AnyHashable {
-        AnyHashable(model.filteredItems.map(\.url.path).joined(separator: "\u{1F}"))
+        AnyHashable(model.filteredItemIDs.map { "\($0.rawValue)" }.joined(separator: "\u{1F}"))
     }
 
     private var toolResultsSnapshotIdentity: String {
@@ -416,7 +449,7 @@ struct LiquidGlassLauncherView: View {
 
     private func preloadApplicationIcons() {
         guard model.mode == .applications, model.isPresented else { return }
-        let urls = AppIconPreloadPolicy.preloadURLs(for: model.filteredItems)
+        let urls = AppIconPreloadPolicy.preloadURLs(for: model.filteredIconURLs)
         guard !urls.isEmpty else { return }
 
         iconPreloadTask?.cancel()
@@ -458,7 +491,7 @@ private struct LauncherWindowFocusVisualModifier: ViewModifier {
 
 @available(macOS 26.0, *)
 private enum ResultRowID: Hashable {
-    case application(URL)
+    case application(AppRowID)
     case tool(ToolItem)
     case file(URL)
 }
@@ -478,6 +511,19 @@ private enum LauncherVisualStyle {
     static let selectionRim = Color(nsColor: .selectedContentBackgroundColor)
     static let actionRim = Color(nsColor: .separatorColor)
 
+}
+
+@available(macOS 26.0, *)
+struct LauncherPinnedBorderPolicy {
+    static func lineWidth(isPinned: Bool) -> CGFloat {
+        isPinned ? 3 : 1
+    }
+
+    static func color(isPinned: Bool) -> Color {
+        isPinned
+            ? Color.accentColor.opacity(0.68)
+            : LauncherVisualStyle.resultsPaneRim.opacity(0.24)
+    }
 }
 
 @available(macOS 26.0, *)
@@ -558,14 +604,18 @@ private struct ApplicationIconView: View {
 
 @available(macOS 26.0, *)
 struct AppIconPreloadPolicy {
-    static let initialVisibleLimit = 80
+    static let initialVisibleLimit = 24
     static let preloadLimit = 256
     static let initialDelayNanoseconds: UInt64 = 0
-    static let tailDelayNanoseconds: UInt64 = 0
+    static let tailDelayNanoseconds: UInt64 = 250_000_000
     static let yieldStride = 8
 
     static func preloadURLs(for items: [LaunchItem]) -> [URL] {
         Array(items.prefix(preloadLimit).map(\.url))
+    }
+
+    static func preloadURLs(for urls: [URL]) -> [URL] {
+        Array(urls.prefix(preloadLimit))
     }
 
     static func shouldYield(afterLoadingItemAt index: Int) -> Bool {

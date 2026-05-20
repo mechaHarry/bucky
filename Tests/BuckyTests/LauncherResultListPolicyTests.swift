@@ -69,6 +69,14 @@ final class LauncherResultListPolicyTests: XCTestCase {
         XCTAssertTrue(source.contains(".fill(tint.opacity(opacity))"))
     }
 
+    func testApplicationRowsShowRightAlignedCategoryLabel() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
+
+        XCTAssertTrue(source.contains("Text(item.category.title)"))
+        XCTAssertTrue(source.contains(".foregroundStyle(.tertiary)"))
+        XCTAssertTrue(source.contains(".accessibilityLabel(\"Result type: \\(item.category.title)\""))
+    }
+
     func testSharedResultListAnimationKeepsRowsFastButVisible() {
         XCTAssertLessThanOrEqual(LauncherResultListLayoutPolicy.rowSelectionAnimationSeconds, 0.10)
         XCTAssertLessThanOrEqual(LauncherResultListLayoutPolicy.rowReconstructionAnimationSeconds, 0.10)
