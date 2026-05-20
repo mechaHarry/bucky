@@ -41,10 +41,6 @@ struct LauncherResultList<RowID: Hashable, Content: View>: View {
         .contentMargins(.horizontal, LauncherResultListLayoutPolicy.horizontalShadowBleed, for: .scrollContent)
         .contentMargins(.vertical, LauncherResultListLayoutPolicy.verticalShadowClearance, for: .scrollContent)
         .padding(.horizontal, -LauncherResultListLayoutPolicy.horizontalShadowBleed)
-        .scrollClipDisabled(true)
-        .overlay(alignment: .center) {
-            resultListVerticalEdgeFog
-        }
         .scrollPosition(id: $scrollTargetID, anchor: scrollTargetAnchor)
         .scrollIndicators(.hidden)
         .scrollIndicatorsFlash(trigger: false)
@@ -60,39 +56,6 @@ struct LauncherResultList<RowID: Hashable, Content: View>: View {
         }
         .scrollTargetLayout()
         .frame(maxWidth: .infinity)
-    }
-
-    private var resultListVerticalEdgeFog: some View {
-        GeometryReader { proxy in
-            let height = max(proxy.size.height, 1)
-            let fadeLength = min(LauncherResultListLayoutPolicy.verticalEdgeFadeLength, height / 2)
-
-            VStack(spacing: 0) {
-                resultListVerticalEdgeMaterialFog(startOpacity: 0.82, endOpacity: 0)
-                    .frame(height: fadeLength)
-
-                Spacer(minLength: 0)
-
-                resultListVerticalEdgeMaterialFog(startOpacity: 0, endOpacity: 0.82)
-                    .frame(height: fadeLength)
-            }
-        }
-        .allowsHitTesting(false)
-    }
-
-    private func resultListVerticalEdgeMaterialFog(startOpacity: Double, endOpacity: Double) -> some View {
-        Rectangle()
-            .fill(.regularMaterial)
-            .mask {
-                LinearGradient(
-                    colors: [
-                        Color.black.opacity(startOpacity),
-                        Color.black.opacity(endOpacity)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            }
     }
 }
 
