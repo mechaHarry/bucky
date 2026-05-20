@@ -60,9 +60,11 @@ final class LauncherModeTintPolicyTests: XCTestCase {
         XCTAssertTrue(modeSwitcher.contains("LauncherModeTintPolicy.iconColor(for: mode, colorScheme: colorScheme)"))
         XCTAssertTrue(modeSwitcher.contains("LauncherModeTintPolicy.iconColor(for: .files, colorScheme: colorScheme)"))
         XCTAssertTrue(modeSwitcher.contains("LauncherModeTintPolicy.inactiveOrbIconColor(for: mode, colorScheme: colorScheme)"))
-        XCTAssertTrue(modeSwitcher.contains("TextInputPillGlassSurface(tint:"))
-        XCTAssertTrue(modeSwitcher.contains(".tint(LauncherModeTintPolicy.inactiveOrbColor(for: mode))"))
-        XCTAssertTrue(modeSwitcher.contains("ModeSwitcherTintPolicy.activePillTintOpacity"))
+        XCTAssertTrue(modeSwitcher.contains("ModeControlBackground("))
+        XCTAssertTrue(modeSwitcher.contains("fill: LauncherModeTintPolicy.inactiveOrbColor(for: mode)"))
+        XCTAssertTrue(modeSwitcher.contains("tint: LauncherModeTintPolicy.activeColor(for: mode)"))
+        XCTAssertFalse(modeSwitcher.contains("TextInputPillGlassSurface(tint:"))
+        XCTAssertFalse(modeSwitcher.contains(".tint(LauncherModeTintPolicy.inactiveOrbColor(for: mode))"))
         XCTAssertFalse(launcher.contains("headerGlassBackdrop"))
         XCTAssertFalse(launcher.contains("headerGlassShape"))
         XCTAssertFalse(launcher.contains("LauncherVisualStyle.headerGlassTintOpacity"))
@@ -79,7 +81,7 @@ final class LauncherModeTintPolicyTests: XCTestCase {
 
         XCTAssertTrue(launcher.contains("resultsPane"))
         XCTAssertTrue(launcher.contains("ZStack {\n            resultsPaneBackdrop"))
-        XCTAssertTrue(launcher.contains("resultsPaneEdgeVeil"))
+        XCTAssertFalse(launcher.contains("resultsPaneEdgeVeil"))
         XCTAssertFalse(launcher.contains("headerGlassBackdrop"))
         XCTAssertFalse(launcher.contains(".background {\n                header"))
     }
