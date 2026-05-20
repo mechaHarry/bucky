@@ -5,13 +5,18 @@ final class LauncherResultListPolicyTests: XCTestCase {
     func testSharedResultListUsesAppsSpacingAndMainPanelAlignment() {
         XCTAssertEqual(LauncherResultListLayoutPolicy.rowSpacing, 14)
         XCTAssertEqual(LauncherResultListLayoutPolicy.contentMargin, 0)
+        XCTAssertGreaterThanOrEqual(LauncherResultListLayoutPolicy.horizontalShadowBleed, 18)
+        XCTAssertGreaterThanOrEqual(LauncherResultListLayoutPolicy.verticalShadowClearance, 18)
         XCTAssertEqual(LauncherResultListLayoutPolicy.rowCornerRadius, 18)
     }
 
-    func testSharedResultListProvidesUnclippedShadowsWithoutInsetWorkaround() throws {
+    func testSharedResultListKeepsScrollContentOutOfHeaderWhileGivingShadowsAir() throws {
         let source = try source(named: "Sources/Bucky/UI/SwiftUI/LauncherResultListView.swift")
 
-        XCTAssertTrue(source.contains(".scrollClipDisabled(true)"))
+        XCTAssertFalse(source.contains(".scrollClipDisabled(true)"))
+        XCTAssertTrue(source.contains(".contentMargins(.horizontal, LauncherResultListLayoutPolicy.horizontalShadowBleed"))
+        XCTAssertTrue(source.contains(".contentMargins(.vertical, LauncherResultListLayoutPolicy.verticalShadowClearance"))
+        XCTAssertTrue(source.contains(".padding(.horizontal, -LauncherResultListLayoutPolicy.horizontalShadowBleed)"))
         XCTAssertFalse(source.contains("shadowClearance"))
     }
 

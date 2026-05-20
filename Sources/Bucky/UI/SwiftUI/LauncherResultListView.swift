@@ -3,6 +3,8 @@ import SwiftUI
 struct LauncherResultListLayoutPolicy {
     static let rowSpacing: CGFloat = 14
     static let contentMargin: CGFloat = 0
+    static let horizontalShadowBleed: CGFloat = 24
+    static let verticalShadowClearance: CGFloat = 20
     static let rowCornerRadius: CGFloat = 18
     static let rowSelectionAnimationSeconds = 0.18
     static let rowReconstructionAnimationSeconds = 0.18
@@ -35,9 +37,9 @@ struct LauncherResultList<RowID: Hashable, Content: View>: View {
         ScrollView(.vertical, showsIndicators: false) {
             scrollContent
         }
-        .contentMargins(.horizontal, LauncherResultListLayoutPolicy.contentMargin, for: .scrollContent)
-        .contentMargins(.vertical, LauncherResultListLayoutPolicy.contentMargin, for: .scrollContent)
-        .scrollClipDisabled(true)
+        .contentMargins(.horizontal, LauncherResultListLayoutPolicy.horizontalShadowBleed, for: .scrollContent)
+        .contentMargins(.vertical, LauncherResultListLayoutPolicy.verticalShadowClearance, for: .scrollContent)
+        .padding(.horizontal, -LauncherResultListLayoutPolicy.horizontalShadowBleed)
         .scrollPosition(id: $scrollTargetID, anchor: scrollTargetAnchor)
         .scrollIndicators(.hidden)
         .scrollIndicatorsFlash(trigger: false)
