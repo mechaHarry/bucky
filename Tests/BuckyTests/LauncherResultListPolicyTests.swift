@@ -4,23 +4,15 @@ import XCTest
 final class LauncherResultListPolicyTests: XCTestCase {
     func testSharedResultListUsesAppsSpacingAndMainPanelAlignment() {
         XCTAssertEqual(LauncherResultListLayoutPolicy.rowSpacing, 14)
-        XCTAssertEqual(LauncherResultListLayoutPolicy.contentMargin, 12)
-        XCTAssertEqual(LauncherResultListLayoutPolicy.shadowClearance, 12)
+        XCTAssertEqual(LauncherResultListLayoutPolicy.contentMargin, 0)
         XCTAssertEqual(LauncherResultListLayoutPolicy.rowCornerRadius, 18)
     }
 
-    func testSharedResultListProvidesUnclippedShadowAir() throws {
-        XCTAssertGreaterThanOrEqual(LauncherResultListLayoutPolicy.contentMargin, 12)
-        XCTAssertGreaterThanOrEqual(LauncherResultListLayoutPolicy.shadowClearance, 12)
-        XCTAssertGreaterThanOrEqual(
-            LauncherResultListLayoutPolicy.contentMargin,
-            LauncherResultListLayoutPolicy.shadowClearance
-        )
-
+    func testSharedResultListProvidesUnclippedShadowsWithoutInsetWorkaround() throws {
         let source = try source(named: "Sources/Bucky/UI/SwiftUI/LauncherResultListView.swift")
 
-        XCTAssertTrue(source.contains(".padding(.horizontal, LauncherResultListLayoutPolicy.shadowClearance)"))
-        XCTAssertTrue(source.contains(".padding(.vertical, LauncherResultListLayoutPolicy.shadowClearance)"))
+        XCTAssertTrue(source.contains(".scrollClipDisabled(true)"))
+        XCTAssertFalse(source.contains("shadowClearance"))
     }
 
     func testSharedResultListDoesNotUseAetherEdgeTreatment() throws {

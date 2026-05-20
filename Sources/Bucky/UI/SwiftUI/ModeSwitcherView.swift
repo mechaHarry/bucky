@@ -236,8 +236,8 @@ struct ModeSwitcherGlassTransitionPolicy {
         !mode.acceptsTextInput
     }
 
-    static func usesOuterContainer(for mode: LauncherMode) -> Bool {
-        !mode.acceptsTextInput
+    static func usesOuterContainer(for _: LauncherMode) -> Bool {
+        false
     }
 }
 
