@@ -35,4 +35,17 @@ final class FileBrowserMotionPolicyTests: XCTestCase {
         XCTAssertFalse(source.contains("launcherAetherEdgeTreatment()"))
         XCTAssertFalse(source.contains("appliesAetherEdgeTreatment"))
     }
+
+    func testFileBrowserListsUsePaneEdgeBounds() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Sources/Bucky/UI/SwiftUI/FileBrowserView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertFalse(source.contains("Label(\"Pinned\", systemImage: \"pin\")"))
+        XCTAssertFalse(source.contains("Text(title(for: model.currentDirectory))"))
+        XCTAssertTrue(source.contains(".frame(maxWidth: .infinity, maxHeight: .infinity)\n            .onAppear {\n                scrollSelectedEntry(animated: false)"))
+    }
 }
