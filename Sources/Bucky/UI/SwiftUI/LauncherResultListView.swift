@@ -5,6 +5,7 @@ struct LauncherResultListLayoutPolicy {
     static let contentMargin: CGFloat = 0
     static let horizontalShadowBleed: CGFloat = 24
     static let verticalShadowClearance: CGFloat = 20
+    static let verticalEdgeFadeLength: CGFloat = 28
     static let rowCornerRadius: CGFloat = 18
     static let rowSelectionAnimationSeconds = 0.18
     static let rowReconstructionAnimationSeconds = 0.18
@@ -40,6 +41,9 @@ struct LauncherResultList<RowID: Hashable, Content: View>: View {
         .contentMargins(.horizontal, LauncherResultListLayoutPolicy.horizontalShadowBleed, for: .scrollContent)
         .contentMargins(.vertical, LauncherResultListLayoutPolicy.verticalShadowClearance, for: .scrollContent)
         .padding(.horizontal, -LauncherResultListLayoutPolicy.horizontalShadowBleed)
+        .mask(alignment: .center) {
+            resultListVerticalEdgeMask
+        }
         .scrollPosition(id: $scrollTargetID, anchor: scrollTargetAnchor)
         .scrollIndicators(.hidden)
         .scrollIndicatorsFlash(trigger: false)
@@ -55,6 +59,24 @@ struct LauncherResultList<RowID: Hashable, Content: View>: View {
         }
         .scrollTargetLayout()
         .frame(maxWidth: .infinity)
+    }
+
+    private var resultListVerticalEdgeMask: some View {
+        GeometryReader { proxy in
+            let height = max(proxy.size.height, 1)
+            let fadeLocation = min(LauncherResultListLayoutPolicy.verticalEdgeFadeLength / height, 0.5)
+
+            LinearGradient(
+                stops: [
+                    .init(color: .clear, location: 0),
+                    .init(color: .black, location: fadeLocation),
+                    .init(color: .black, location: 1 - fadeLocation),
+                    .init(color: .clear, location: 1)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
     }
 }
 
