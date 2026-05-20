@@ -7,6 +7,7 @@ final class LauncherResultListPolicyTests: XCTestCase {
         XCTAssertEqual(LauncherResultListLayoutPolicy.contentMargin, 0)
         XCTAssertGreaterThanOrEqual(LauncherResultListLayoutPolicy.horizontalShadowBleed, 18)
         XCTAssertGreaterThanOrEqual(LauncherResultListLayoutPolicy.verticalShadowClearance, 18)
+        XCTAssertGreaterThanOrEqual(LauncherResultListLayoutPolicy.verticalEdgeFadeLength, 24)
         XCTAssertEqual(LauncherResultListLayoutPolicy.rowCornerRadius, 18)
     }
 
@@ -18,6 +19,14 @@ final class LauncherResultListPolicyTests: XCTestCase {
         XCTAssertTrue(source.contains(".contentMargins(.vertical, LauncherResultListLayoutPolicy.verticalShadowClearance"))
         XCTAssertTrue(source.contains(".padding(.horizontal, -LauncherResultListLayoutPolicy.horizontalShadowBleed)"))
         XCTAssertFalse(source.contains("shadowClearance"))
+    }
+
+    func testSharedResultListUsesSoftVerticalEdgeMaskInsteadOfHardCut() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/LauncherResultListView.swift")
+
+        XCTAssertTrue(source.contains(".mask(alignment: .center)"))
+        XCTAssertTrue(source.contains("resultListVerticalEdgeMask"))
+        XCTAssertTrue(source.contains("LauncherResultListLayoutPolicy.verticalEdgeFadeLength"))
     }
 
     func testSharedResultListDoesNotUseAetherEdgeTreatment() throws {
