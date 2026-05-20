@@ -15,6 +15,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     private var isOptionPinnedFocusActive = false
     private var visibilityState: WindowVisibilityState = .hidden
     private var visibilityTransitionID = 0
+    private var applicationIndexSourceStream: ApplicationIndexSourceStream?
     private var presentationAnimation: Animation {
         model.animationTiming.animation(duration: 0.24)
     }
@@ -63,6 +64,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         buildWindow()
         installLocalKeyMonitor()
         installApplicationActivationObserver()
+        startApplicationIndexSourceStream()
         reindex()
         model.startBackgroundWarmCaches()
     }
@@ -71,6 +73,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         cancelSpaceHoldState(deliverEndHold: true)
         cancelOptionPinnedFocus()
         closeQuickLookPreviewPanel()
+        applicationIndexSourceStream?.stop()
         if let localKeyMonitor {
             NSEvent.removeMonitor(localKeyMonitor)
         }
@@ -116,10 +119,8 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
                 model.isPresented = true
             }
             finishShow(transitionID: visibilityTransitionID)
-            scheduleApplicationReindexIfNeeded(mode: mode, transitionID: visibilityTransitionID)
         } else {
             finishShow(transitionID: visibilityTransitionID)
-            scheduleApplicationReindexIfNeeded(mode: mode)
         }
     }
 
@@ -307,6 +308,14 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
                 self?.restoreFocusAfterExternalPromptIfNeeded()
             }
         }
+    }
+
+    private func startApplicationIndexSourceStream() {
+        let stream = ApplicationIndexSourceStream { [weak self] in
+            self?.reindex()
+        }
+        applicationIndexSourceStream = stream
+        stream.start()
     }
 
     private func handleLauncherCommand(_ command: LauncherCommand) -> Bool {
@@ -562,21 +571,6 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         visibilityState = .hidden
     }
 
-    private func scheduleApplicationReindexIfNeeded(mode: LauncherMode, transitionID: Int? = nil) {
-        guard mode == .applications else { return }
-
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            if let transitionID {
-                guard self.visibilityTransitionID == transitionID,
-                      self.visibilityState == .shown else {
-                    return
-                }
-            }
-
-            self.reindex()
-        }
-    }
 }
 
 @available(macOS 26.0, *)
