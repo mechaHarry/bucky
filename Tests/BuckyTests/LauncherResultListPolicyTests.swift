@@ -30,15 +30,18 @@ final class LauncherResultListPolicyTests: XCTestCase {
         XCTAssertFalse(source.contains("resultListVerticalEdgeMaterialFog"))
     }
 
-    func testResultsPaneDoesNotUseEdgeVeil() throws {
+    func testResultsPaneOwnsMaterialEdgeVeilAtPaneBoundary() throws {
         let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
 
+        XCTAssertTrue(source.contains("resultsPaneEdgeVeil"))
+        XCTAssertTrue(source.contains("resultsPaneEdgeMaterialVeil"))
         XCTAssertTrue(source.contains("ZStack {\n            resultsPaneBackdrop"))
+        XCTAssertTrue(source.contains("            resultsPaneEdgeVeil\n        }"))
         XCTAssertTrue(source.contains(".clipShape(resultsPaneShape)"))
-        XCTAssertFalse(source.contains("resultsPaneEdgeVeil"))
-        XCTAssertFalse(source.contains("resultsPaneEdgeMaterialVeil"))
         XCTAssertFalse(source.contains("resultsPaneEdgeGradientVeil"))
-        XCTAssertFalse(source.contains(".fill(.regularMaterial)\n            .mask"))
+        XCTAssertTrue(source.contains(".fill(.regularMaterial)"))
+        XCTAssertTrue(source.contains("LauncherResultListLayoutPolicy.verticalEdgeFadeLength"))
+        XCTAssertTrue(source.contains(".allowsHitTesting(false)"))
     }
 
     func testResultsPaneClipsRowsAtPaneBoundaryNotInsetBounds() throws {
