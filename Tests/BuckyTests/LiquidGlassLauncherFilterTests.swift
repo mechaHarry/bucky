@@ -50,8 +50,20 @@ final class LiquidGlassLauncherFilterTests: XCTestCase {
         }
 
         XCTAssertEqual(AppIconPreloadPolicy.preloadURLs(for: items).count, AppIconPreloadPolicy.preloadLimit)
-        XCTAssertTrue(AppIconPreloadPolicy.shouldYield(afterLoadingItemAt: 15))
-        XCTAssertFalse(AppIconPreloadPolicy.shouldYield(afterLoadingItemAt: 14))
+        XCTAssertEqual(AppIconPreloadPolicy.initialDelayNanoseconds, 0)
+        XCTAssertEqual(AppIconPreloadPolicy.tailDelayNanoseconds, 0)
+        XCTAssertGreaterThanOrEqual(AppIconPreloadPolicy.initialVisibleLimit, 80)
+        XCTAssertTrue(AppIconPreloadPolicy.shouldYield(afterLoadingItemAt: 7))
+        XCTAssertFalse(AppIconPreloadPolicy.shouldYield(afterLoadingItemAt: 6))
+    }
+
+    func testApplicationRowsAreEagerlyRealizedForWarmTraversal() throws {
+        let launcher = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
+        let resultList = try source(named: "Sources/Bucky/UI/SwiftUI/LauncherResultListView.swift")
+
+        XCTAssertTrue(launcher.contains("resultScrollView(reconstructionID: applicationsReconstructionIdentity, usesEagerRows: true)"))
+        XCTAssertTrue(resultList.contains("let usesEagerRows: Bool"))
+        XCTAssertTrue(resultList.contains("if usesEagerRows {\n                VStack"))
     }
 
     private func launchItem(title: String, searchText: String) -> LaunchItem {
@@ -61,5 +73,14 @@ final class LiquidGlassLauncherFilterTests: XCTestCase {
             url: URL(fileURLWithPath: "/Applications/\(title).app"),
             searchText: searchText
         )
+    }
+
+    private func source(named path: String) throws -> String {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent(path)
+        return try String(contentsOf: sourceURL, encoding: .utf8)
     }
 }

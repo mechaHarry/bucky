@@ -216,7 +216,7 @@ struct LiquidGlassLauncherView: View {
             Group {
                 switch model.mode {
                 case .applications:
-                    resultScrollView(reconstructionID: applicationsReconstructionIdentity) {
+                    resultScrollView(reconstructionID: applicationsReconstructionIdentity, usesEagerRows: true) {
                         ForEach(Array(model.filteredItems.enumerated()), id: \.element.url) { index, item in
                             applicationRow(item: item, index: index)
                         }
@@ -244,12 +244,14 @@ struct LiquidGlassLauncherView: View {
 
     private func resultScrollView<Content: View>(
         reconstructionID: AnyHashable,
+        usesEagerRows: Bool = false,
         @ViewBuilder content: @escaping () -> Content
     ) -> some View {
         LauncherResultList(
             scrollTargetID: $scrollTargetID,
             scrollTargetAnchor: scrollTargetAnchor,
             reconstructionID: reconstructionID,
+            usesEagerRows: usesEagerRows,
             content: content
         )
         .onAppear {
@@ -646,11 +648,11 @@ private struct ApplicationIconView: View {
 
 @available(macOS 26.0, *)
 struct AppIconPreloadPolicy {
-    static let initialVisibleLimit = 24
-    static let preloadLimit = 512
-    static let initialDelayNanoseconds: UInt64 = 40_000_000
-    static let tailDelayNanoseconds: UInt64 = 140_000_000
-    static let yieldStride = 16
+    static let initialVisibleLimit = 80
+    static let preloadLimit = 256
+    static let initialDelayNanoseconds: UInt64 = 0
+    static let tailDelayNanoseconds: UInt64 = 0
+    static let yieldStride = 8
 
     static func preloadURLs(for items: [LaunchItem]) -> [URL] {
         Array(items.prefix(preloadLimit).map(\.url))
@@ -669,7 +671,7 @@ private actor AppIconCache {
     private var inFlightTasks: [String: Task<NSImage, Never>] = [:]
     private var activeLoadCount = 0
     private var loadWaiters: [CheckedContinuation<Void, Never>] = []
-    private let maxConcurrentLoads = 2
+    private let maxConcurrentLoads = 4
 
     private init() {
         cache.countLimit = AppIconPreloadPolicy.preloadLimit
