@@ -68,27 +68,31 @@ struct LauncherResultList<RowID: Hashable, Content: View>: View {
             let fadeLength = min(LauncherResultListLayoutPolicy.verticalEdgeFadeLength, height / 2)
 
             VStack(spacing: 0) {
-                verticalEdgeFogGradient(startOpacity: 0.72, endOpacity: 0)
+                resultListVerticalEdgeMaterialFog(startOpacity: 0.82, endOpacity: 0)
                     .frame(height: fadeLength)
 
                 Spacer(minLength: 0)
 
-                verticalEdgeFogGradient(startOpacity: 0, endOpacity: 0.72)
+                resultListVerticalEdgeMaterialFog(startOpacity: 0, endOpacity: 0.82)
                     .frame(height: fadeLength)
             }
         }
         .allowsHitTesting(false)
     }
 
-    private func verticalEdgeFogGradient(startOpacity: Double, endOpacity: Double) -> LinearGradient {
-        LinearGradient(
-            colors: [
-                LauncherResultListVisualStyle.edgeFog.opacity(startOpacity),
-                LauncherResultListVisualStyle.edgeFog.opacity(endOpacity)
-            ],
-            startPoint: .top,
-            endPoint: .bottom
-        )
+    private func resultListVerticalEdgeMaterialFog(startOpacity: Double, endOpacity: Double) -> some View {
+        Rectangle()
+            .fill(.regularMaterial)
+            .mask {
+                LinearGradient(
+                    colors: [
+                        Color.black.opacity(startOpacity),
+                        Color.black.opacity(endOpacity)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
     }
 }
 
@@ -241,5 +245,4 @@ enum LauncherResultListVisualStyle {
     static let surfaceRim = Color(nsColor: .separatorColor)
     static let selectionRim = Color(nsColor: .selectedContentBackgroundColor)
     static let markedRim = Color(nsColor: .controlAccentColor)
-    static let edgeFog = Color(nsColor: .windowBackgroundColor)
 }

@@ -28,6 +28,8 @@ final class LauncherResultListPolicyTests: XCTestCase {
         XCTAssertFalse(source.contains("resultListVerticalEdgeMask"))
         XCTAssertTrue(source.contains(".overlay(alignment: .center)"))
         XCTAssertTrue(source.contains("resultListVerticalEdgeFog"))
+        XCTAssertTrue(source.contains("resultListVerticalEdgeMaterialFog"))
+        XCTAssertTrue(source.contains(".fill(.regularMaterial)"))
         XCTAssertTrue(source.contains("LauncherResultListLayoutPolicy.verticalEdgeFadeLength"))
         XCTAssertTrue(source.contains(".allowsHitTesting(false)"))
     }
