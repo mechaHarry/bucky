@@ -40,7 +40,6 @@ struct LauncherResultList<RowID: Hashable, Content: View>: View {
         }
         .contentMargins(.horizontal, LauncherResultListLayoutPolicy.horizontalShadowBleed, for: .scrollContent)
         .contentMargins(.vertical, LauncherResultListLayoutPolicy.verticalShadowClearance, for: .scrollContent)
-        .padding(.horizontal, -LauncherResultListLayoutPolicy.horizontalShadowBleed)
         .scrollPosition(id: $scrollTargetID, anchor: scrollTargetAnchor)
         .scrollIndicators(.hidden)
         .scrollIndicatorsFlash(trigger: false)

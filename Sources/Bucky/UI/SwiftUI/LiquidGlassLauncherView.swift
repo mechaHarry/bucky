@@ -109,12 +109,12 @@ struct LiquidGlassLauncherView: View {
             let fadeLength = min(LauncherResultListLayoutPolicy.verticalEdgeFadeLength, height / 2)
 
             VStack(spacing: 0) {
-                resultsPaneEdgeMaterialVeil(startOpacity: 0.82, endOpacity: 0)
+                resultsPaneEdgeGradientVeil(startOpacity: 0.74, endOpacity: 0)
                     .frame(height: fadeLength)
 
                 Spacer(minLength: 0)
 
-                resultsPaneEdgeMaterialVeil(startOpacity: 0, endOpacity: 0.82)
+                resultsPaneEdgeGradientVeil(startOpacity: 0, endOpacity: 0.74)
                     .frame(height: fadeLength)
             }
         }
@@ -122,19 +122,15 @@ struct LiquidGlassLauncherView: View {
         .allowsHitTesting(false)
     }
 
-    private func resultsPaneEdgeMaterialVeil(startOpacity: Double, endOpacity: Double) -> some View {
-        Rectangle()
-            .fill(.regularMaterial)
-            .mask {
-                LinearGradient(
-                    colors: [
-                        Color.black.opacity(startOpacity),
-                        Color.black.opacity(endOpacity)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            }
+    private func resultsPaneEdgeGradientVeil(startOpacity: Double, endOpacity: Double) -> some View {
+        LinearGradient(
+            colors: [
+                LauncherModeTintPolicy.panelColor(for: model.mode).opacity(startOpacity),
+                LauncherModeTintPolicy.panelColor(for: model.mode).opacity(endOpacity)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
     }
 
     private var resultsPaneBackdrop: some View {
