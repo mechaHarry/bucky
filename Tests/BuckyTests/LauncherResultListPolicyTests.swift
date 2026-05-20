@@ -14,7 +14,7 @@ final class LauncherResultListPolicyTests: XCTestCase {
     func testSharedResultListKeepsScrollContentOutOfHeaderWhileGivingShadowsAir() throws {
         let source = try source(named: "Sources/Bucky/UI/SwiftUI/LauncherResultListView.swift")
 
-        XCTAssertFalse(source.contains(".scrollClipDisabled(true)"))
+        XCTAssertTrue(source.contains(".scrollClipDisabled(true)"))
         XCTAssertTrue(source.contains(".contentMargins(.horizontal, LauncherResultListLayoutPolicy.horizontalShadowBleed"))
         XCTAssertTrue(source.contains(".contentMargins(.vertical, LauncherResultListLayoutPolicy.verticalShadowClearance"))
         XCTAssertTrue(source.contains(".padding(.horizontal, -LauncherResultListLayoutPolicy.horizontalShadowBleed)"))
@@ -24,9 +24,12 @@ final class LauncherResultListPolicyTests: XCTestCase {
     func testSharedResultListUsesSoftVerticalEdgeMaskInsteadOfHardCut() throws {
         let source = try source(named: "Sources/Bucky/UI/SwiftUI/LauncherResultListView.swift")
 
-        XCTAssertTrue(source.contains(".mask(alignment: .center)"))
-        XCTAssertTrue(source.contains("resultListVerticalEdgeMask"))
+        XCTAssertFalse(source.contains(".mask(alignment: .center)"))
+        XCTAssertFalse(source.contains("resultListVerticalEdgeMask"))
+        XCTAssertTrue(source.contains(".overlay(alignment: .center)"))
+        XCTAssertTrue(source.contains("resultListVerticalEdgeFog"))
         XCTAssertTrue(source.contains("LauncherResultListLayoutPolicy.verticalEdgeFadeLength"))
+        XCTAssertTrue(source.contains(".allowsHitTesting(false)"))
     }
 
     func testSharedResultListDoesNotUseAetherEdgeTreatment() throws {
