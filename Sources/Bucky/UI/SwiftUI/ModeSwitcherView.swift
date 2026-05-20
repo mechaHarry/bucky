@@ -4,18 +4,10 @@ import SwiftUI
 struct ModeSwitcherView: View {
     @ObservedObject var model: LiquidGlassLauncherModel
     @FocusState.Binding var isSearchFocused: Bool
-    @Namespace private var modeGlassNamespace
     @Environment(\.colorScheme) private var colorScheme
 
-    @ViewBuilder
     var body: some View {
-        if ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: model.mode) {
-            GlassEffectContainer(spacing: 10) {
-                modeSwitcherContent
-            }
-        } else {
-            modeSwitcherContent
-        }
+        modeSwitcherContent
     }
 
     private var modeSwitcherContent: some View {
@@ -30,21 +22,9 @@ struct ModeSwitcherView: View {
     @ViewBuilder
     private func modeSwitcherElement(for mode: LauncherMode) -> some View {
         if mode == model.mode {
-            if ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: mode) {
-                activePill(for: mode)
-                    .glassEffectID(mode, in: modeGlassNamespace)
-                    .glassEffectTransition(.matchedGeometry)
-            } else {
-                activePill(for: mode)
-            }
+            activePill(for: mode)
         } else {
-            if ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: mode) {
-                modeOrb(for: mode)
-                    .glassEffectID(mode, in: modeGlassNamespace)
-                    .glassEffectTransition(.matchedGeometry)
-            } else {
-                modeOrb(for: mode)
-            }
+            modeOrb(for: mode)
         }
     }
 
@@ -58,10 +38,15 @@ struct ModeSwitcherView: View {
                 .frame(width: 20, height: 20)
                 .padding(10)
         }
-        .buttonStyle(.glass)
-        .buttonBorderShape(.circle)
-        .tint(LauncherModeTintPolicy.inactiveOrbColor(for: mode))
-        .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 4)
+        .buttonStyle(.plain)
+        .background {
+            ModeControlBackground(
+                shape: Circle(),
+                fill: LauncherModeTintPolicy.inactiveOrbColor(for: mode),
+                tint: LauncherModeTintPolicy.activeColor(for: mode),
+                isActive: false
+            )
+        }
         .help(helpText(for: mode))
     }
 
@@ -117,15 +102,17 @@ struct ModeSwitcherView: View {
                 .padding(.leading, ModeSwitcherLayoutPolicy.filesPillLeadingPadding)
                 .padding(.trailing, ModeSwitcherLayoutPolicy.filesPillTrailingPadding)
                 .frame(width: proxy.size.width, height: ModeSwitcherLayoutPolicy.activePillHeight, alignment: .leading)
-                .tint(modeTint)
-                .glassEffect(
-                    .regular.tint(modeTint.opacity(ModeSwitcherTintPolicy.activePillTintOpacity)).interactive(),
-                    in: Capsule()
-                )
+                .background {
+                    ModeControlBackground(
+                        shape: Capsule(),
+                        fill: Color(nsColor: .windowBackgroundColor),
+                        tint: modeTint,
+                        isActive: true
+                    )
+                }
             }
             .frame(minWidth: 0, maxWidth: .infinity, minHeight: ModeSwitcherLayoutPolicy.activePillHeight, maxHeight: ModeSwitcherLayoutPolicy.activePillHeight)
             .layoutPriority(1)
-            .shadow(color: .black.opacity(0.18), radius: 10, x: 0, y: 5)
         }
     }
 
@@ -234,7 +221,7 @@ struct ModeSwitcherLayoutPolicy {
 
 struct ModeSwitcherGlassTransitionPolicy {
     static func usesMatchedGeometry(for mode: LauncherMode) -> Bool {
-        !mode.acceptsTextInput
+        false
     }
 
     static func usesOuterContainer(for _: LauncherMode) -> Bool {
@@ -272,23 +259,49 @@ private struct TextInputModePill: View {
             alignment: .center
         )
         .background {
-            TextInputPillGlassSurface(tint: LauncherModeTintPolicy.activeColor(for: mode))
+            ModeControlBackground(
+                shape: Capsule(),
+                fill: Color(nsColor: .windowBackgroundColor),
+                tint: LauncherModeTintPolicy.activeColor(for: mode),
+                isActive: true
+            )
         }
         .contentShape(Capsule())
-        .shadow(color: .black.opacity(0.18), radius: 10, x: 0, y: 5)
     }
 }
 
-private struct TextInputPillGlassSurface: View {
+private struct ModeControlBackground<ShapeType: InsettableShape>: View {
+    let shape: ShapeType
+    let fill: Color
     let tint: Color
+    let isActive: Bool
 
     var body: some View {
-        Capsule()
-            .fill(Color.clear)
-            .glassEffect(
-                .regular.tint(tint.opacity(ModeSwitcherTintPolicy.activePillTintOpacity)).interactive(),
-                in: Capsule()
-            )
+        shape
+            .fill(fill.opacity(isActive ? 0.34 : 0.26))
+            .overlay {
+                shape
+                    .fill(tint.opacity(isActive ? 0.18 : 0.10))
+            }
+            .overlay {
+                shape
+                    .strokeBorder(tint.opacity(isActive ? 0.38 : 0.24), lineWidth: 1)
+            }
+            .overlay {
+                shape
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(isActive ? 0.36 : 0.24),
+                                Color.white.opacity(0.04),
+                                Color.black.opacity(0.08)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            }
     }
 }
 
@@ -335,7 +348,6 @@ private struct TextInputPillForegroundLayer: View {
                     )
                     .padding(.trailing, ModeSwitcherLayoutPolicy.activeTextPillHorizontalInset)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
-                    .glassEffectTransition(.materialize)
             }
         }
     }
