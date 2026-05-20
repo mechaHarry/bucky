@@ -5,8 +5,8 @@ final class SettingsStore {
     private(set) var settings: BuckySettings
     let fileURL: URL
 
-    init() {
-        fileURL = BuckyPaths.appSupportDirectory.appendingPathComponent("settings.json")
+    init(fileURL: URL = BuckyPaths.appSupportDirectory.appendingPathComponent("settings.json")) {
+        self.fileURL = fileURL
         settings = .defaultValue
         load()
     }
@@ -45,10 +45,15 @@ final class SettingsStore {
         save()
     }
 
+    func updateCustomActions(_ actions: [CustomAction]) {
+        settings.customActions = actions
+        save()
+    }
+
     private func save() {
         do {
             try fileManager.createDirectory(
-                at: BuckyPaths.appSupportDirectory,
+                at: fileURL.deletingLastPathComponent(),
                 withIntermediateDirectories: true
             )
             let encoder = JSONEncoder()

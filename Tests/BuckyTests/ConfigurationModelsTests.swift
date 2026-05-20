@@ -14,6 +14,14 @@ final class ConfigurationModelsTests: XCTestCase {
         XCTAssertNil(settings.fileBrowserStartDirectory)
     }
 
+    func testBuckySettingsDecodesMissingCustomActionsAsEmpty() throws {
+        let data = Data(#"{"launchAtStartup":false}"#.utf8)
+
+        let settings = try JSONDecoder().decode(BuckySettings.self, from: data)
+
+        XCTAssertEqual(settings.customActions, [])
+    }
+
     func testFileBrowserStartDirectoryCanBeStored() {
         var settings = BuckySettings.defaultValue
         let startDirectory = URL(fileURLWithPath: "/Users/test/Documents")
@@ -21,5 +29,19 @@ final class ConfigurationModelsTests: XCTestCase {
         settings.fileBrowserStartDirectory = startDirectory
 
         XCTAssertEqual(settings.fileBrowserStartDirectory, startDirectory)
+    }
+
+    func testCustomActionsCanBeStored() throws {
+        let action = CustomAction(
+            name: "Build Docs",
+            command: "make docs"
+        )
+        var settings = BuckySettings.defaultValue
+
+        settings.customActions = [action]
+
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(BuckySettings.self, from: data)
+        XCTAssertEqual(decoded.customActions, [action])
     }
 }

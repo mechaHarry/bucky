@@ -44,29 +44,45 @@ enum LauncherAnimationTiming: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+struct CustomAction: Codable, Equatable, Identifiable, Hashable {
+    var id: UUID
+    var name: String
+    var command: String
+
+    init(id: UUID = UUID(), name: String, command: String) {
+        self.id = id
+        self.name = name
+        self.command = command
+    }
+}
+
 struct BuckySettings: Codable {
     var hotKey: HotKeyConfiguration
     var launchAtStartup: Bool
     var animationTiming: LauncherAnimationTiming
     var fileBrowserStartDirectory: URL?
+    var customActions: [CustomAction]
 
     static let defaultValue = BuckySettings(
         hotKey: .defaultValue,
         launchAtStartup: false,
         animationTiming: .defaultValue,
-        fileBrowserStartDirectory: nil
+        fileBrowserStartDirectory: nil,
+        customActions: []
     )
 
     init(
         hotKey: HotKeyConfiguration,
         launchAtStartup: Bool,
         animationTiming: LauncherAnimationTiming = .defaultValue,
-        fileBrowserStartDirectory: URL? = nil
+        fileBrowserStartDirectory: URL? = nil,
+        customActions: [CustomAction] = []
     ) {
         self.hotKey = hotKey
         self.launchAtStartup = launchAtStartup
         self.animationTiming = animationTiming
         self.fileBrowserStartDirectory = fileBrowserStartDirectory
+        self.customActions = customActions
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -74,6 +90,7 @@ struct BuckySettings: Codable {
         case launchAtStartup
         case animationTiming
         case fileBrowserStartDirectory
+        case customActions
     }
 
     init(from decoder: Decoder) throws {
@@ -82,6 +99,7 @@ struct BuckySettings: Codable {
         launchAtStartup = try container.decodeIfPresent(Bool.self, forKey: .launchAtStartup) ?? false
         animationTiming = try container.decodeIfPresent(LauncherAnimationTiming.self, forKey: .animationTiming) ?? .defaultValue
         fileBrowserStartDirectory = try container.decodeIfPresent(URL.self, forKey: .fileBrowserStartDirectory)
+        customActions = try container.decodeIfPresent([CustomAction].self, forKey: .customActions) ?? []
     }
 
     func encode(to encoder: Encoder) throws {
@@ -90,5 +108,6 @@ struct BuckySettings: Codable {
         try container.encode(launchAtStartup, forKey: .launchAtStartup)
         try container.encode(animationTiming, forKey: .animationTiming)
         try container.encodeIfPresent(fileBrowserStartDirectory, forKey: .fileBrowserStartDirectory)
+        try container.encode(customActions, forKey: .customActions)
     }
 }

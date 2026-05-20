@@ -8,6 +8,10 @@ final class SettingsViewModel: ObservableObject {
     @Published var fileBrowserStartDirectoryText = ""
     @Published var inclusionPaths: [String] = []
     @Published var exclusionPaths: [String] = []
+    @Published var customActions: [CustomAction] = []
+    @Published var selectedCustomActionID: UUID?
+    @Published var customActionName = ""
+    @Published var customActionCommand = ""
     @Published var selectedInclusionPath: String?
     @Published var selectedExclusionPath: String?
     @Published var isRecordingHotKey = false
@@ -55,8 +59,10 @@ final class SettingsViewModel: ObservableObject {
         launchAtStartup = settingsStore.settings.launchAtStartup
         animationTiming = settingsStore.settings.animationTiming
         fileBrowserStartDirectoryText = settingsStore.settings.fileBrowserStartDirectory?.path ?? "~/"
+        customActions = settingsStore.settings.customActions
         inclusionPaths = inclusionStore.sortedPaths()
         exclusionPaths = exclusionStore.sortedPaths()
+        selectedCustomActionID = customActions.contains(where: { $0.id == selectedCustomActionID }) ? selectedCustomActionID : nil
         selectedInclusionPath = inclusionPaths.contains(selectedInclusionPath ?? "") ? selectedInclusionPath : nil
         selectedExclusionPath = exclusionPaths.contains(selectedExclusionPath ?? "") ? selectedExclusionPath : nil
     }
@@ -105,6 +111,52 @@ final class SettingsViewModel: ObservableObject {
     func setFileBrowserStartDirectory(_ directory: URL?) {
         settingsStore.updateFileBrowserStartDirectory(directory)
         fileBrowserStartDirectoryText = directory?.path ?? "~/"
+        settingsChangedHandler()
+    }
+
+    func selectCustomAction(_ id: UUID?) {
+        selectedCustomActionID = id
+        guard let id,
+              let action = customActions.first(where: { $0.id == id }) else {
+            customActionName = ""
+            customActionCommand = ""
+            return
+        }
+
+        customActionName = action.name
+        customActionCommand = action.command
+    }
+
+    func saveCustomAction() {
+        let name = customActionName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let command = customActionCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, !command.isEmpty else {
+            errorMessage = "Custom actions need both a name and a command."
+            return
+        }
+
+        if let selectedCustomActionID,
+           let index = customActions.firstIndex(where: { $0.id == selectedCustomActionID }) {
+            customActions[index].name = name
+            customActions[index].command = command
+        } else {
+            customActions.append(CustomAction(name: name, command: command))
+        }
+
+        settingsStore.updateCustomActions(customActions)
+        selectedCustomActionID = nil
+        customActionName = ""
+        customActionCommand = ""
+        settingsChangedHandler()
+    }
+
+    func removeSelectedCustomAction() {
+        guard let selectedCustomActionID else { return }
+        customActions.removeAll { $0.id == selectedCustomActionID }
+        settingsStore.updateCustomActions(customActions)
+        self.selectedCustomActionID = nil
+        customActionName = ""
+        customActionCommand = ""
         settingsChangedHandler()
     }
 
@@ -157,6 +209,8 @@ struct SettingsView: View {
 
             fileBrowserStartDirectoryRow
 
+            customActionsSection
+
             pathSection(
                 title: "Included apps",
                 paths: model.inclusionPaths,
@@ -182,7 +236,7 @@ struct SettingsView: View {
             )
         }
         .padding(20)
-        .frame(width: 560, height: 650, alignment: .topLeading)
+        .frame(width: 620, height: 790, alignment: .topLeading)
         .alert(
             "Bucky Settings",
             isPresented: Binding(
@@ -264,6 +318,59 @@ struct SettingsView: View {
                 model.requestFileBrowserStartDirectoryPicker()
             } label: {
                 Label("Choose", systemImage: "folder")
+            }
+        }
+    }
+
+    private var customActionsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Custom actions")
+                .font(.system(size: 13, weight: .semibold))
+
+            List(selection: $model.selectedCustomActionID) {
+                if model.customActions.isEmpty {
+                    Text("No custom actions")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(model.customActions) { action in
+                        HStack(spacing: 8) {
+                            Text(action.name)
+                                .lineLimit(1)
+                            Spacer()
+                            Text(action.command)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                        .tag(Optional(action.id))
+                    }
+                }
+            }
+            .frame(height: 110)
+            .onChange(of: model.selectedCustomActionID) { _, id in
+                model.selectCustomAction(id)
+            }
+
+            HStack(spacing: 8) {
+                TextField("Name", text: $model.customActionName)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 150)
+
+                TextField("Shell command or script path", text: $model.customActionCommand)
+                    .textFieldStyle(.roundedBorder)
+
+                Button {
+                    model.saveCustomAction()
+                } label: {
+                    Label("Save", systemImage: "checkmark")
+                }
+
+                Button(role: .destructive) {
+                    model.removeSelectedCustomAction()
+                } label: {
+                    Label("Remove", systemImage: "minus")
+                }
+                .disabled(model.selectedCustomActionID == nil)
             }
         }
     }
