@@ -61,18 +61,13 @@ struct LiquidGlassLauncherView: View {
     }
 
     private var launcherSurface: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: LauncherVisualStyle.aetherContentSpacing) {
             header
             results
         }
         .padding(10)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(windowBackdrop)
-        .clipShape(launcherOuterShape)
-    }
-
-    private var launcherOuterShape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: LauncherVisualStyle.windowCornerRadius, style: .continuous)
+        .contentShape(Rectangle())
     }
 
     private func synchronizeSearchFocus() {
@@ -91,6 +86,29 @@ struct LiquidGlassLauncherView: View {
             .padding(.top, ModeSwitcherLayoutPolicy.launcherHeaderTopInset)
             .padding(.horizontal, ModeSwitcherLayoutPolicy.launcherHeaderHorizontalInset)
             .padding(.bottom, ModeSwitcherLayoutPolicy.launcherHeaderBottomInset)
+            .padding(LauncherVisualStyle.headerGlassPadding)
+            .background(headerGlassBackdrop)
+            .clipShape(headerGlassShape)
+    }
+
+    private var headerGlassShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: LauncherVisualStyle.headerGlassCornerRadius, style: .continuous)
+    }
+
+    private var headerGlassBackdrop: some View {
+        headerGlassShape
+            .fill(Color.clear)
+            .glassEffect(
+                .regular.tint(
+                    LauncherModeTintPolicy.panelColor(for: model.mode)
+                        .opacity(LauncherVisualStyle.headerGlassTintOpacity)
+                ).interactive(),
+                in: headerGlassShape
+            )
+            .overlay {
+                headerGlassShape
+                    .strokeBorder(LauncherVisualStyle.surfaceRim.opacity(0.30), lineWidth: 1)
+            }
     }
 
     private var headerControls: some View {
@@ -412,25 +430,6 @@ struct LiquidGlassLauncherView: View {
         }
     }
 
-    private var windowBackdrop: some View {
-        GlassEffectContainer(spacing: 0) {
-            launcherOuterShape
-                .fill(Color.clear)
-                .glassEffect(
-                    .regular.tint(
-                        LauncherModeTintPolicy.panelColor(for: model.mode)
-                            .opacity(LauncherVisualStyle.windowModeTintOpacity(resultCount: model.resultCount))
-                    ),
-                    in: launcherOuterShape
-                )
-        }
-        .overlay {
-            launcherOuterShape
-                .strokeBorder(LauncherVisualStyle.surfaceRim.opacity(0.30), lineWidth: 1)
-        }
-        .padding(2)
-    }
-
     private func toolSymbol(for kind: ToolItem.Kind) -> String {
         switch kind {
         case .calculation:
@@ -534,6 +533,9 @@ private enum HeaderGlassEffectID: Hashable, Sendable {
 @available(macOS 26.0, *)
 private enum LauncherVisualStyle {
     static let windowCornerRadius: CGFloat = 30
+    static let aetherContentSpacing: CGFloat = 8
+    static let headerGlassPadding: CGFloat = 2
+    static let headerGlassCornerRadius: CGFloat = 31
     static let rowFill = Color(nsColor: .windowBackgroundColor)
     static let selectionFill = Color(nsColor: .selectedContentBackgroundColor)
     static let activeHeaderControlTint = Color(nsColor: .controlAccentColor)
@@ -541,9 +543,7 @@ private enum LauncherVisualStyle {
     static let selectionRim = Color(nsColor: .selectedContentBackgroundColor)
     static let actionRim = Color(nsColor: .separatorColor)
 
-    static func windowModeTintOpacity(resultCount: Int) -> Double {
-        resultCount == 0 ? 0.028 : 0.040
-    }
+    static let headerGlassTintOpacity = 0.050
 }
 
 @available(macOS 26.0, *)

@@ -8,32 +8,48 @@ struct LauncherResultListLayoutPolicy {
     static let rowReconstructionAnimationSeconds = 0.18
 }
 
+struct LauncherAetherEdgePolicy {
+    static let edgeBandHeight: CGFloat = 28
+    static let edgeGlassOpacity = 0.52
+    static let edgeFadeStop = 0.72
+}
+
 @available(macOS 26.0, *)
 struct LauncherResultList<RowID: Hashable, Content: View>: View {
     @Binding var scrollTargetID: RowID?
     let scrollTargetAnchor: UnitPoint?
     let reconstructionID: AnyHashable?
+    let appliesAetherEdgeTreatment: Bool
     @ViewBuilder let content: () -> Content
 
     init(
         scrollTargetID: Binding<RowID?> = .constant(nil),
         scrollTargetAnchor: UnitPoint? = nil,
         reconstructionID: AnyHashable? = nil,
+        appliesAetherEdgeTreatment: Bool = true,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self._scrollTargetID = scrollTargetID
         self.scrollTargetAnchor = scrollTargetAnchor
         self.reconstructionID = reconstructionID
+        self.appliesAetherEdgeTreatment = appliesAetherEdgeTreatment
         self.content = content
     }
 
     var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            LazyVStack(spacing: LauncherResultListLayoutPolicy.rowSpacing) {
-                content()
+        Group {
+            if appliesAetherEdgeTreatment {
+                scrollView
+                    .launcherAetherEdgeTreatment()
+            } else {
+                scrollView
             }
-            .scrollTargetLayout()
-            .frame(maxWidth: .infinity)
+        }
+    }
+
+    private var scrollView: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            scrollContent
         }
         .contentMargins(.horizontal, LauncherResultListLayoutPolicy.contentMargin, for: .scrollContent)
         .contentMargins(.vertical, LauncherResultListLayoutPolicy.contentMargin, for: .scrollContent)
@@ -44,6 +60,79 @@ struct LauncherResultList<RowID: Hashable, Content: View>: View {
             .smooth(duration: LauncherResultListLayoutPolicy.rowReconstructionAnimationSeconds),
             value: reconstructionID
         )
+    }
+
+    private var scrollContent: some View {
+        LazyVStack(spacing: LauncherResultListLayoutPolicy.rowSpacing) {
+            content()
+        }
+        .scrollTargetLayout()
+        .frame(maxWidth: .infinity)
+    }
+}
+
+@available(macOS 26.0, *)
+extension View {
+    func launcherAetherEdgeTreatment() -> some View {
+        self
+            .mask {
+                VStack(spacing: 0) {
+                    LinearGradient(
+                        stops: [
+                            .init(color: .clear, location: 0),
+                            .init(color: .black, location: LauncherAetherEdgePolicy.edgeFadeStop)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: LauncherAetherEdgePolicy.edgeBandHeight)
+
+                    Rectangle()
+                        .fill(.black)
+
+                    LinearGradient(
+                        stops: [
+                            .init(color: .black, location: 1 - LauncherAetherEdgePolicy.edgeFadeStop),
+                            .init(color: .clear, location: 1)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: LauncherAetherEdgePolicy.edgeBandHeight)
+                }
+            }
+            .overlay(alignment: .top) {
+                LauncherAetherEdgeOverlay(edge: .top)
+            }
+            .overlay(alignment: .bottom) {
+                LauncherAetherEdgeOverlay(edge: .bottom)
+            }
+            .clipped()
+    }
+}
+
+@available(macOS 26.0, *)
+private enum LauncherAetherEdge {
+    case top
+    case bottom
+}
+
+@available(macOS 26.0, *)
+private struct LauncherAetherEdgeOverlay: View {
+    let edge: LauncherAetherEdge
+
+    var body: some View {
+        LinearGradient(
+            colors: edge == .top
+                ? [Color.white.opacity(0.20), Color.white.opacity(0)]
+                : [Color.white.opacity(0), Color.white.opacity(0.20)],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .background(.regularMaterial)
+        .opacity(LauncherAetherEdgePolicy.edgeGlassOpacity)
+        .frame(height: LauncherAetherEdgePolicy.edgeBandHeight)
+        .allowsHitTesting(false)
     }
 }
 
