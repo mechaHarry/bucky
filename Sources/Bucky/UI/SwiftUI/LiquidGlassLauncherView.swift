@@ -88,12 +88,10 @@ struct LiquidGlassLauncherView: View {
         .padding(10)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
-        .padding(LauncherWindowFramePolicy.shadowBleed)
     }
 
     private var settingsSurface: some View {
         SettingsView(model: settingsModel)
-            .padding(LauncherWindowFramePolicy.shadowBleed)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(Rectangle())
     }

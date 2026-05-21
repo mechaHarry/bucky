@@ -302,6 +302,17 @@ final class LauncherModeRoutingTests: XCTestCase {
     }
 
     @available(macOS 26.0, *)
+    func testSettingsTransitionPreservesVisibleWindowFrameAndDisplay() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
+
+        XCTAssertTrue(source.contains("if shouldMaterialize {\n            positionWindow(animated: false)\n        }"))
+        XCTAssertTrue(source.contains("let screen = targetDisplayScreen()"))
+        XCTAssertTrue(source.contains("private func targetDisplayScreen() -> NSScreen?"))
+        XCTAssertTrue(source.contains("if window.isVisible, let screen = window.screen"))
+        XCTAssertFalse(source.contains("guard let screen = primaryDisplayScreen() ?? NSScreen.main"))
+    }
+
+    @available(macOS 26.0, *)
     func testTextInputModesCaptureTypedCharactersDuringShowAnimation() throws {
         let controller = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
         let model = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherModel.swift")
@@ -371,7 +382,7 @@ final class LauncherModeRoutingTests: XCTestCase {
     }
 
     @available(macOS 26.0, *)
-    func testDefaultWindowFrameAddsInvisibleShadowBleedAroundVisualLauncherSize() {
+    func testDefaultWindowFrameUsesRealPanelBoundsNotShadowBleed() {
         let visibleFrame = CGRect(x: 0, y: 0, width: 1_440, height: 900)
         let frame = LauncherWindowFramePolicy.frame(
             mode: .applications,
@@ -380,15 +391,9 @@ final class LauncherModeRoutingTests: XCTestCase {
         )
 
         XCTAssertEqual(LauncherWindowFramePolicy.visualContentSize, CGSize(width: 760, height: 460))
-        XCTAssertGreaterThan(LauncherWindowFramePolicy.shadowBleed, 0)
-        XCTAssertEqual(frame.size, LauncherWindowFramePolicy.defaultSize)
-        XCTAssertEqual(
-            frame.size,
-            CGSize(
-                width: LauncherWindowFramePolicy.visualContentSize.width + LauncherWindowFramePolicy.shadowBleed * 2,
-                height: LauncherWindowFramePolicy.visualContentSize.height + LauncherWindowFramePolicy.shadowBleed * 2
-            )
-        )
+        XCTAssertEqual(frame.size, LauncherWindowFramePolicy.visualContentSize)
+        XCTAssertEqual(LauncherWindowFramePolicy.defaultSize, LauncherWindowFramePolicy.visualContentSize)
+        XCTAssertFalse(try source(named: "Sources/Bucky/UI/SwiftUI/LauncherWindowFramePolicy.swift").contains("shadowBleed"))
     }
 
     @available(macOS 26.0, *)

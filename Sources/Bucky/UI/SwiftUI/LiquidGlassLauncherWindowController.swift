@@ -149,7 +149,9 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             model.isPresented = false
         }
         model.showSettings()
-        positionWindow(animated: !shouldMaterialize)
+        if shouldMaterialize {
+            positionWindow(animated: false)
+        }
         window.alphaValue = 1
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -175,7 +177,6 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     private func showLauncherFromSettings() {
         stopRecordingSettingsHotKey()
         model.hideSettings()
-        positionWindow(animated: true)
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         model.setWindowKeyState(true)
@@ -639,7 +640,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     }
 
     private func positionWindow(animated: Bool) {
-        guard let screen = primaryDisplayScreen() ?? NSScreen.main ?? NSScreen.screens.first else {
+        guard let screen = targetDisplayScreen() else {
             window.center()
             return
         }
@@ -654,6 +655,17 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
 
         guard window.frame != frame else { return }
         window.setFrame(frame, display: true, animate: animated)
+    }
+
+    private func targetDisplayScreen() -> NSScreen? {
+        if window.isVisible, let screen = window.screen {
+            return screen
+        }
+
+        let mouseLocation = NSEvent.mouseLocation
+        return NSScreen.screens.first { screen in
+            screen.frame.contains(mouseLocation)
+        } ?? primaryDisplayScreen() ?? NSScreen.main ?? NSScreen.screens.first
     }
 
     private func syncQuickLookPreviewPanel() {

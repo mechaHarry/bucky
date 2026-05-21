@@ -217,7 +217,7 @@ struct SettingsView: View {
                 .padding(.vertical, 10)
         }
         .padding(10)
-        .frame(width: LauncherWindowFramePolicy.visualContentSize.width, height: LauncherWindowFramePolicy.visualContentSize.height, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .contentShape(Rectangle())
         .animation(.snappy(duration: 0.18), value: isSidebarCollapsed)
         .animation(settingsPaneSwitchAnimation, value: selectedPane)
