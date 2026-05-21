@@ -209,7 +209,7 @@ struct SettingsView: View {
                 .padding(.vertical, 12)
         }
         .padding(12)
-        .frame(width: 760, height: 560, alignment: .topLeading)
+        .frame(width: LauncherWindowFramePolicy.visualContentSize.width, height: LauncherWindowFramePolicy.visualContentSize.height, alignment: .topLeading)
         .contentShape(Rectangle())
         .animation(.snappy(duration: 0.18), value: isSidebarCollapsed)
         .alert(

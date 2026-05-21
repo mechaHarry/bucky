@@ -2,16 +2,11 @@ import CoreGraphics
 
 struct LauncherWindowFramePolicy {
     static let visualContentSize = CGSize(width: 760, height: 460)
-    static let settingsVisualContentSize = CGSize(width: 760, height: 560)
     static let visualMinimumSize = CGSize(width: 520, height: 340)
     static let shadowBleed: CGFloat = 36
     static let defaultSize = CGSize(
         width: visualContentSize.width + shadowBleed * 2,
         height: visualContentSize.height + shadowBleed * 2
-    )
-    static let settingsSize = CGSize(
-        width: settingsVisualContentSize.width + shadowBleed * 2,
-        height: settingsVisualContentSize.height + shadowBleed * 2
     )
     static let minimumSize = CGSize(
         width: visualMinimumSize.width + shadowBleed * 2,
@@ -45,10 +40,6 @@ struct LauncherWindowFramePolicy {
         isShowingSettings: Bool = false,
         visibleFrame: CGRect
     ) -> CGSize {
-        if isShowingSettings {
-            return settingsWindowSize(visibleFrame: visibleFrame)
-        }
-
         return defaultWindowSize(visibleFrame: visibleFrame)
     }
 
@@ -56,13 +47,6 @@ struct LauncherWindowFramePolicy {
         CGSize(
             width: min(defaultSize.width, max(minimumSize.width, visibleFrame.width - defaultVisibleInset)),
             height: min(defaultSize.height, max(minimumSize.height, visibleFrame.height - defaultVisibleInset))
-        )
-    }
-
-    private static func settingsWindowSize(visibleFrame: CGRect) -> CGSize {
-        CGSize(
-            width: min(settingsSize.width, max(minimumSize.width, visibleFrame.width - defaultVisibleInset)),
-            height: min(settingsSize.height, max(minimumSize.height, visibleFrame.height - defaultVisibleInset))
         )
     }
 }
