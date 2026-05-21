@@ -64,7 +64,7 @@ final class SettingsViewLayoutTests: XCTestCase {
         XCTAssertTrue(panel.contains("return true"))
         XCTAssertTrue(settingsView.contains(".contentShape(Rectangle())"))
         XCTAssertTrue(settingsView.contains(".contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))"))
-        XCTAssertTrue(settingsView.contains(".contentShape(Rectangle())\n            .frame(height: 164)"))
+        XCTAssertTrue(settingsView.contains(".contentShape(Rectangle())\n            .frame(maxWidth: .infinity, maxHeight: .infinity)"))
     }
 
     func testSettingsIsHostedInsideLauncherWindowNotSeparatePanel() throws {
@@ -179,6 +179,37 @@ final class SettingsViewLayoutTests: XCTestCase {
         XCTAssertTrue(source.contains("private var appsPane: some View {\n        HStack(alignment: .top, spacing: 14)"))
         XCTAssertTrue(source.contains(".frame(maxWidth: .infinity, alignment: .topLeading)"))
         XCTAssertFalse(source.contains("private var appsPane: some View {\n        VStack(alignment: .leading, spacing: 18)"))
+    }
+
+    func testAppsPaneListBoxesExpandWithinSettingsContent() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/SettingsView.swift")
+
+        XCTAssertTrue(source.contains("settingsPaneContent"))
+        XCTAssertTrue(source.contains(".id(selectedPane)"))
+        XCTAssertTrue(source.contains(".frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)"))
+        XCTAssertTrue(source.contains(".frame(maxWidth: .infinity, minHeight: proxy.size.height, alignment: .topLeading)"))
+        XCTAssertTrue(source.contains(".frame(maxWidth: .infinity, maxHeight: .infinity)\n            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))"))
+        XCTAssertFalse(source.contains(".frame(height: 164)"))
+    }
+
+    func testSettingsPaneChangesUseSoftMaterializeTransition() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/SettingsView.swift")
+
+        XCTAssertTrue(source.contains("private var settingsPaneSwitchAnimation: Animation"))
+        XCTAssertTrue(source.contains("private var settingsPaneTransition: AnyTransition"))
+        XCTAssertTrue(source.contains(".opacity.combined(with: .scale(scale: 0.985))"))
+        XCTAssertTrue(source.contains(".transition(settingsPaneTransition)"))
+        XCTAssertTrue(source.contains(".animation(settingsPaneSwitchAnimation, value: selectedPane)"))
+    }
+
+    func testSettingsModeUsesDedicatedSoftTransition() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
+
+        XCTAssertTrue(source.contains("private var settingsModeAnimation: Animation"))
+        XCTAssertTrue(source.contains("private var settingsModeTransition: AnyTransition"))
+        XCTAssertTrue(source.contains(".transition(settingsModeTransition)"))
+        XCTAssertTrue(source.contains(".animation(settingsModeAnimation, value: model.isShowingSettings)"))
+        XCTAssertFalse(source.contains(".animation(resultUpdateAnimation, value: model.isShowingSettings)"))
     }
 
     func testSettingsAppRowsConstrainTextWithinRowWidth() throws {
