@@ -102,14 +102,16 @@ final class SettingsViewLayoutTests: XCTestCase {
         XCTAssertFalse(framePolicy.contains("settingsVisualContentSize"))
         XCTAssertFalse(framePolicy.contains("settingsSize"))
         XCTAssertFalse(framePolicy.contains("settingsWindowSize"))
-        XCTAssertTrue(settingsView.contains(".frame(width: LauncherWindowFramePolicy.visualContentSize.width, height: LauncherWindowFramePolicy.visualContentSize.height"))
+        XCTAssertFalse(settingsView.contains(".frame(width: LauncherWindowFramePolicy.visualContentSize.width"))
+        XCTAssertFalse(settingsView.contains("height: LauncherWindowFramePolicy.visualContentSize.height"))
+        XCTAssertTrue(settingsView.contains(".frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)"))
     }
 
     func testSettingsSurfaceUsesLauncherPaneInsetAndShadow() throws {
         let source = try source(named: "Sources/Bucky/UI/SwiftUI/SettingsView.swift")
 
-        XCTAssertTrue(source.contains(".padding(10)\n        .frame(width: LauncherWindowFramePolicy.visualContentSize.width"))
-        XCTAssertFalse(source.contains(".padding(12)\n        .frame(width: LauncherWindowFramePolicy.visualContentSize.width"))
+        XCTAssertTrue(source.contains(".padding(10)\n        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)"))
+        XCTAssertFalse(source.contains(".frame(width: LauncherWindowFramePolicy.visualContentSize.width"))
         XCTAssertTrue(source.contains("private extension View {\n    func settingsPaneShadow() -> some View"))
         XCTAssertTrue(source.contains("shadow(color: .black.opacity(0.14), radius: 16, x: 0, y: 8)"))
         XCTAssertTrue(source.contains(".settingsPaneShadow()"))
@@ -220,6 +222,15 @@ final class SettingsViewLayoutTests: XCTestCase {
         XCTAssertTrue(source.contains(".transition(settingsModeTransition)"))
         XCTAssertTrue(source.contains(".animation(settingsModeAnimation, value: model.isShowingSettings)"))
         XCTAssertFalse(source.contains(".animation(resultUpdateAnimation, value: model.isShowingSettings)"))
+    }
+
+    func testSettingsSurfaceFillsResizableLauncherWindowWithoutShadowPadding() throws {
+        let launcherView = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
+        let settingsSurface = launcherView.components(separatedBy: "private var settingsSurface: some View").last ?? ""
+
+        XCTAssertTrue(settingsSurface.contains("SettingsView(model: settingsModel)"))
+        XCTAssertTrue(settingsSurface.contains(".frame(maxWidth: .infinity, maxHeight: .infinity)"))
+        XCTAssertFalse(settingsSurface.contains(".padding(LauncherWindowFramePolicy.shadowBleed)"))
     }
 
     func testSettingsAppRowsConstrainTextWithinRowWidth() throws {
