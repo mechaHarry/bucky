@@ -392,6 +392,31 @@ final class LauncherModeRoutingTests: XCTestCase {
     }
 
     @available(macOS 26.0, *)
+    func testSettingsModeKeepsLauncherWindowSize() {
+        let visibleFrame = CGRect(x: 0, y: 0, width: 1_440, height: 900)
+        let launcherSize = LauncherWindowFramePolicy.windowSize(
+            mode: .applications,
+            fileFocusState: nil,
+            visibleFrame: visibleFrame
+        )
+        let settingsSize = LauncherWindowFramePolicy.windowSize(
+            mode: .applications,
+            fileFocusState: nil,
+            isShowingSettings: true,
+            visibleFrame: visibleFrame
+        )
+        let settingsFrame = LauncherWindowFramePolicy.frame(
+            mode: .applications,
+            fileFocusState: nil,
+            isShowingSettings: true,
+            visibleFrame: visibleFrame
+        )
+
+        XCTAssertEqual(settingsSize, launcherSize)
+        XCTAssertEqual(settingsFrame.size, launcherSize)
+    }
+
+    @available(macOS 26.0, *)
     func testInactiveWindowVisualPolicyDimsWholeSurfaceWithoutSuppressingIcons() {
         XCTAssertEqual(LauncherWindowFocusVisualPolicy.contentOpacity(isKeyWindow: true), 1)
         XCTAssertEqual(LauncherWindowFocusVisualPolicy.dimOverlayOpacity(isKeyWindow: true), 0)

@@ -96,11 +96,13 @@ final class SettingsViewLayoutTests: XCTestCase {
     }
 
     func testSettingsWindowMatchesSplitPaneSize() throws {
-        let source = try source(named: "Sources/Bucky/UI/SwiftUI/LauncherWindowFramePolicy.swift")
+        let framePolicy = try source(named: "Sources/Bucky/UI/SwiftUI/LauncherWindowFramePolicy.swift")
+        let settingsView = try source(named: "Sources/Bucky/UI/SwiftUI/SettingsView.swift")
 
-        XCTAssertTrue(source.contains("static let settingsVisualContentSize = CGSize(width: 760, height: 560)"))
-        XCTAssertTrue(source.contains("static let settingsSize = CGSize("))
-        XCTAssertTrue(source.contains("if isShowingSettings"))
+        XCTAssertFalse(framePolicy.contains("settingsVisualContentSize"))
+        XCTAssertFalse(framePolicy.contains("settingsSize"))
+        XCTAssertFalse(framePolicy.contains("settingsWindowSize"))
+        XCTAssertTrue(settingsView.contains(".frame(width: LauncherWindowFramePolicy.visualContentSize.width, height: LauncherWindowFramePolicy.visualContentSize.height"))
     }
 
     func testSettingsWindowHasNoTitlebar() throws {
