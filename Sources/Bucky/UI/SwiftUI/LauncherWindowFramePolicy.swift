@@ -2,11 +2,16 @@ import CoreGraphics
 
 struct LauncherWindowFramePolicy {
     static let visualContentSize = CGSize(width: 760, height: 460)
+    static let settingsVisualContentSize = CGSize(width: 760, height: 560)
     static let visualMinimumSize = CGSize(width: 520, height: 340)
     static let shadowBleed: CGFloat = 36
     static let defaultSize = CGSize(
         width: visualContentSize.width + shadowBleed * 2,
         height: visualContentSize.height + shadowBleed * 2
+    )
+    static let settingsSize = CGSize(
+        width: settingsVisualContentSize.width + shadowBleed * 2,
+        height: settingsVisualContentSize.height + shadowBleed * 2
     )
     static let minimumSize = CGSize(
         width: visualMinimumSize.width + shadowBleed * 2,
@@ -17,9 +22,15 @@ struct LauncherWindowFramePolicy {
     static func frame(
         mode: LauncherMode,
         fileFocusState: FileBrowserFocusState?,
+        isShowingSettings: Bool = false,
         visibleFrame: CGRect
     ) -> CGRect {
-        let size = windowSize(mode: mode, fileFocusState: fileFocusState, visibleFrame: visibleFrame)
+        let size = windowSize(
+            mode: mode,
+            fileFocusState: fileFocusState,
+            isShowingSettings: isShowingSettings,
+            visibleFrame: visibleFrame
+        )
         return CGRect(
             x: visibleFrame.midX - size.width / 2,
             y: visibleFrame.midY - size.height / 2,
@@ -31,15 +42,27 @@ struct LauncherWindowFramePolicy {
     static func windowSize(
         mode: LauncherMode,
         fileFocusState: FileBrowserFocusState?,
+        isShowingSettings: Bool = false,
         visibleFrame: CGRect
     ) -> CGSize {
-        defaultWindowSize(visibleFrame: visibleFrame)
+        if isShowingSettings {
+            return settingsWindowSize(visibleFrame: visibleFrame)
+        }
+
+        return defaultWindowSize(visibleFrame: visibleFrame)
     }
 
     private static func defaultWindowSize(visibleFrame: CGRect) -> CGSize {
         CGSize(
             width: min(defaultSize.width, max(minimumSize.width, visibleFrame.width - defaultVisibleInset)),
             height: min(defaultSize.height, max(minimumSize.height, visibleFrame.height - defaultVisibleInset))
+        )
+    }
+
+    private static func settingsWindowSize(visibleFrame: CGRect) -> CGSize {
+        CGSize(
+            width: min(settingsSize.width, max(minimumSize.width, visibleFrame.width - defaultVisibleInset)),
+            height: min(settingsSize.height, max(minimumSize.height, visibleFrame.height - defaultVisibleInset))
         )
     }
 }

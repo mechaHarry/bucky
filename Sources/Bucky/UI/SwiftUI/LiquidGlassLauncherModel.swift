@@ -14,6 +14,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     @Published var animationTiming: LauncherAnimationTiming
     @Published var isPresented = false
     @Published var isWindowKey = true
+    @Published var isShowingSettings = false
     @Published var isPinned = false {
         didSet { pinnedChangedAction?(isPinned) }
     }
@@ -161,6 +162,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     func show(mode: LauncherMode) {
+        isShowingSettings = false
         applicationQuery = ""
         calculatorQuery = ""
         dictionaryQuery = ""
@@ -170,6 +172,15 @@ final class LiquidGlassLauncherModel: ObservableObject {
         isPinned = false
         applyCurrentMode()
         requestSelectionScroll(anchor: .top)
+    }
+
+    func showSettings() {
+        isShowingSettings = true
+        isPinned = false
+    }
+
+    func hideSettings() {
+        isShowingSettings = false
     }
 
     func setWindowKeyState(_ isWindowKey: Bool) {
