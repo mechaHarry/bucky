@@ -5,7 +5,7 @@ import SwiftUI
 final class LiquidGlassLauncherModel: ObservableObject {
     @Published var mode: LauncherMode = .applications
     @Published var query = ""
-    @Published var filteredItems: [LaunchItem] = []
+    @Published var filteredItemIDs: [AppRowID] = []
     @Published var toolItems: [ToolItem] = []
     @Published private var activatedFileBrowserModel: FileBrowserModel?
     @Published var selectedIndex = 0
@@ -14,6 +14,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     @Published var animationTiming: LauncherAnimationTiming
     @Published var isPresented = false
     @Published var isWindowKey = true
+    @Published var isShowingSettings = false
     @Published var isPinned = false {
         didSet { pinnedChangedAction?(isPinned) }
     }
@@ -32,8 +33,9 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private let dictionaryLookup: @Sendable (String) -> [DictionaryResult]
     private let dictionaryOpenHandler: (String) -> Void
     private let fileBrowserModelFactory: () -> FileBrowserModel
-    private var allItems: [LaunchItem] = []
-    private var visibleItems: [LaunchItem] = []
+    private let applicationIndexSnapshotCache: ApplicationIndexSnapshotCache
+    private var appRowStore = ApplicationRowStore()
+    private var indexedItems: [LaunchItem] = []
     private var filterCache = ApplicationFilterCache()
     private var applicationQuery = ""
     private var calculatorQuery = ""
@@ -46,6 +48,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private var applicationFilterGeneration = 0
     private var pendingDictionaryLookupTask: Task<Void, Never>?
     private var dictionaryLookupGeneration = 0
+    private var pendingModeSnapshotTask: Task<Void, Never>?
+    private var modeSnapshotGeneration = 0
     private var warmCacheTask: Task<Void, Never>?
     private var selectionScrollRequestID = 0
 
@@ -58,7 +62,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
         dictionaryLookup: @escaping @Sendable (String) -> [DictionaryResult] = { DictionaryLookup.results(for: $0) },
         dictionaryOpenHandler: @escaping (String) -> Void = LiquidGlassLauncherModel.openDictionaryTerm,
         fileBrowserModel: FileBrowserModel? = nil,
-        fileBrowserModelFactory: (() -> FileBrowserModel)? = nil
+        fileBrowserModelFactory: (() -> FileBrowserModel)? = nil,
+        applicationIndexSnapshotCache: ApplicationIndexSnapshotCache = ApplicationIndexSnapshotCache()
     ) {
         self.settingsStore = settingsStore
         self.inclusionStore = inclusionStore
@@ -67,6 +72,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         self.dictionaryHistoryStore = dictionaryHistoryStore
         self.dictionaryLookup = dictionaryLookup
         self.dictionaryOpenHandler = dictionaryOpenHandler
+        self.applicationIndexSnapshotCache = applicationIndexSnapshotCache
         self.activatedFileBrowserModel = fileBrowserModel
         self.fileBrowserModelFactory = fileBrowserModelFactory ?? {
             MainActor.assumeIsolated {
@@ -74,16 +80,34 @@ final class LiquidGlassLauncherModel: ObservableObject {
             }
         }
         animationTiming = settingsStore.settings.animationTiming
+        loadCachedApplicationSnapshot()
     }
 
     deinit {
         pendingApplicationFilterTask?.cancel()
         pendingDictionaryLookupTask?.cancel()
+        pendingModeSnapshotTask?.cancel()
         warmCacheTask?.cancel()
     }
 
     var fileBrowserModel: FileBrowserModel {
         activateFileBrowserModel()
+    }
+
+    var filteredItems: [LaunchItem] {
+        appRowStore.items(for: filteredItemIDs)
+    }
+
+    var filteredIconURLs: [URL] {
+        filteredItemIDs.compactMap { appRowStore.item(for: $0)?.url }
+    }
+
+    func item(for id: AppRowID) -> LaunchItem? {
+        appRowStore.item(for: id)
+    }
+
+    var activeFileBrowserModel: FileBrowserModel? {
+        activatedFileBrowserModel
     }
 
     var placeholder: String {
@@ -93,7 +117,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     var resultCount: Int {
         switch mode {
         case .applications:
-            return filteredItems.count
+            return filteredItemIDs.count
         case .calculator, .dictionary:
             return toolItems.count
         case .files:
@@ -110,8 +134,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
     var emptyMessage: String? {
         switch mode {
         case .applications:
-            if filteredItems.isEmpty {
-                if isIndexing && allItems.isEmpty {
+            if filteredItemIDs.isEmpty {
+                if isIndexing && appRowStore.isEmpty {
                     return "Loading apps"
                 }
                 return inputIsBlank ? "No launchable items found" : "No matches"
@@ -138,6 +162,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     func show(mode: LauncherMode) {
+        isShowingSettings = false
         applicationQuery = ""
         calculatorQuery = ""
         dictionaryQuery = ""
@@ -149,9 +174,26 @@ final class LiquidGlassLauncherModel: ObservableObject {
         requestSelectionScroll(anchor: .top)
     }
 
+    func showSettings() {
+        isShowingSettings = true
+        isPinned = false
+    }
+
+    func hideSettings() {
+        isShowingSettings = false
+    }
+
     func setWindowKeyState(_ isWindowKey: Bool) {
         guard self.isWindowKey != isWindowKey else { return }
         self.isWindowKey = isWindowKey
+    }
+
+    func prepareFileBrowserMode() {
+        guard mode == .files else { return }
+        let model = activateFileBrowserModel()
+        selectedIndex = MainActor.assumeIsolated {
+            model.selectedIndex
+        }
     }
 
     func queryDidChange() {
@@ -232,13 +274,14 @@ final class LiquidGlassLauncherModel: ObservableObject {
         exclusionStore.load()
 
         let includedPaths = inclusionStore.includedPaths
-        DispatchQueue.global(qos: .userInitiated).async {
+        let applicationIndexSnapshotCache = applicationIndexSnapshotCache
+        DispatchQueue.global(qos: .userInitiated).async { [applicationIndexSnapshotCache] in
             let items = ApplicationIndexer().load(includedPaths: includedPaths)
+            applicationIndexSnapshotCache.save(items)
 
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
-                self.allItems = items
-                self.rebuildVisibleItems()
+                self.publishApplicationSnapshot(items)
                 self.isIndexing = false
 
                 if self.needsReindexAfterCurrent {
@@ -247,6 +290,32 @@ final class LiquidGlassLauncherModel: ObservableObject {
                     self.applyFilter()
                 }
                 self.warmCurrentCaches()
+            }
+        }
+    }
+
+    private func loadCachedApplicationSnapshot() {
+        DispatchQueue.global(qos: .utility).async { [applicationIndexSnapshotCache] in
+            let items = applicationIndexSnapshotCache.load()
+            guard !items.isEmpty else { return }
+
+            DispatchQueue.main.async { [weak self] in
+                guard let self,
+                      self.indexedItems.isEmpty else { return }
+                self.publishApplicationSnapshot(items)
+                if self.mode == .applications {
+                    self.applyFilter()
+                }
+            }
+        }
+    }
+
+    private func publishApplicationSnapshot(_ items: [LaunchItem]) {
+        let previousItems = indexedItems
+        indexedItems = items
+        if previousItems != items {
+            if appRowStore.replaceAllIfChanged(items) {
+                rebuildVisibleItems()
             }
         }
     }
@@ -271,13 +340,14 @@ final class LiquidGlassLauncherModel: ObservableObject {
                 do {
                     let entries = await Task.detached(priority: .utility) {
                         Self.warmFilterEntries(
-                            items: snapshot.items,
+                            rowStore: snapshot.rowStore,
+                            ids: snapshot.ids,
                             normalizedQuery: snapshot.normalizedQuery
                         )
                     }.value
 
                     await MainActor.run { [weak self] in
-                        self?.storeWarmFilterEntries(entries)
+                        self?.storeWarmFilterEntries(entries, generation: snapshot.generation)
                         self?.warmNonApplicationCaches()
                     }
                 }
@@ -296,6 +366,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     func refreshAfterSettingsChanged() {
         settingsStore.load()
         animationTiming = settingsStore.settings.animationTiming
+        reindex()
     }
 
     func exclude(_ item: LaunchItem) {
@@ -336,6 +407,12 @@ final class LiquidGlassLauncherModel: ObservableObject {
         pendingApplicationFilterTask = nil
     }
 
+    private func cancelPendingModeSnapshot() {
+        modeSnapshotGeneration += 1
+        pendingModeSnapshotTask?.cancel()
+        pendingModeSnapshotTask = nil
+    }
+
     private func activateFileBrowserModel() -> FileBrowserModel {
         if let activatedFileBrowserModel {
             return activatedFileBrowserModel
@@ -351,7 +428,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         case .applications:
             cancelPendingCalculationHistory()
             cancelPendingDictionaryLookup()
-            if visibleItems.isEmpty, !allItems.isEmpty {
+            if appRowStore.visibleIDs.isEmpty, !appRowStore.isEmpty {
                 rebuildVisibleItems()
             }
             applyApplicationFilter(preservePreviousOnEmpty: preservePreviousOnEmpty)
@@ -369,18 +446,18 @@ final class LiquidGlassLauncherModel: ObservableObject {
 
     private func applyFilter(preservePreviousOnEmpty: Bool = false) {
         let cacheKey = normalized(query)
-        let nextItems = filterCache.results(for: cacheKey) {
-            Self.filter(visibleItems, normalizedQuery: cacheKey)
+        let nextIDs = filterCache.results(for: cacheKey, generation: appRowStore.generation) {
+            Self.filterIDs(appRowStore.visibleIDs, rowStore: appRowStore, normalizedQuery: cacheKey)
         }
 
         if preservePreviousOnEmpty,
-           nextItems.isEmpty,
-           !filteredItems.isEmpty,
+           nextIDs.isEmpty,
+           !filteredItemIDs.isEmpty,
            !inputIsBlank {
             return
         }
 
-        filteredItems = nextItems
+        filteredItemIDs = nextIDs
         prewarmFilterCache(for: cacheKey)
         clampSelection()
     }
@@ -407,7 +484,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
     ) {
         applicationFilterGeneration += 1
         let generation = applicationFilterGeneration
-        let items = visibleItems
+        let rowStore = appRowStore
+        let ids = appRowStore.visibleIDs
         pendingApplicationFilterTask?.cancel()
         pendingApplicationFilterTask = Task { [weak self] in
             do {
@@ -417,7 +495,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
             }
 
             let nextItems = await Task.detached(priority: .userInitiated) {
-                Self.filter(items, normalizedQuery: cacheKey)
+                Self.filterIDs(ids, rowStore: rowStore, normalizedQuery: cacheKey)
             }.value
 
             guard !Task.isCancelled else { return }
@@ -434,12 +512,12 @@ final class LiquidGlassLauncherModel: ObservableObject {
                 self.filterCache.store(nextItems, for: cacheKey)
                 if preservePreviousOnEmpty,
                    nextItems.isEmpty,
-                   !self.filteredItems.isEmpty,
+                   !self.filteredItemIDs.isEmpty,
                    !self.inputIsBlank {
                     return
                 }
 
-                self.filteredItems = nextItems
+                self.filteredItemIDs = nextItems
                 self.prewarmFilterCache(for: cacheKey)
                 self.clampSelection()
             }
@@ -447,15 +525,15 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     private func rebuildVisibleItems() {
-        visibleItems = allItems.filter { !exclusionStore.isExcluded($0) }
+        appRowStore.rebuildVisibleIDs { !exclusionStore.isExcluded($0) }
         filterCache.removeAll()
     }
 
     private func prewarmFilterCache(for normalizedQuery: String) {
         guard !normalizedQuery.isEmpty else { return }
 
-        filterCache.prewarmDeletionPath(for: normalizedQuery) { prefix in
-            Self.filter(visibleItems, normalizedQuery: prefix)
+        filterCache.prewarmDeletionPath(for: normalizedQuery, generation: appRowStore.generation) { prefix in
+            Self.filterIDs(appRowStore.visibleIDs, rowStore: appRowStore, normalizedQuery: prefix)
         }
     }
 
@@ -469,75 +547,116 @@ final class LiquidGlassLauncherModel: ObservableObject {
         _ = activateFileBrowserModel()
     }
 
-    private func applicationWarmCacheSnapshot() -> (items: [LaunchItem], normalizedQuery: String)? {
-        guard !visibleItems.isEmpty else { return nil }
-        return (visibleItems, normalized(query))
+    private func applicationWarmCacheSnapshot() -> (
+        rowStore: ApplicationRowStore,
+        ids: [AppRowID],
+        normalizedQuery: String,
+        generation: Int
+    )? {
+        guard !appRowStore.visibleIDs.isEmpty else { return nil }
+        return (appRowStore, appRowStore.visibleIDs, normalized(query), appRowStore.generation)
     }
 
     private static func warmFilterEntries(
-        items: [LaunchItem],
+        rowStore: ApplicationRowStore,
+        ids: [AppRowID],
         normalizedQuery: String
-    ) -> [(query: String, results: [LaunchItem])] {
-        var entries: [(query: String, results: [LaunchItem])] = []
+    ) -> [(query: String, results: [AppRowID])] {
+        var entries: [(query: String, results: [AppRowID])] = []
         var prefix = normalizedQuery
 
         while !prefix.isEmpty {
-            entries.append((prefix, filter(items, normalizedQuery: prefix)))
+            entries.append((prefix, filterIDs(ids, rowStore: rowStore, normalizedQuery: prefix)))
             prefix.removeLast()
         }
 
-        entries.append(("", filter(items, normalizedQuery: "")))
+        entries.append(("", filterIDs(ids, rowStore: rowStore, normalizedQuery: "")))
         return entries
     }
 
-    private func storeWarmFilterEntries(_ entries: [(query: String, results: [LaunchItem])]) {
+    private func storeWarmFilterEntries(_ entries: [(query: String, results: [AppRowID])], generation: Int) {
         for entry in entries {
-            filterCache.store(entry.results, for: entry.query)
+            filterCache.store(entry.results, for: entry.query, generation: generation)
         }
     }
 
-    static func filter(_ items: [LaunchItem], normalizedQuery: String) -> [LaunchItem] {
+    static func filterIDs(
+        _ ids: [AppRowID],
+        rowStore: ApplicationRowStore,
+        normalizedQuery: String
+    ) -> [AppRowID] {
         guard !normalizedQuery.isEmpty else {
-            return Array(items.prefix(80))
+            return ids
         }
 
         let tokens = normalizedQuery
             .split(whereSeparator: \.isWhitespace)
             .map(String.init)
 
-        return items.compactMap { item -> (LaunchItem, Int)? in
-            guard tokens.allSatisfy({ item.searchText.contains($0) }) else {
+        return ids.compactMap { id -> (AppRowID, Int)? in
+            guard let item = rowStore.item(for: id),
+                  tokens.allSatisfy({ item.searchText.contains($0) }) else {
                 return nil
             }
 
-            let title = normalized(item.title)
-            var score = 0
-
-            for token in tokens {
-                if title == token {
-                    score += 1200
-                } else if title.hasPrefix(token) {
-                    score += 1000
-                } else if title.split(separator: " ").contains(where: { $0.hasPrefix(token) }) {
-                    score += 850
-                } else if title.contains(token) {
-                    score += 650
-                } else {
-                    score += 350
-                }
-            }
-
-            score -= min(item.title.count, 120)
-            return (item, score)
+            return (id, score(item: item, tokens: tokens))
         }
         .sorted {
             if $0.1 == $1.1 {
-                return $0.0.title.localizedStandardCompare($1.0.title) == .orderedAscending
+                let left = rowStore.item(for: $0.0)?.title ?? ""
+                let right = rowStore.item(for: $1.0)?.title ?? ""
+                return left.localizedStandardCompare(right) == .orderedAscending
             }
             return $0.1 > $1.1
         }
-        .prefix(80)
         .map(\.0)
+    }
+
+    static func filter(_ items: [LaunchItem], normalizedQuery: String) -> [LaunchItem] {
+        guard !normalizedQuery.isEmpty else {
+            return items
+        }
+
+        let tokens = normalizedQuery
+            .split(whereSeparator: \.isWhitespace)
+            .map(String.init)
+
+        return items.indices.compactMap { index -> (Int, Int)? in
+            let item = items[index]
+            guard tokens.allSatisfy({ item.searchText.contains($0) }) else {
+                return nil
+            }
+            return (index, score(item: item, tokens: tokens))
+        }
+        .sorted {
+            if $0.1 == $1.1 {
+                return items[$0.0].title.localizedStandardCompare(items[$1.0].title) == .orderedAscending
+            }
+            return $0.1 > $1.1
+        }
+        .map { items[$0.0] }
+    }
+
+    private static func score(item: LaunchItem, tokens: [String]) -> Int {
+        let title = normalized(item.title)
+        var score = 0
+
+        for token in tokens {
+            if title == token {
+                score += 1200
+            } else if title.hasPrefix(token) {
+                score += 1000
+            } else if title.split(separator: " ").contains(where: { $0.hasPrefix(token) }) {
+                score += 850
+            } else if title.contains(token) {
+                score += 650
+            } else {
+                score += 350
+            }
+        }
+
+        score -= min(item.title.count, 120)
+        return score
     }
 
     private func applyToolsResults(scheduleHistory: Bool = true) {
@@ -806,16 +925,43 @@ final class LiquidGlassLauncherModel: ObservableObject {
             modeWillSwitchAction?(mode, nextMode)
         }
         cancelPendingDictionaryLookup()
+        cancelPendingApplicationFilter()
         storeCurrentQuery()
         mode = nextMode
         query = storedQuery(for: nextMode)
         selectedIndex = 0
-        applyCurrentMode()
-        requestSelectionScroll(anchor: .top)
-        if nextMode == .applications {
-            reindexAction?()
-        }
+        publishLightweightModeSnapshot(for: nextMode)
+        scheduleModeSnapshot(for: nextMode)
         return true
+    }
+
+    private func publishLightweightModeSnapshot(for mode: LauncherMode) {
+        switch mode {
+        case .applications:
+            break
+        case .calculator, .dictionary, .files:
+            toolItems = []
+        }
+    }
+
+    private func scheduleModeSnapshot(for mode: LauncherMode) {
+        cancelPendingModeSnapshot()
+        let generation = modeSnapshotGeneration
+        pendingModeSnapshotTask = Task { [weak self] in
+            await Task.yield()
+
+            await MainActor.run { [weak self] in
+                guard let self,
+                      self.modeSnapshotGeneration == generation,
+                      self.mode == mode else {
+                    return
+                }
+
+                self.pendingModeSnapshotTask = nil
+                self.applyCurrentMode()
+                self.requestSelectionScroll(anchor: .top)
+            }
+        }
     }
 
     private var fileBrowserFocusState: FileBrowserFocusState {
@@ -884,8 +1030,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private func activateSelected() {
         switch mode {
         case .applications:
-            guard selectedIndex >= 0, selectedIndex < filteredItems.count else { return }
-            let item = filteredItems[selectedIndex]
+            guard selectedIndex >= 0, selectedIndex < filteredItemIDs.count,
+                  let item = appRowStore.item(for: filteredItemIDs[selectedIndex]) else { return }
             if !isPinned {
                 hideAction?()
             }
@@ -901,11 +1047,34 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     private func launch(_ item: LaunchItem) {
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = true
-        NSWorkspace.shared.openApplication(at: item.url, configuration: configuration) { _, error in
-            if let error {
-                NSLog("Bucky failed to open %@: %@", item.url.path, error.localizedDescription)
+        switch item.launchTarget {
+        case let .application(url):
+            let configuration = NSWorkspace.OpenConfiguration()
+            configuration.activates = true
+            NSWorkspace.shared.openApplication(at: url, configuration: configuration) { _, error in
+                if let error {
+                    NSLog("Bucky failed to open %@: %@", url.path, error.localizedDescription)
+                }
+            }
+        case let .url(url):
+            if !NSWorkspace.shared.open(url) {
+                NSLog("Bucky failed to open %@", url.absoluteString)
+            }
+        case let .shellCommand(command):
+            runShellCommand(command)
+        }
+    }
+
+    private func runShellCommand(_ command: String) {
+        Task.detached(priority: .utility) {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+            process.arguments = ["-lc", command]
+
+            do {
+                try process.run()
+            } catch {
+                NSLog("Bucky failed to run custom action: %@", error.localizedDescription)
             }
         }
     }
@@ -1001,12 +1170,14 @@ struct SelectionScrollRequest: Equatable {
 }
 
 @available(macOS 26.0, *)
-private struct ApplicationFilterCache {
-    private var resultsByQuery: [String: [LaunchItem]] = [:]
+struct ApplicationFilterCache {
+    private var resultsByQuery: [String: [AppRowID]] = [:]
     private var queryOrder: [String] = []
+    private var generation: Int?
     private let limit = 96
 
-    mutating func results(for query: String, build: () -> [LaunchItem]) -> [LaunchItem] {
+    mutating func results(for query: String, generation: Int, build: () -> [AppRowID]) -> [AppRowID] {
+        resetIfNeeded(generation: generation)
         if let cachedResults = resultsByQuery[query] {
             markUsed(query)
             return cachedResults
@@ -1019,8 +1190,10 @@ private struct ApplicationFilterCache {
 
     mutating func prewarmDeletionPath(
         for query: String,
-        build: (String) -> [LaunchItem]
+        generation: Int,
+        build: (String) -> [AppRowID]
     ) {
+        resetIfNeeded(generation: generation)
         var prefix = query
 
         while !prefix.isEmpty {
@@ -1044,15 +1217,26 @@ private struct ApplicationFilterCache {
         queryOrder.removeAll(keepingCapacity: true)
     }
 
-    mutating func store(_ results: [LaunchItem], for query: String) {
+    mutating func store(_ results: [AppRowID], for query: String) {
         resultsByQuery[query] = results
         markUsed(query)
         trimIfNeeded()
     }
 
+    mutating func store(_ results: [AppRowID], for query: String, generation: Int) {
+        resetIfNeeded(generation: generation)
+        store(results, for: query)
+    }
+
     private mutating func markUsed(_ query: String) {
         queryOrder.removeAll { $0 == query }
         queryOrder.append(query)
+    }
+
+    private mutating func resetIfNeeded(generation: Int) {
+        guard self.generation != generation else { return }
+        self.generation = generation
+        removeAll()
     }
 
     private mutating func trimIfNeeded() {

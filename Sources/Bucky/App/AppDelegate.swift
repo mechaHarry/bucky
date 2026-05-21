@@ -7,10 +7,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let calculationHistoryStore = CalculationHistoryStore()
     private let dictionaryHistoryStore = DictionaryHistoryStore()
     private var launcherController: LauncherControlling?
-    private var settingsWindowController: SettingsWindowController?
     private var statusMenuController: StatusMenuController?
     private var hotKeyController: HotKeyController?
 
+    @MainActor
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
 
@@ -25,12 +25,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusMenuController = StatusMenuController(
             openAction: { [weak launcherController] in launcherController?.show() },
             reindexAction: { [weak launcherController] in launcherController?.reindex() },
-            settingsAction: { [weak self] in self?.showSettings() }
+            settingsAction: { [weak launcherController] in launcherController?.showSettings() }
         )
 
         _ = registerHotKey(settingsStore.settings.hotKey)
     }
 
+    @MainActor
     private func makeLauncherController() -> LauncherControlling? {
         if #available(macOS 26.0, *) {
             return LiquidGlassLauncherWindowController(
@@ -39,37 +40,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 exclusionStore: exclusionStore,
                 calculationHistoryStore: calculationHistoryStore,
                 dictionaryHistoryStore: dictionaryHistoryStore,
-                openSettingsAction: { [weak self] in self?.showSettings() }
+                hotKeyChangeHandler: { [weak self] hotKey in
+                    self?.registerHotKey(hotKey) ?? false
+                }
             )
         }
 
         return nil
     }
 
-    private func showSettings() {
-        if settingsWindowController == nil {
-            settingsWindowController = SettingsWindowController(
-                settingsStore: settingsStore,
-                inclusionStore: inclusionStore,
-                exclusionStore: exclusionStore,
-                hotKeyChangeHandler: { [weak self] hotKey in
-                    self?.registerHotKey(hotKey) ?? false
-                },
-                inclusionsChangedHandler: { [weak self] in
-                    self?.launcherController?.refreshAfterInclusionsChanged()
-                },
-                exclusionsChangedHandler: { [weak self] in
-                    self?.launcherController?.refreshAfterExclusionsChanged()
-                },
-                settingsChangedHandler: { [weak self] in
-                    self?.launcherController?.refreshAfterSettingsChanged()
-                }
-            )
-        }
-
-        settingsWindowController?.show()
-    }
-
+    @MainActor
     private func registerHotKey(_ hotKey: HotKeyConfiguration) -> Bool {
         if hotKeyController?.configuration == hotKey {
             return true
@@ -77,7 +57,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         do {
             let controller = try HotKeyController(configuration: hotKey) { [weak self] in
-                self?.launcherController?.toggle()
+                Task { @MainActor in
+                    self?.launcherController?.toggle()
+                }
             }
             hotKeyController = controller
             return true
@@ -87,6 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    @MainActor
     private func showHotKeyAlert(_ error: Error, hotKey: HotKeyConfiguration) {
         let alert = NSAlert()
         alert.messageText = "Bucky could not register \(hotKey.displayName)"
@@ -95,6 +78,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.runModal()
     }
 
+    @MainActor
     private func showUnsupportedOSAlert() {
         let alert = NSAlert()
         alert.messageText = "Bucky requires macOS 26"

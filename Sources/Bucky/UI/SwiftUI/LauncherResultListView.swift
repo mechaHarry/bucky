@@ -141,7 +141,10 @@ private struct LauncherResultRowBackground: View {
         }
         .overlay {
             rowShape
-                .strokeBorder(rowRim, lineWidth: isSelected ? 1.15 : 1)
+                .strokeBorder(
+                    rowRim,
+                    lineWidth: LauncherResultListVisualStyle.rowRimLineWidth(isSelected: isSelected)
+                )
         }
         .animation(rowSelectionAnimation, value: isSelected)
         .animation(rowSelectionAnimation, value: isMarked)
@@ -180,12 +183,12 @@ private struct LauncherResultRowBackground: View {
 
     private var rowRim: Color {
         if isSelected {
-            return selectionTint.opacity(0.34)
+            return selectionTint.opacity(LauncherResultListVisualStyle.selectionRimOpacity)
         }
         if isMarked {
-            return markedTint.opacity(0.28)
+            return markedTint.opacity(LauncherResultListVisualStyle.markedRimOpacity)
         }
-        return LauncherResultListVisualStyle.surfaceRim.opacity(0.18)
+        return LauncherResultListVisualStyle.surfaceRim.opacity(LauncherResultListVisualStyle.unselectedRimOpacity)
     }
 }
 
@@ -197,4 +200,11 @@ enum LauncherResultListVisualStyle {
     static let surfaceRim = Color(nsColor: .separatorColor)
     static let selectionRim = Color(nsColor: .selectedContentBackgroundColor)
     static let markedRim = Color(nsColor: .controlAccentColor)
+    static let unselectedRimOpacity = 0.30
+    static let selectionRimOpacity = 0.44
+    static let markedRimOpacity = 0.34
+
+    static func rowRimLineWidth(isSelected: Bool) -> CGFloat {
+        isSelected ? 1.25 : 1.15
+    }
 }
