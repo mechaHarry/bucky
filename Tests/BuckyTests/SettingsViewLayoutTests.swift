@@ -105,6 +105,16 @@ final class SettingsViewLayoutTests: XCTestCase {
         XCTAssertTrue(settingsView.contains(".frame(width: LauncherWindowFramePolicy.visualContentSize.width, height: LauncherWindowFramePolicy.visualContentSize.height"))
     }
 
+    func testSettingsSurfaceUsesLauncherPaneInsetAndShadow() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/SettingsView.swift")
+
+        XCTAssertTrue(source.contains(".padding(10)\n        .frame(width: LauncherWindowFramePolicy.visualContentSize.width"))
+        XCTAssertFalse(source.contains(".padding(12)\n        .frame(width: LauncherWindowFramePolicy.visualContentSize.width"))
+        XCTAssertTrue(source.contains("private extension View {\n    func settingsPaneShadow() -> some View"))
+        XCTAssertTrue(source.contains("shadow(color: .black.opacity(0.14), radius: 16, x: 0, y: 8)"))
+        XCTAssertTrue(source.contains(".settingsPaneShadow()"))
+    }
+
     func testSettingsWindowHasNoTitlebar() throws {
         let launcher = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
         let panel = try source(named: "Sources/Bucky/UI/Shared/BuckyPanelWindow.swift")
@@ -161,6 +171,14 @@ final class SettingsViewLayoutTests: XCTestCase {
         XCTAssertTrue(source.contains("typeTitle: \"Included\""))
         XCTAssertTrue(source.contains("typeTitle: \"Hidden\""))
         XCTAssertFalse(source.contains("Text(path)\n                            .lineLimit(1)\n                            .truncationMode(.middle)"))
+    }
+
+    func testAppsPanePlacesIncludedAndHiddenListsSideBySide() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/SettingsView.swift")
+
+        XCTAssertTrue(source.contains("private var appsPane: some View {\n        HStack(alignment: .top, spacing: 14)"))
+        XCTAssertTrue(source.contains(".frame(maxWidth: .infinity, alignment: .topLeading)"))
+        XCTAssertFalse(source.contains("private var appsPane: some View {\n        VStack(alignment: .leading, spacing: 18)"))
     }
 
     private func source(named path: String) throws -> String {

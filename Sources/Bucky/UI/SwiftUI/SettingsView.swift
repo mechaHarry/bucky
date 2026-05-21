@@ -205,10 +205,10 @@ struct SettingsView: View {
 
             settingsSidebar
                 .frame(width: isSidebarCollapsed ? 74 : 210)
-                .padding(.leading, 12)
-                .padding(.vertical, 12)
+                .padding(.leading, 10)
+                .padding(.vertical, 10)
         }
-        .padding(12)
+        .padding(10)
         .frame(width: LauncherWindowFramePolicy.visualContentSize.width, height: LauncherWindowFramePolicy.visualContentSize.height, alignment: .topLeading)
         .contentShape(Rectangle())
         .animation(.snappy(duration: 0.18), value: isSidebarCollapsed)
@@ -273,6 +273,7 @@ struct SettingsView: View {
                 .strokeBorder(Color(nsColor: .separatorColor).opacity(0.35), lineWidth: 1)
         }
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .settingsPaneShadow()
     }
 
     @ViewBuilder
@@ -308,6 +309,7 @@ struct SettingsView: View {
                 .strokeBorder(Color(nsColor: .separatorColor).opacity(0.35), lineWidth: 1)
         }
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .settingsPaneShadow()
     }
 
     private var settingsGlassBackdrop: some View {
@@ -339,6 +341,12 @@ private struct SettingsInputSurface: View {
     var body: some View {
         Color.white.opacity(0.001)
             .contentShape(Rectangle())
+    }
+}
+
+private extension View {
+    func settingsPaneShadow() -> some View {
+        shadow(color: .black.opacity(0.14), radius: 16, x: 0, y: 8)
     }
 }
 
@@ -378,7 +386,7 @@ private extension SettingsView {
     }
 
     private var appsPane: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        HStack(alignment: .top, spacing: 14) {
             appPathSection(
                 title: "Included apps",
                 paths: model.inclusionPaths,
@@ -405,6 +413,7 @@ private extension SettingsView {
                 removeDisabled: model.selectedExclusionPath == nil
             )
         }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     private func appPathSection(
@@ -470,6 +479,7 @@ private extension SettingsView {
                 Spacer()
             }
         }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     private var actionsPane: some View {
