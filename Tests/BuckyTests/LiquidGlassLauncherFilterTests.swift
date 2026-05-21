@@ -3,16 +3,16 @@ import XCTest
 
 @available(macOS 26.0, *)
 final class LiquidGlassLauncherFilterTests: XCTestCase {
-    func testBlankQueryReturnsFirstEightyItemsInSourceOrder() {
+    func testBlankQueryReturnsEveryVisibleItemInSourceOrder() {
         let items = (0..<90).map { index in
             launchItem(title: "App \(index)", searchText: "app \(index)")
         }
 
         let results = LiquidGlassLauncherModel.filter(items, normalizedQuery: "")
 
-        XCTAssertEqual(results.count, 80)
+        XCTAssertEqual(results.count, 90)
         XCTAssertEqual(results.first?.title, "App 0")
-        XCTAssertEqual(results.last?.title, "App 79")
+        XCTAssertEqual(results.last?.title, "App 89")
     }
 
     func testQueryRequiresAllTokensAndUsesTitleOrderingForScoreTies() {

@@ -575,7 +575,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         normalizedQuery: String
     ) -> [AppRowID] {
         guard !normalizedQuery.isEmpty else {
-            return Array(ids.prefix(80))
+            return ids
         }
 
         let tokens = normalizedQuery
@@ -598,13 +598,12 @@ final class LiquidGlassLauncherModel: ObservableObject {
             }
             return $0.1 > $1.1
         }
-        .prefix(80)
         .map(\.0)
     }
 
     static func filter(_ items: [LaunchItem], normalizedQuery: String) -> [LaunchItem] {
         guard !normalizedQuery.isEmpty else {
-            return Array(items.prefix(80))
+            return items
         }
 
         let tokens = normalizedQuery
@@ -624,7 +623,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
             }
             return $0.1 > $1.1
         }
-        .prefix(80)
         .map { items[$0.0] }
     }
 
