@@ -313,7 +313,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
         window.isOpaque = false
         window.backgroundColor = .clear
-        window.hasShadow = false
+        window.hasShadow = true
         window.isMovableByWindowBackground = LauncherWindowDragPolicy.isMovableByWindowBackground
         window.minSize = LauncherWindowFramePolicy.minimumSize
         window.delegate = self

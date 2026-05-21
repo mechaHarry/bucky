@@ -95,6 +95,7 @@ final class LauncherModeTintPolicyTests: XCTestCase {
         XCTAssertTrue(launcher.contains("static let windowCornerRadius: CGFloat = 30"))
         XCTAssertFalse(launcher.contains(".padding(LauncherWindowFramePolicy.shadowBleed)"))
         XCTAssertFalse(launcher.contains(".shadow(color: .black.opacity(0.22), radius: 30, x: 0, y: 20)"))
+        XCTAssertFalse(launcher.contains(".shadow(color: .black.opacity(0.14), radius: 16, x: 0, y: 8)"))
     }
 
     func testModeTintIsWiredToSelectionHighlightsAndFileIndicator() throws {
