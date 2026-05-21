@@ -187,9 +187,19 @@ final class SettingsViewLayoutTests: XCTestCase {
         XCTAssertTrue(source.contains("settingsPaneContent"))
         XCTAssertTrue(source.contains(".id(selectedPane)"))
         XCTAssertTrue(source.contains(".frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)"))
-        XCTAssertTrue(source.contains(".frame(maxWidth: .infinity, minHeight: proxy.size.height, alignment: .topLeading)"))
         XCTAssertTrue(source.contains(".frame(maxWidth: .infinity, maxHeight: .infinity)\n            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))"))
         XCTAssertFalse(source.contains(".frame(height: 164)"))
+    }
+
+    func testAppsPaneListBoxesAreBoundedToVisiblePaneHeight() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/SettingsView.swift")
+
+        XCTAssertTrue(source.contains("if selectedPane == .apps"))
+        XCTAssertTrue(source.contains("boundedSettingsPaneContent"))
+        XCTAssertTrue(source.contains(".frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)"))
+        XCTAssertTrue(source.contains(".padding(.leading, isSidebarCollapsed ? 116 : 252)\n                    .padding(.trailing, 28)\n                    .padding(.vertical, 28)\n                    .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)"))
+        XCTAssertTrue(source.contains(".frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)"))
+        XCTAssertTrue(source.contains("scrollingSettingsPaneContent"))
     }
 
     func testSettingsPaneChangesUseSoftMaterializeTransition() throws {

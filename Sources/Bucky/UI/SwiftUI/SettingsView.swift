@@ -291,11 +291,11 @@ struct SettingsView: View {
             settingsGlassBackdrop
 
             GeometryReader { proxy in
-                ScrollView {
+                if selectedPane == .apps {
                     VStack(alignment: .leading, spacing: 18) {
                         paneHeader
 
-                        settingsPaneContent
+                        boundedSettingsPaneContent
                             .id(selectedPane)
                             .transition(settingsPaneTransition)
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -303,9 +303,24 @@ struct SettingsView: View {
                     .padding(.leading, isSidebarCollapsed ? 116 : 252)
                     .padding(.trailing, 28)
                     .padding(.vertical, 28)
-                    .frame(maxWidth: .infinity, minHeight: proxy.size.height, alignment: .topLeading)
+                    .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 18) {
+                            paneHeader
+
+                            scrollingSettingsPaneContent
+                                .id(selectedPane)
+                                .transition(settingsPaneTransition)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        }
+                        .padding(.leading, isSidebarCollapsed ? 116 : 252)
+                        .padding(.trailing, 28)
+                        .padding(.vertical, 28)
+                        .frame(maxWidth: .infinity, minHeight: proxy.size.height, alignment: .topLeading)
+                    }
+                    .scrollIndicators(.hidden)
                 }
-                .scrollIndicators(.hidden)
             }
         }
         .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
@@ -329,6 +344,14 @@ struct SettingsView: View {
         case .actions:
             actionsPane
         }
+    }
+
+    private var boundedSettingsPaneContent: some View {
+        settingsPaneContent
+    }
+
+    private var scrollingSettingsPaneContent: some View {
+        settingsPaneContent
     }
 
     private var settingsGlassBackdrop: some View {
