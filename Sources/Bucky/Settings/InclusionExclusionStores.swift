@@ -65,10 +65,6 @@ final class InclusionStore {
     private(set) var includedPaths = Set<String>()
     let fileURL: URL
 
-    private static let defaultIncludedPaths: Set<String> = [
-        "/System/Library/CoreServices/Finder.app"
-    ]
-
     init() {
         fileURL = BuckyPaths.appSupportDirectory
             .appendingPathComponent("inclusions.json")
@@ -77,7 +73,7 @@ final class InclusionStore {
 
     func load() {
         guard let data = try? Data(contentsOf: fileURL) else {
-            includedPaths = Self.defaultIncludedPaths
+            includedPaths = []
             save()
             return
         }
@@ -87,7 +83,7 @@ final class InclusionStore {
             includedPaths = Set(file.includedPaths)
         } catch {
             NSLog("Bucky could not read inclusions at %@: %@", fileURL.path, error.localizedDescription)
-            includedPaths = Self.defaultIncludedPaths
+            includedPaths = []
             save()
         }
     }
