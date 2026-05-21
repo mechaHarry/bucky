@@ -107,14 +107,14 @@ final class SettingsViewLayoutTests: XCTestCase {
         XCTAssertTrue(settingsView.contains(".frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)"))
     }
 
-    func testSettingsSurfaceUsesLauncherPaneInsetAndShadow() throws {
+    func testSettingsSurfaceUsesLauncherPaneInsetWithoutSwiftUIShadow() throws {
         let source = try source(named: "Sources/Bucky/UI/SwiftUI/SettingsView.swift")
 
         XCTAssertTrue(source.contains(".padding(10)\n        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)"))
         XCTAssertFalse(source.contains(".frame(width: LauncherWindowFramePolicy.visualContentSize.width"))
-        XCTAssertTrue(source.contains("private extension View {\n    func settingsPaneShadow() -> some View"))
-        XCTAssertTrue(source.contains("shadow(color: .black.opacity(0.14), radius: 16, x: 0, y: 8)"))
-        XCTAssertTrue(source.contains(".settingsPaneShadow()"))
+        XCTAssertFalse(source.contains("func settingsPaneShadow()"))
+        XCTAssertFalse(source.contains(".settingsPaneShadow()"))
+        XCTAssertFalse(source.contains(".shadow(color: .black.opacity(0.14), radius: 16, x: 0, y: 8)"))
     }
 
     func testSettingsWindowHasNoTitlebar() throws {
@@ -125,6 +125,7 @@ final class SettingsViewLayoutTests: XCTestCase {
         XCTAssertTrue(launcher.contains("styleMask: [.borderless, .resizable]"))
         XCTAssertTrue(launcher.contains("window.isOpaque = false"))
         XCTAssertTrue(launcher.contains("window.backgroundColor = .clear"))
+        XCTAssertTrue(launcher.contains("window.hasShadow = true"))
         XCTAssertTrue(launcher.contains("hostingView.layer?.backgroundColor = NSColor.clear.cgColor"))
         XCTAssertTrue(launcher.contains("window.isMovableByWindowBackground = LauncherWindowDragPolicy.isMovableByWindowBackground"))
         XCTAssertTrue(panel.contains("override var canBecomeKey: Bool { true }"))

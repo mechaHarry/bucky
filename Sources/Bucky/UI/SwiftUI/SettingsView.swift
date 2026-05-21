@@ -282,7 +282,6 @@ struct SettingsView: View {
                 .strokeBorder(Color(nsColor: .separatorColor).opacity(0.35), lineWidth: 1)
         }
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .settingsPaneShadow()
     }
 
     @ViewBuilder
@@ -329,7 +328,6 @@ struct SettingsView: View {
                 .strokeBorder(Color(nsColor: .separatorColor).opacity(0.35), lineWidth: 1)
         }
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .settingsPaneShadow()
     }
 
     @ViewBuilder
@@ -383,12 +381,6 @@ private struct SettingsInputSurface: View {
     var body: some View {
         Color.white.opacity(0.001)
             .contentShape(Rectangle())
-    }
-}
-
-private extension View {
-    func settingsPaneShadow() -> some View {
-        shadow(color: .black.opacity(0.14), radius: 16, x: 0, y: 8)
     }
 }
 
