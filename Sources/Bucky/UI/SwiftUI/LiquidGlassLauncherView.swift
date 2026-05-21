@@ -85,7 +85,6 @@ struct LiquidGlassLauncherView: View {
 
     private var launcherSurface: some View {
         resultsPane
-        .padding(10)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
     }

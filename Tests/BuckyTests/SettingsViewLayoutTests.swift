@@ -110,7 +110,7 @@ final class SettingsViewLayoutTests: XCTestCase {
     func testSettingsSurfaceUsesLauncherPaneInsetWithoutSwiftUIShadow() throws {
         let source = try source(named: "Sources/Bucky/UI/SwiftUI/SettingsView.swift")
 
-        XCTAssertTrue(source.contains(".padding(10)\n        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)"))
+        XCTAssertFalse(source.contains(".padding(10)\n        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)"))
         XCTAssertFalse(source.contains(".frame(width: LauncherWindowFramePolicy.visualContentSize.width"))
         XCTAssertFalse(source.contains("func settingsPaneShadow()"))
         XCTAssertFalse(source.contains(".settingsPaneShadow()"))

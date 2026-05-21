@@ -216,7 +216,6 @@ struct SettingsView: View {
                 .padding(.leading, 10)
                 .padding(.vertical, 10)
         }
-        .padding(10)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .contentShape(Rectangle())
         .animation(.snappy(duration: 0.18), value: isSidebarCollapsed)
