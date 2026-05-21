@@ -196,6 +196,14 @@ struct SettingsView: View {
     @State private var selectedPane: SettingsPane = .general
     @State private var isSidebarCollapsed = false
 
+    private var settingsPaneSwitchAnimation: Animation {
+        .smooth(duration: 0.16)
+    }
+
+    private var settingsPaneTransition: AnyTransition {
+        .opacity.combined(with: .scale(scale: 0.985))
+    }
+
     var body: some View {
         ZStack(alignment: .leading) {
             SettingsInputSurface()
@@ -212,6 +220,7 @@ struct SettingsView: View {
         .frame(width: LauncherWindowFramePolicy.visualContentSize.width, height: LauncherWindowFramePolicy.visualContentSize.height, alignment: .topLeading)
         .contentShape(Rectangle())
         .animation(.snappy(duration: 0.18), value: isSidebarCollapsed)
+        .animation(settingsPaneSwitchAnimation, value: selectedPane)
         .alert(
             "Bucky Settings",
             isPresented: Binding(
@@ -281,27 +290,23 @@ struct SettingsView: View {
         ZStack {
             settingsGlassBackdrop
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    paneHeader
+            GeometryReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        paneHeader
 
-                    switch selectedPane {
-                    case .general:
-                        generalPane
-                    case .files:
-                        filesPane
-                    case .apps:
-                        appsPane
-                    case .actions:
-                        actionsPane
+                        settingsPaneContent
+                            .id(selectedPane)
+                            .transition(settingsPaneTransition)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     }
+                    .padding(.leading, isSidebarCollapsed ? 116 : 252)
+                    .padding(.trailing, 28)
+                    .padding(.vertical, 28)
+                    .frame(maxWidth: .infinity, minHeight: proxy.size.height, alignment: .topLeading)
                 }
-                .padding(.leading, isSidebarCollapsed ? 116 : 252)
-                .padding(.trailing, 28)
-                .padding(.vertical, 28)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .scrollIndicators(.hidden)
             }
-            .scrollIndicators(.hidden)
         }
         .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay {
@@ -310,6 +315,20 @@ struct SettingsView: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .settingsPaneShadow()
+    }
+
+    @ViewBuilder
+    private var settingsPaneContent: some View {
+        switch selectedPane {
+        case .general:
+            generalPane
+        case .files:
+            filesPane
+        case .apps:
+            appsPane
+        case .actions:
+            actionsPane
+        }
     }
 
     private var settingsGlassBackdrop: some View {
@@ -413,7 +432,7 @@ private extension SettingsView {
                 removeDisabled: model.selectedExclusionPath == nil
             )
         }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private func appPathSection(
@@ -456,7 +475,7 @@ private extension SettingsView {
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
             .contentShape(Rectangle())
-            .frame(height: 164)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
             HStack(spacing: 8) {
@@ -480,7 +499,7 @@ private extension SettingsView {
                 Spacer()
             }
         }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private var actionsPane: some View {

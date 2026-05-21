@@ -24,6 +24,14 @@ struct LiquidGlassLauncherView: View {
         model.animationTiming.animation(duration: 0.08)
     }
 
+    private var settingsModeAnimation: Animation {
+        model.animationTiming.animation(duration: 0.16)
+    }
+
+    private var settingsModeTransition: AnyTransition {
+        .opacity.combined(with: .scale(scale: 0.985))
+    }
+
     var body: some View {
         ZStack {
             if model.isPresented {
@@ -59,15 +67,19 @@ struct LiquidGlassLauncherView: View {
             preloadApplicationIcons()
         }
         .animation(resultUpdateAnimation, value: model.mode)
-        .animation(resultUpdateAnimation, value: model.isShowingSettings)
+        .animation(settingsModeAnimation, value: model.isShowingSettings)
     }
 
     @ViewBuilder
     private var activeSurface: some View {
-        if model.isShowingSettings {
-            settingsSurface
-        } else {
-            launcherSurface
+        ZStack {
+            if model.isShowingSettings {
+                settingsSurface
+                    .transition(settingsModeTransition)
+            } else {
+                launcherSurface
+                    .transition(settingsModeTransition)
+            }
         }
     }
 

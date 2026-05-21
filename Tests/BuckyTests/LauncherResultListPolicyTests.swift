@@ -91,12 +91,14 @@ final class LauncherResultListPolicyTests: XCTestCase {
 
     func testModeDrivenLauncherAnimationsUseShortDurations() throws {
         let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
+        let resultAnimationSource = source.components(separatedBy: "private var settingsModeAnimation").first ?? source
 
-        XCTAssertTrue(source.contains("model.animationTiming.animation(duration: 0.08)"))
-        XCTAssertFalse(source.contains("model.animationTiming.animation(duration: 0.22)"))
-        XCTAssertFalse(source.contains("model.animationTiming.animation(duration: 0.18)"))
-        XCTAssertFalse(source.contains("model.animationTiming.animation(duration: 0.16)"))
-        XCTAssertFalse(source.contains("model.animationTiming.animation(duration: 0.14)"))
+        XCTAssertTrue(resultAnimationSource.contains("model.animationTiming.animation(duration: 0.08)"))
+        XCTAssertTrue(source.contains("private var settingsModeAnimation: Animation"))
+        XCTAssertFalse(resultAnimationSource.contains("model.animationTiming.animation(duration: 0.22)"))
+        XCTAssertFalse(resultAnimationSource.contains("model.animationTiming.animation(duration: 0.18)"))
+        XCTAssertFalse(resultAnimationSource.contains("model.animationTiming.animation(duration: 0.16)"))
+        XCTAssertFalse(resultAnimationSource.contains("model.animationTiming.animation(duration: 0.14)"))
     }
 
     private func source(named path: String) throws -> String {
