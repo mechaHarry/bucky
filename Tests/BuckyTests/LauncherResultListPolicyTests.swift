@@ -69,6 +69,13 @@ final class LauncherResultListPolicyTests: XCTestCase {
         XCTAssertTrue(source.contains(".fill(tint.opacity(opacity))"))
     }
 
+    func testSharedResultRowsUseBalancedVisibleRimAroundFullShape() {
+        XCTAssertGreaterThanOrEqual(LauncherResultListVisualStyle.unselectedRimOpacity, 0.28)
+        XCTAssertGreaterThanOrEqual(LauncherResultListVisualStyle.selectionRimOpacity, 0.40)
+        XCTAssertGreaterThanOrEqual(LauncherResultListVisualStyle.rowRimLineWidth(isSelected: false), 1.10)
+        XCTAssertGreaterThanOrEqual(LauncherResultListVisualStyle.rowRimLineWidth(isSelected: true), 1.20)
+    }
+
     func testApplicationRowsShowRightAlignedCategoryLabel() throws {
         let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
 
