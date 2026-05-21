@@ -93,8 +93,10 @@ final class LauncherModeTintPolicyTests: XCTestCase {
         XCTAssertFalse(launcher.contains(".clipShape(launcherOuterShape)"))
         XCTAssertFalse(launcher.contains("headerGlassBackdrop"))
         XCTAssertTrue(launcher.contains("static let windowCornerRadius: CGFloat = 30"))
-        XCTAssertTrue(launcher.contains(".padding(LauncherWindowFramePolicy.shadowBleed)"))
+        XCTAssertFalse(launcher.contains(".padding(LauncherWindowFramePolicy.shadowBleed)"))
+        XCTAssertFalse(launcher.contains("resultsPane\n        .padding(10)"))
         XCTAssertFalse(launcher.contains(".shadow(color: .black.opacity(0.22), radius: 30, x: 0, y: 20)"))
+        XCTAssertFalse(launcher.contains(".shadow(color: .black.opacity(0.14), radius: 16, x: 0, y: 8)"))
     }
 
     func testModeTintIsWiredToSelectionHighlightsAndFileIndicator() throws {
@@ -103,7 +105,8 @@ final class LauncherModeTintPolicyTests: XCTestCase {
         let fileBrowser = try source(named: "Sources/Bucky/UI/SwiftUI/FileBrowserView.swift")
 
         XCTAssertTrue(launcher.contains("selectionTint: LauncherModeTintPolicy.selectionColor(for: model.mode)"))
-        XCTAssertTrue(launcher.contains("FileBrowserView(\n                model: model.fileBrowserModel,\n                selectionTint: LauncherModeTintPolicy.selectionColor(for: model.mode)\n            )"))
+        XCTAssertTrue(launcher.contains("if let fileBrowserModel = model.activeFileBrowserModel"))
+        XCTAssertTrue(launcher.contains("FileBrowserView(\n                    model: fileBrowserModel,\n                    selectionTint: LauncherModeTintPolicy.selectionColor(for: model.mode)\n                )"))
         XCTAssertTrue(resultList.contains("let selectionTint: Color"))
         XCTAssertTrue(resultList.contains("tint: selectionTint,"))
         XCTAssertTrue(resultList.contains("selectionTint.opacity(0.42)"))

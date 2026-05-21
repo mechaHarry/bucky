@@ -1,12 +1,16 @@
 import AppKit
 import Carbon
 import SwiftUI
+import UniformTypeIdentifiers
 
 @available(macOS 26.0, *)
+@MainActor
 final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
-    private let window: LiquidGlassWindow
+    private let window: BuckyPanelWindow
     private let model: LiquidGlassLauncherModel
+    private var settingsModel: SettingsViewModel!
     private var localKeyMonitor: Any?
+    private var settingsHotKeyEventMonitor: Any?
     private var applicationActivationObserver: NSObjectProtocol?
     private var quickLookPreviewPanel: NSPanel?
     private var quickLookPreviewHost: NSHostingController<QuickLookPreviewSurface>?
@@ -15,8 +19,9 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     private var isOptionPinnedFocusActive = false
     private var visibilityState: WindowVisibilityState = .hidden
     private var visibilityTransitionID = 0
-    private var presentationAnimation: Animation {
-        model.animationTiming.animation(duration: 0.24)
+    private var applicationIndexSourceStream: ApplicationIndexSourceStream?
+    private var presentationAnimationDuration: TimeInterval {
+        0.24
     }
 
     init(
@@ -25,7 +30,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         exclusionStore: ExclusionStore,
         calculationHistoryStore: CalculationHistoryStore,
         dictionaryHistoryStore: DictionaryHistoryStore,
-        openSettingsAction: @escaping () -> Void
+        hotKeyChangeHandler: @escaping @MainActor (HotKeyConfiguration) -> Bool
     ) {
         model = LiquidGlassLauncherModel(
             settingsStore: settingsStore,
@@ -34,7 +39,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             calculationHistoryStore: calculationHistoryStore,
             dictionaryHistoryStore: dictionaryHistoryStore
         )
-        window = LiquidGlassWindow(
+        window = BuckyPanelWindow(
             contentRect: NSRect(
                 x: 0,
                 y: 0,
@@ -48,8 +53,33 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
 
         super.init()
 
+        settingsModel = SettingsViewModel(
+            settingsStore: settingsStore,
+            inclusionStore: inclusionStore,
+            exclusionStore: exclusionStore,
+            hotKeyChangeHandler: hotKeyChangeHandler,
+            inclusionsChangedHandler: { [weak self] in
+                self?.refreshAfterInclusionsChanged()
+            },
+            exclusionsChangedHandler: { [weak self] in
+                self?.refreshAfterExclusionsChanged()
+            },
+            settingsChangedHandler: { [weak self] in
+                self?.refreshAfterSettingsChanged()
+            }
+        )
+        settingsModel.startHotKeyRecordingAction = { [weak self] in
+            self?.startRecordingSettingsHotKey()
+        }
+        settingsModel.presentIncludedAppPickerAction = { [weak self] in
+            self?.presentIncludedAppPicker()
+        }
+        settingsModel.presentFileBrowserStartDirectoryPickerAction = { [weak self] in
+            self?.presentFileBrowserStartDirectoryPicker()
+        }
+
         model.hideAction = { [weak self] in self?.hide() }
-        model.openSettingsAction = openSettingsAction
+        model.openSettingsAction = { [weak self] in self?.toggleSettings() }
         model.reindexAction = { [weak self] in self?.reindex() }
         model.pinnedChangedAction = { [weak self] isPinned in
             self?.setPinned(isPinned)
@@ -63,23 +93,33 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         buildWindow()
         installLocalKeyMonitor()
         installApplicationActivationObserver()
+        startApplicationIndexSourceStream()
         reindex()
         model.startBackgroundWarmCaches()
     }
 
     deinit {
-        cancelSpaceHoldState(deliverEndHold: true)
-        cancelOptionPinnedFocus()
-        closeQuickLookPreviewPanel()
-        if let localKeyMonitor {
-            NSEvent.removeMonitor(localKeyMonitor)
-        }
-        if let applicationActivationObserver {
-            NotificationCenter.default.removeObserver(applicationActivationObserver)
+        MainActor.assumeIsolated {
+            cancelSpaceHoldState(deliverEndHold: true)
+            cancelOptionPinnedFocus()
+            closeQuickLookPreviewPanel()
+            applicationIndexSourceStream?.stop()
+            stopRecordingSettingsHotKey()
+            if let localKeyMonitor {
+                NSEvent.removeMonitor(localKeyMonitor)
+            }
+            if let applicationActivationObserver {
+                NotificationCenter.default.removeObserver(applicationActivationObserver)
+            }
         }
     }
 
     func toggle() {
+        if model.isShowingSettings {
+            showLauncherFromSettings()
+            return
+        }
+
         if model.isPinned {
             focusPinnedWindow()
             return
@@ -97,7 +137,53 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         show(mode: .applications)
     }
 
+    func showSettings() {
+        beginVisibilityTransition(.showing)
+        closeQuickLookPreviewPanel()
+        cancelSpaceHoldState(deliverEndHold: true)
+        cancelOptionPinnedFocus()
+        settingsModel.refresh()
+
+        let shouldMaterialize = !window.isVisible || !model.isPresented
+        if shouldMaterialize {
+            model.isPresented = false
+        }
+        model.showSettings()
+        if shouldMaterialize {
+            positionWindow(animated: false)
+        }
+        window.alphaValue = 1
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        model.setWindowKeyState(true)
+        if shouldMaterialize {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                model.isPresented = true
+            }
+        }
+        finishShow(transitionID: visibilityTransitionID)
+    }
+
+    private func toggleSettings() {
+        if model.isShowingSettings {
+            showLauncherFromSettings()
+        } else {
+            showSettings()
+        }
+    }
+
+    private func showLauncherFromSettings() {
+        stopRecordingSettingsHotKey()
+        model.hideSettings()
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        model.setWindowKeyState(true)
+    }
+
     private func show(mode: LauncherMode) {
+        stopRecordingSettingsHotKey()
         beginVisibilityTransition(.showing)
         let shouldMaterialize = !window.isVisible || !model.isPresented
         model.show(mode: mode)
@@ -116,14 +202,12 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
                 model.isPresented = true
             }
             finishShow(transitionID: visibilityTransitionID)
-            scheduleApplicationReindexIfNeeded(mode: mode, transitionID: visibilityTransitionID)
         } else {
             finishShow(transitionID: visibilityTransitionID)
-            scheduleApplicationReindexIfNeeded(mode: mode)
         }
     }
 
-    private func hide() {
+    func hide() {
         guard visibilityState != .hidden,
               visibilityState != .hiding else {
             return
@@ -133,13 +217,29 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         closeQuickLookPreviewPanel()
         cancelSpaceHoldState(deliverEndHold: true)
         cancelOptionPinnedFocus()
+        stopRecordingSettingsHotKey()
         model.cancelPendingCalculationHistory()
 
         let transitionID = visibilityTransitionID
-        withAnimation(presentationAnimation, completionCriteria: .removed) {
-            model.isPresented = false
-        } completion: { [weak self] in
-            self?.finishHide(transitionID: transitionID)
+        NSAnimationContext.runAnimationGroup { [weak self] context in
+            guard let self else { return }
+            context.duration = presentationAnimationDuration
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            window.animator().alphaValue = 0
+        } completionHandler: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self,
+                      self.visibilityTransitionID == transitionID,
+                      self.visibilityState == .hiding else {
+                    return
+                }
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    self.model.isPresented = false
+                }
+                self.finishHide(transitionID: transitionID)
+            }
         }
     }
 
@@ -159,26 +259,98 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         model.refreshAfterSettingsChanged()
     }
 
+    private func startRecordingSettingsHotKey() {
+        stopRecordingSettingsHotKey(resetModel: false)
+
+        settingsHotKeyEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self else { return event }
+
+            if event.keyCode == UInt16(kVK_Escape) {
+                self.stopRecordingSettingsHotKey()
+                return nil
+            }
+
+            guard let hotKey = HotKeyConfiguration(event: event) else {
+                NSSound.beep()
+                return nil
+            }
+
+            self.settingsModel.commitHotKey(hotKey)
+            self.stopRecordingSettingsHotKey(resetModel: false)
+            return nil
+        }
+    }
+
+    private func stopRecordingSettingsHotKey(resetModel: Bool = true) {
+        if let settingsHotKeyEventMonitor {
+            NSEvent.removeMonitor(settingsHotKeyEventMonitor)
+            self.settingsHotKeyEventMonitor = nil
+        }
+
+        if resetModel {
+            settingsModel.cancelHotKeyRecording()
+        }
+    }
+
+    private func presentIncludedAppPicker() {
+        let panel = NSOpenPanel()
+        panel.title = "Add Included App"
+        panel.prompt = "Add"
+        panel.allowsMultipleSelection = true
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.canCreateDirectories = false
+        panel.allowedContentTypes = [.applicationBundle]
+
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK else { return }
+            self?.settingsModel.addIncludedApps(panel.urls)
+        }
+    }
+
+    private func presentFileBrowserStartDirectoryPicker() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose Files Start Folder"
+        panel.prompt = "Choose"
+        panel.allowsMultipleSelection = false
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = false
+
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let url = panel.urls.first else { return }
+            self?.settingsModel.setFileBrowserStartDirectory(url)
+        }
+    }
+
     private func buildWindow() {
         window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
         window.isOpaque = false
         window.backgroundColor = .clear
-        window.hasShadow = false
+        window.hasShadow = true
         window.isMovableByWindowBackground = LauncherWindowDragPolicy.isMovableByWindowBackground
         window.minSize = LauncherWindowFramePolicy.minimumSize
         window.delegate = self
-        window.commandHandler = { [weak self] command in
-            self?.handleLauncherCommand(command) ?? false
+        window.keyEquivalentHandler = { [weak self] event in
+            self?.handleKeyEquivalent(event) ?? false
+        }
+        window.cancelHandler = { [weak self] in
+            self?.handleLauncherCommand(.close) ?? false
         }
 
-        let hostingView = NSHostingView(rootView: LiquidGlassLauncherView(model: model))
+        let hostingView = BuckyPanelHostingView(rootView: LiquidGlassLauncherView(
+            model: model,
+            settingsModel: settingsModel
+        ))
         hostingView.sizingOptions = []
         hostingView.translatesAutoresizingMaskIntoConstraints = true
         hostingView.autoresizingMask = [.width, .height]
         hostingView.wantsLayer = true
         hostingView.layer?.backgroundColor = NSColor.clear.cgColor
-        hostingView.layer?.masksToBounds = false
+        hostingView.layer?.cornerRadius = LauncherVisualStyle.windowCornerRadius
+        hostingView.layer?.cornerCurve = .continuous
+        hostingView.layer?.masksToBounds = true
         window.contentView = hostingView
     }
 
@@ -194,6 +366,17 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
 
             if event.type == .flagsChanged, self.model.mode == .files {
                 return self.handleFileModifierEvent(event)
+            }
+
+            if self.model.isShowingSettings {
+                guard event.type == .keyDown else { return event }
+                if event.isCommandComma {
+                    return self.handleLauncherCommand(.settings) ? nil : event
+                }
+                if event.keyCode == UInt16(kVK_Escape) {
+                    return self.handleLauncherCommand(.close) ? nil : event
+                }
+                return event
             }
 
             if LauncherKeyRoutingPolicy.shouldPassThroughFileTextEditing(
@@ -295,6 +478,34 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         }
     }
 
+    private func handleKeyEquivalent(_ event: NSEvent) -> Bool {
+        if let mode = event.commandNumberMode {
+            return handleLauncherCommand(.switchMode(mode))
+        }
+        if event.isCommandR {
+            return handleLauncherCommand(.reindex)
+        }
+        if event.isCommandComma {
+            return handleLauncherCommand(.settings)
+        }
+        if event.isCommandP {
+            return handleLauncherCommand(.togglePin)
+        }
+        if event.isCommandLeftBracket {
+            return handleLauncherCommand(.historyBack)
+        }
+        if event.isCommandRightBracket {
+            return handleLauncherCommand(.historyForward)
+        }
+        if event.isCommandUpArrow {
+            return handleLauncherCommand(.top)
+        }
+        if event.isCommandDownArrow {
+            return handleLauncherCommand(.bottom)
+        }
+        return false
+    }
+
     private func installApplicationActivationObserver() {
         guard applicationActivationObserver == nil else { return }
 
@@ -309,7 +520,28 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         }
     }
 
+    private func startApplicationIndexSourceStream() {
+        let stream = ApplicationIndexSourceStream { [weak self] in
+            self?.reindex()
+        }
+        applicationIndexSourceStream = stream
+        stream.start()
+    }
+
     private func handleLauncherCommand(_ command: LauncherCommand) -> Bool {
+        if model.isShowingSettings {
+            switch command {
+            case .settings:
+                toggleSettings()
+                return true
+            case .close:
+                hide()
+                return true
+            default:
+                return false
+            }
+        }
+
         let handled = model.handle(command: command)
         if handled {
             syncQuickLookPreviewPanel()
@@ -378,12 +610,14 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             withTimeInterval: LauncherSpaceKeyRouter.holdDelay,
             repeats: false
         ) { [weak self] _ in
-            guard let self else { return }
-            self.pendingSpaceHoldTimer = nil
-            _ = self.performSpaceKeyDecision(
-                self.spaceKeyRouter.holdDelayElapsed(),
-                event: nil
-            )
+            Task { @MainActor in
+                guard let self else { return }
+                self.pendingSpaceHoldTimer = nil
+                _ = self.performSpaceKeyDecision(
+                    self.spaceKeyRouter.holdDelayElapsed(),
+                    event: nil
+                )
+            }
         }
     }
 
@@ -423,7 +657,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     }
 
     private func positionWindow(animated: Bool) {
-        guard let screen = primaryDisplayScreen() ?? NSScreen.main ?? NSScreen.screens.first else {
+        guard let screen = targetDisplayScreen() else {
             window.center()
             return
         }
@@ -432,6 +666,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         let frame = LauncherWindowFramePolicy.frame(
             mode: model.mode,
             fileFocusState: model.mode == .files ? fileBrowserFocusState : nil,
+            isShowingSettings: model.isShowingSettings,
             visibleFrame: visibleFrame
         )
 
@@ -439,8 +674,20 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         window.setFrame(frame, display: true, animate: animated)
     }
 
+    private func targetDisplayScreen() -> NSScreen? {
+        if window.isVisible, let screen = window.screen {
+            return screen
+        }
+
+        let mouseLocation = NSEvent.mouseLocation
+        return NSScreen.screens.first { screen in
+            screen.frame.contains(mouseLocation)
+        } ?? primaryDisplayScreen() ?? NSScreen.main ?? NSScreen.screens.first
+    }
+
     private func syncQuickLookPreviewPanel() {
-        guard model.mode == .files,
+        guard !model.isShowingSettings,
+              model.mode == .files,
               case let .quickLook(preview) = fileBrowserFocusState else {
             closeQuickLookPreviewPanel()
             return
@@ -559,24 +806,10 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         window.makeFirstResponder(nil)
         window.orderOut(nil)
         window.resignKey()
+        model.hideSettings()
         visibilityState = .hidden
     }
 
-    private func scheduleApplicationReindexIfNeeded(mode: LauncherMode, transitionID: Int? = nil) {
-        guard mode == .applications else { return }
-
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            if let transitionID {
-                guard self.visibilityTransitionID == transitionID,
-                      self.visibilityState == .shown else {
-                    return
-                }
-            }
-
-            self.reindex()
-        }
-    }
 }
 
 @available(macOS 26.0, *)
@@ -661,8 +894,11 @@ struct LauncherSpaceKeyRouter {
 
 @available(macOS 26.0, *)
 struct LauncherWindowDismissalPolicy {
-    static func shouldHideOnResignKey(mode: LauncherMode, isPinned: Bool) -> Bool {
-        !isPinned && mode != .files
+    static func shouldHideOnResignKey(mode: LauncherMode, isPinned: Bool, isShowingSettings: Bool = false) -> Bool {
+        if isShowingSettings {
+            return true
+        }
+        return !isPinned && mode != .files
     }
 }
 
@@ -676,51 +912,14 @@ extension LiquidGlassLauncherWindowController: NSWindowDelegate {
         model.setWindowKeyState(false)
 
         guard window.isVisible,
-              LauncherWindowDismissalPolicy.shouldHideOnResignKey(mode: model.mode, isPinned: model.isPinned) else {
+              window.attachedSheet == nil,
+              LauncherWindowDismissalPolicy.shouldHideOnResignKey(
+                  mode: model.mode,
+                  isPinned: model.isPinned,
+                  isShowingSettings: model.isShowingSettings
+              ) else {
             return
         }
         hide()
-    }
-}
-
-@available(macOS 26.0, *)
-private final class LiquidGlassWindow: NSWindow {
-    var commandHandler: ((LauncherCommand) -> Bool)?
-
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { true }
-
-    override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        if let mode = event.commandNumberMode, commandHandler?(.switchMode(mode)) == true {
-            return true
-        }
-        if event.isCommandR, commandHandler?(.reindex) == true {
-            return true
-        }
-        if event.isCommandComma, commandHandler?(.settings) == true {
-            return true
-        }
-        if event.isCommandP, commandHandler?(.togglePin) == true {
-            return true
-        }
-        if event.isCommandLeftBracket, commandHandler?(.historyBack) == true {
-            return true
-        }
-        if event.isCommandRightBracket, commandHandler?(.historyForward) == true {
-            return true
-        }
-        if event.isCommandUpArrow, commandHandler?(.top) == true {
-            return true
-        }
-        if event.isCommandDownArrow, commandHandler?(.bottom) == true {
-            return true
-        }
-        return super.performKeyEquivalent(with: event)
-    }
-
-    override func cancelOperation(_ sender: Any?) {
-        if commandHandler?(.close) != true {
-            orderOut(sender)
-        }
     }
 }

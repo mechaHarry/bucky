@@ -69,6 +69,21 @@ final class LauncherResultListPolicyTests: XCTestCase {
         XCTAssertTrue(source.contains(".fill(tint.opacity(opacity))"))
     }
 
+    func testSharedResultRowsUseBalancedVisibleRimAroundFullShape() {
+        XCTAssertGreaterThanOrEqual(LauncherResultListVisualStyle.unselectedRimOpacity, 0.28)
+        XCTAssertGreaterThanOrEqual(LauncherResultListVisualStyle.selectionRimOpacity, 0.40)
+        XCTAssertGreaterThanOrEqual(LauncherResultListVisualStyle.rowRimLineWidth(isSelected: false), 1.10)
+        XCTAssertGreaterThanOrEqual(LauncherResultListVisualStyle.rowRimLineWidth(isSelected: true), 1.20)
+    }
+
+    func testApplicationRowsShowRightAlignedCategoryLabel() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
+
+        XCTAssertTrue(source.contains("Text(item.category.title)"))
+        XCTAssertTrue(source.contains(".foregroundStyle(.tertiary)"))
+        XCTAssertTrue(source.contains(".accessibilityLabel(\"Result type: \\(item.category.title)\""))
+    }
+
     func testSharedResultListAnimationKeepsRowsFastButVisible() {
         XCTAssertLessThanOrEqual(LauncherResultListLayoutPolicy.rowSelectionAnimationSeconds, 0.10)
         XCTAssertLessThanOrEqual(LauncherResultListLayoutPolicy.rowReconstructionAnimationSeconds, 0.10)
@@ -76,12 +91,14 @@ final class LauncherResultListPolicyTests: XCTestCase {
 
     func testModeDrivenLauncherAnimationsUseShortDurations() throws {
         let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
+        let resultAnimationSource = source.components(separatedBy: "private var settingsModeAnimation").first ?? source
 
-        XCTAssertTrue(source.contains("model.animationTiming.animation(duration: 0.08)"))
-        XCTAssertFalse(source.contains("model.animationTiming.animation(duration: 0.22)"))
-        XCTAssertFalse(source.contains("model.animationTiming.animation(duration: 0.18)"))
-        XCTAssertFalse(source.contains("model.animationTiming.animation(duration: 0.16)"))
-        XCTAssertFalse(source.contains("model.animationTiming.animation(duration: 0.14)"))
+        XCTAssertTrue(resultAnimationSource.contains("model.animationTiming.animation(duration: 0.08)"))
+        XCTAssertTrue(source.contains("private var settingsModeAnimation: Animation"))
+        XCTAssertFalse(resultAnimationSource.contains("model.animationTiming.animation(duration: 0.22)"))
+        XCTAssertFalse(resultAnimationSource.contains("model.animationTiming.animation(duration: 0.18)"))
+        XCTAssertFalse(resultAnimationSource.contains("model.animationTiming.animation(duration: 0.16)"))
+        XCTAssertFalse(resultAnimationSource.contains("model.animationTiming.animation(duration: 0.14)"))
     }
 
     private func source(named path: String) throws -> String {

@@ -4,6 +4,7 @@ import SwiftUI
 @available(macOS 26.0, *)
 struct LiquidGlassLauncherView: View {
     @ObservedObject var model: LiquidGlassLauncherModel
+    @ObservedObject var settingsModel: SettingsViewModel
     @FocusState private var isSearchFocused: Bool
     @Namespace private var selectionGlassNamespace
     @State private var handledSelectionScrollRequestID = 0
@@ -23,10 +24,18 @@ struct LiquidGlassLauncherView: View {
         model.animationTiming.animation(duration: 0.08)
     }
 
+    private var settingsModeAnimation: Animation {
+        model.animationTiming.animation(duration: 0.16)
+    }
+
+    private var settingsModeTransition: AnyTransition {
+        .opacity.combined(with: .scale(scale: 0.985))
+    }
+
     var body: some View {
         ZStack {
             if model.isPresented {
-                launcherSurface
+                activeSurface
                     .modifier(LauncherWindowFocusVisualModifier(isKeyWindow: model.isWindowKey))
             }
         }
@@ -38,6 +47,12 @@ struct LiquidGlassLauncherView: View {
             synchronizeSearchFocus()
             preloadApplicationIcons()
         }
+        .onChange(of: model.isShowingSettings) {
+            synchronizeSearchFocus()
+            if !model.isShowingSettings {
+                preloadApplicationIcons()
+            }
+        }
         .onChange(of: model.isPresented) { _, isPresented in
             if isPresented {
                 synchronizeSearchFocus()
@@ -48,22 +63,40 @@ struct LiquidGlassLauncherView: View {
                 iconPreloadTask = nil
             }
         }
-        .onChange(of: model.filteredItems) {
+        .onChange(of: model.filteredItemIDs) {
             preloadApplicationIcons()
         }
         .animation(resultUpdateAnimation, value: model.mode)
+        .animation(settingsModeAnimation, value: model.isShowingSettings)
+    }
+
+    @ViewBuilder
+    private var activeSurface: some View {
+        ZStack {
+            if model.isShowingSettings {
+                settingsSurface
+                    .transition(settingsModeTransition)
+            } else {
+                launcherSurface
+                    .transition(settingsModeTransition)
+            }
+        }
     }
 
     private var launcherSurface: some View {
         resultsPane
-        .padding(10)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
-        .padding(LauncherWindowFramePolicy.shadowBleed)
+    }
+
+    private var settingsSurface: some View {
+        SettingsView(model: settingsModel)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
     }
 
     private func synchronizeSearchFocus() {
-        let shouldFocus = model.isPresented && model.mode.acceptsTextInput
+        let shouldFocus = model.isPresented && !model.isShowingSettings && model.mode.acceptsTextInput
         isSearchFocused = false
         guard shouldFocus else { return }
 
@@ -109,9 +142,11 @@ struct LiquidGlassLauncherView: View {
             )
             .overlay {
                 resultsPaneShape
-                    .strokeBorder(LauncherVisualStyle.resultsPaneRim.opacity(0.24), lineWidth: 1)
+                    .strokeBorder(
+                        LauncherPinnedBorderPolicy.color(isPinned: model.isPinned),
+                        lineWidth: LauncherPinnedBorderPolicy.lineWidth(isPinned: model.isPinned)
+                    )
             }
-            .shadow(color: .black.opacity(0.14), radius: 16, x: 0, y: 8)
     }
 
     private var resultsPaneShape: RoundedRectangle {
@@ -121,11 +156,22 @@ struct LiquidGlassLauncherView: View {
     @ViewBuilder
     private var results: some View {
         if model.mode == .files {
-            FileBrowserView(
-                model: model.fileBrowserModel,
-                selectionTint: LauncherModeTintPolicy.selectionColor(for: model.mode)
-            )
-                .transition(.opacity)
+            if let fileBrowserModel = model.activeFileBrowserModel {
+                FileBrowserView(
+                    model: fileBrowserModel,
+                    selectionTint: LauncherModeTintPolicy.selectionColor(for: model.mode)
+                )
+                    .transition(.opacity)
+            } else {
+                Text("Loading files")
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .task {
+                        await Task.yield()
+                        model.prepareFileBrowserMode()
+                    }
+            }
         } else if let emptyMessage = model.emptyMessage {
             Text(emptyMessage)
                 .font(.system(size: 17, weight: .medium))
@@ -136,9 +182,11 @@ struct LiquidGlassLauncherView: View {
             Group {
                 switch model.mode {
                 case .applications:
-                    resultScrollView(reconstructionID: applicationsReconstructionIdentity, usesEagerRows: true) {
-                        ForEach(Array(model.filteredItems.enumerated()), id: \.element.url) { index, item in
-                            applicationRow(item: item, index: index)
+                    resultScrollView(reconstructionID: applicationsReconstructionIdentity) {
+                        ForEach(Array(model.filteredItemIDs.enumerated()), id: \.element) { index, id in
+                            if let item = model.item(for: id) {
+                                applicationRow(item: item, id: id, index: index)
+                            }
                         }
                     }
                 case .calculator, .dictionary:
@@ -153,10 +201,21 @@ struct LiquidGlassLauncherView: View {
                         value: toolResultsSnapshotIdentity
                     )
                 case .files:
-                    FileBrowserView(
-                        model: model.fileBrowserModel,
-                        selectionTint: LauncherModeTintPolicy.selectionColor(for: model.mode)
-                    )
+                    if let fileBrowserModel = model.activeFileBrowserModel {
+                        FileBrowserView(
+                            model: fileBrowserModel,
+                            selectionTint: LauncherModeTintPolicy.selectionColor(for: model.mode)
+                        )
+                    } else {
+                        Text("Loading files")
+                            .font(.system(size: 17, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .task {
+                                await Task.yield()
+                                model.prepareFileBrowserMode()
+                            }
+                    }
                 }
             }
         }
@@ -186,8 +245,8 @@ struct LiquidGlassLauncherView: View {
         }
     }
 
-    private func applicationRow(item: LaunchItem, index: Int) -> some View {
-        let rowID = ResultRowID.application(item.url)
+    private func applicationRow(item: LaunchItem, id: AppRowID, index: Int) -> some View {
+        let rowID = ResultRowID.application(id)
         let isSelected = index == model.selectedIndex
 
         return LauncherResultRow(
@@ -210,6 +269,12 @@ struct LiquidGlassLauncherView: View {
                     }
 
                     Spacer(minLength: 12)
+
+                    Text(item.category.title)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .accessibilityLabel("Result type: \(item.category.title)")
                 }
                 .contentShape(Rectangle())
                 .onTapGesture {
@@ -335,8 +400,8 @@ struct LiquidGlassLauncherView: View {
     private func resultRowID(for index: Int) -> ResultRowID? {
         switch model.mode {
         case .applications:
-            guard index >= 0, index < model.filteredItems.count else { return nil }
-            return .application(model.filteredItems[index].url)
+            guard index >= 0, index < model.filteredItemIDs.count else { return nil }
+            return .application(model.filteredItemIDs[index])
         case .calculator, .dictionary:
             guard index >= 0, index < model.toolItems.count else { return nil }
             return .tool(model.toolItems[index])
@@ -351,7 +416,7 @@ struct LiquidGlassLauncherView: View {
     }
 
     private var applicationsReconstructionIdentity: AnyHashable {
-        AnyHashable(model.filteredItems.map(\.url.path).joined(separator: "\u{1F}"))
+        AnyHashable(model.filteredItemIDs.map { "\($0.rawValue)" }.joined(separator: "\u{1F}"))
     }
 
     private var toolResultsSnapshotIdentity: String {
@@ -416,7 +481,7 @@ struct LiquidGlassLauncherView: View {
 
     private func preloadApplicationIcons() {
         guard model.mode == .applications, model.isPresented else { return }
-        let urls = AppIconPreloadPolicy.preloadURLs(for: model.filteredItems)
+        let urls = AppIconPreloadPolicy.preloadURLs(for: model.filteredIconURLs)
         guard !urls.isEmpty else { return }
 
         iconPreloadTask?.cancel()
@@ -458,13 +523,13 @@ private struct LauncherWindowFocusVisualModifier: ViewModifier {
 
 @available(macOS 26.0, *)
 private enum ResultRowID: Hashable {
-    case application(URL)
+    case application(AppRowID)
     case tool(ToolItem)
     case file(URL)
 }
 
 @available(macOS 26.0, *)
-private enum LauncherVisualStyle {
+enum LauncherVisualStyle {
     static let windowCornerRadius: CGFloat = 30
     static let aetherContentSpacing: CGFloat = 14
     static let paneContentSpacing: CGFloat = 12
@@ -478,6 +543,19 @@ private enum LauncherVisualStyle {
     static let selectionRim = Color(nsColor: .selectedContentBackgroundColor)
     static let actionRim = Color(nsColor: .separatorColor)
 
+}
+
+@available(macOS 26.0, *)
+struct LauncherPinnedBorderPolicy {
+    static func lineWidth(isPinned: Bool) -> CGFloat {
+        isPinned ? 3 : 1
+    }
+
+    static func color(isPinned: Bool) -> Color {
+        isPinned
+            ? Color.accentColor.opacity(0.68)
+            : LauncherVisualStyle.resultsPaneRim.opacity(0.24)
+    }
 }
 
 @available(macOS 26.0, *)
@@ -558,14 +636,18 @@ private struct ApplicationIconView: View {
 
 @available(macOS 26.0, *)
 struct AppIconPreloadPolicy {
-    static let initialVisibleLimit = 80
+    static let initialVisibleLimit = 24
     static let preloadLimit = 256
     static let initialDelayNanoseconds: UInt64 = 0
-    static let tailDelayNanoseconds: UInt64 = 0
+    static let tailDelayNanoseconds: UInt64 = 250_000_000
     static let yieldStride = 8
 
     static func preloadURLs(for items: [LaunchItem]) -> [URL] {
         Array(items.prefix(preloadLimit).map(\.url))
+    }
+
+    static func preloadURLs(for urls: [URL]) -> [URL] {
+        Array(urls.prefix(preloadLimit))
     }
 
     static func shouldYield(afterLoadingItemAt index: Int) -> Bool {

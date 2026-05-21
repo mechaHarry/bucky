@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 @MainActor
@@ -8,6 +9,10 @@ final class SettingsViewModel: ObservableObject {
     @Published var fileBrowserStartDirectoryText = ""
     @Published var inclusionPaths: [String] = []
     @Published var exclusionPaths: [String] = []
+    @Published var customActions: [CustomAction] = []
+    @Published var selectedCustomActionID: UUID?
+    @Published var customActionName = ""
+    @Published var customActionCommand = ""
     @Published var selectedInclusionPath: String?
     @Published var selectedExclusionPath: String?
     @Published var isRecordingHotKey = false
@@ -20,19 +25,19 @@ final class SettingsViewModel: ObservableObject {
     private let settingsStore: SettingsStore
     private let inclusionStore: InclusionStore
     private let exclusionStore: ExclusionStore
-    private let hotKeyChangeHandler: (HotKeyConfiguration) -> Bool
-    private let inclusionsChangedHandler: () -> Void
-    private let exclusionsChangedHandler: () -> Void
-    private let settingsChangedHandler: () -> Void
+    private let hotKeyChangeHandler: @MainActor (HotKeyConfiguration) -> Bool
+    private let inclusionsChangedHandler: @MainActor () -> Void
+    private let exclusionsChangedHandler: @MainActor () -> Void
+    private let settingsChangedHandler: @MainActor () -> Void
 
     init(
         settingsStore: SettingsStore,
         inclusionStore: InclusionStore,
         exclusionStore: ExclusionStore,
-        hotKeyChangeHandler: @escaping (HotKeyConfiguration) -> Bool,
-        inclusionsChangedHandler: @escaping () -> Void,
-        exclusionsChangedHandler: @escaping () -> Void,
-        settingsChangedHandler: @escaping () -> Void
+        hotKeyChangeHandler: @escaping @MainActor (HotKeyConfiguration) -> Bool,
+        inclusionsChangedHandler: @escaping @MainActor () -> Void,
+        exclusionsChangedHandler: @escaping @MainActor () -> Void,
+        settingsChangedHandler: @escaping @MainActor () -> Void
     ) {
         self.settingsStore = settingsStore
         self.inclusionStore = inclusionStore
@@ -55,8 +60,10 @@ final class SettingsViewModel: ObservableObject {
         launchAtStartup = settingsStore.settings.launchAtStartup
         animationTiming = settingsStore.settings.animationTiming
         fileBrowserStartDirectoryText = settingsStore.settings.fileBrowserStartDirectory?.path ?? "~/"
+        customActions = settingsStore.settings.customActions
         inclusionPaths = inclusionStore.sortedPaths()
         exclusionPaths = exclusionStore.sortedPaths()
+        selectedCustomActionID = customActions.contains(where: { $0.id == selectedCustomActionID }) ? selectedCustomActionID : nil
         selectedInclusionPath = inclusionPaths.contains(selectedInclusionPath ?? "") ? selectedInclusionPath : nil
         selectedExclusionPath = exclusionPaths.contains(selectedExclusionPath ?? "") ? selectedExclusionPath : nil
     }
@@ -108,6 +115,52 @@ final class SettingsViewModel: ObservableObject {
         settingsChangedHandler()
     }
 
+    func selectCustomAction(_ id: UUID?) {
+        selectedCustomActionID = id
+        guard let id,
+              let action = customActions.first(where: { $0.id == id }) else {
+            customActionName = ""
+            customActionCommand = ""
+            return
+        }
+
+        customActionName = action.name
+        customActionCommand = action.command
+    }
+
+    func saveCustomAction() {
+        let name = customActionName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let command = customActionCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, !command.isEmpty else {
+            errorMessage = "Custom actions need both a name and a command."
+            return
+        }
+
+        if let selectedCustomActionID,
+           let index = customActions.firstIndex(where: { $0.id == selectedCustomActionID }) {
+            customActions[index].name = name
+            customActions[index].command = command
+        } else {
+            customActions.append(CustomAction(name: name, command: command))
+        }
+
+        settingsStore.updateCustomActions(customActions)
+        selectedCustomActionID = nil
+        customActionName = ""
+        customActionCommand = ""
+        settingsChangedHandler()
+    }
+
+    func removeSelectedCustomAction() {
+        guard let selectedCustomActionID else { return }
+        customActions.removeAll { $0.id == selectedCustomActionID }
+        settingsStore.updateCustomActions(customActions)
+        self.selectedCustomActionID = nil
+        customActionName = ""
+        customActionCommand = ""
+        settingsChangedHandler()
+    }
+
     func requestIncludedAppPicker() {
         presentIncludedAppPickerAction?()
     }
@@ -140,49 +193,33 @@ final class SettingsViewModel: ObservableObject {
 
 struct SettingsView: View {
     @ObservedObject var model: SettingsViewModel
+    @State private var selectedPane: SettingsPane = .general
+    @State private var isSidebarCollapsed = false
+
+    private var settingsPaneSwitchAnimation: Animation {
+        .smooth(duration: 0.16)
+    }
+
+    private var settingsPaneTransition: AnyTransition {
+        .opacity.combined(with: .scale(scale: 0.985))
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            hotKeyRow
+        ZStack(alignment: .leading) {
+            SettingsInputSurface()
 
-            Toggle(
-                "Launch on startup",
-                isOn: Binding(
-                    get: { model.launchAtStartup },
-                    set: { model.setLaunchAtStartup($0) }
-                )
-            )
+            detailPane
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            animationTimingRow
-
-            fileBrowserStartDirectoryRow
-
-            pathSection(
-                title: "Included apps",
-                paths: model.inclusionPaths,
-                selection: $model.selectedInclusionPath,
-                emptyText: "No extra included apps",
-                primaryActionTitle: "Add",
-                primaryActionSystemImage: "plus",
-                primaryAction: model.requestIncludedAppPicker,
-                removeAction: model.removeSelectedInclusion,
-                removeDisabled: model.selectedInclusionPath == nil
-            )
-
-            pathSection(
-                title: "Hidden apps",
-                paths: model.exclusionPaths,
-                selection: $model.selectedExclusionPath,
-                emptyText: "No hidden apps",
-                primaryActionTitle: nil,
-                primaryActionSystemImage: nil,
-                primaryAction: nil,
-                removeAction: model.removeSelectedExclusion,
-                removeDisabled: model.selectedExclusionPath == nil
-            )
+            settingsSidebar
+                .frame(width: isSidebarCollapsed ? 74 : 210)
+                .padding(.leading, 10)
+                .padding(.vertical, 10)
         }
-        .padding(20)
-        .frame(width: 560, height: 650, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .contentShape(Rectangle())
+        .animation(.snappy(duration: 0.18), value: isSidebarCollapsed)
+        .animation(settingsPaneSwitchAnimation, value: selectedPane)
         .alert(
             "Bucky Settings",
             isPresented: Binding(
@@ -200,6 +237,287 @@ struct SettingsView: View {
         } message: {
             Text(model.errorMessage ?? "")
         }
+    }
+
+    private var settingsSidebar: some View {
+        ZStack {
+            settingsGlassBackdrop
+
+            VStack(spacing: 10) {
+                VStack(spacing: 6) {
+                    ForEach(SettingsPane.allCases) { pane in
+                        SettingsSidebarRow(
+                            pane: pane,
+                            isSelected: selectedPane == pane,
+                            isCollapsed: isSidebarCollapsed
+                        ) {
+                            selectedPane = pane
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+
+                Spacer(minLength: 0)
+
+                Button {
+                    isSidebarCollapsed.toggle()
+                } label: {
+                    Image(systemName: isSidebarCollapsed ? "sidebar.left" : "sidebar.leading")
+                        .font(.system(size: 15, weight: .semibold))
+                        .frame(width: 32, height: 32)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: isSidebarCollapsed ? .center : .trailing)
+                .help(isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar")
+            }
+            .padding(.horizontal, isSidebarCollapsed ? 10 : 12)
+            .padding(.vertical, 14)
+        }
+        .frame(maxHeight: .infinity, alignment: .top)
+        .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.35), lineWidth: 1)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+
+    @ViewBuilder
+    private var detailPane: some View {
+        ZStack {
+            settingsGlassBackdrop
+
+            GeometryReader { proxy in
+                if selectedPane == .apps {
+                    VStack(alignment: .leading, spacing: 18) {
+                        paneHeader
+
+                        boundedSettingsPaneContent
+                            .id(selectedPane)
+                            .transition(settingsPaneTransition)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    }
+                    .padding(.leading, isSidebarCollapsed ? 116 : 252)
+                    .padding(.trailing, 28)
+                    .padding(.vertical, 28)
+                    .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 18) {
+                            paneHeader
+
+                            scrollingSettingsPaneContent
+                                .id(selectedPane)
+                                .transition(settingsPaneTransition)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        }
+                        .padding(.leading, isSidebarCollapsed ? 116 : 252)
+                        .padding(.trailing, 28)
+                        .padding(.vertical, 28)
+                        .frame(maxWidth: .infinity, minHeight: proxy.size.height, alignment: .topLeading)
+                    }
+                    .scrollIndicators(.hidden)
+                }
+            }
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.35), lineWidth: 1)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+
+    @ViewBuilder
+    private var settingsPaneContent: some View {
+        switch selectedPane {
+        case .general:
+            generalPane
+        case .files:
+            filesPane
+        case .apps:
+            appsPane
+        case .actions:
+            actionsPane
+        }
+    }
+
+    private var boundedSettingsPaneContent: some View {
+        settingsPaneContent
+    }
+
+    private var scrollingSettingsPaneContent: some View {
+        settingsPaneContent
+    }
+
+    private var settingsGlassBackdrop: some View {
+        SettingsGlassBackdrop()
+    }
+}
+
+private struct SettingsGlassBackdrop: View {
+    var body: some View {
+        GlassEffectContainer {
+            glassShape
+                .fill(Color.clear)
+                .glassEffect(
+                    .regular
+                        .tint(Color.white.opacity(0.05))
+                        .interactive(false),
+                    in: glassShape
+                )
+        }
+        .allowsHitTesting(false)
+    }
+
+    private var glassShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: 22, style: .continuous)
+    }
+}
+
+private struct SettingsInputSurface: View {
+    var body: some View {
+        Color.white.opacity(0.001)
+            .contentShape(Rectangle())
+    }
+}
+
+private extension SettingsView {
+    private var paneHeader: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Label(selectedPane.title, systemImage: selectedPane.systemImage)
+                .font(.system(size: 22, weight: .semibold))
+
+            Text(selectedPane.subtitle)
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var generalPane: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            hotKeyRow
+
+            Toggle(
+                "Launch on startup",
+                isOn: Binding(
+                    get: { model.launchAtStartup },
+                    set: { model.setLaunchAtStartup($0) }
+                )
+            )
+
+            animationTimingRow
+        }
+    }
+
+    private var filesPane: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            fileBrowserStartDirectoryRow
+        }
+    }
+
+    private var appsPane: some View {
+        HStack(alignment: .top, spacing: 14) {
+            appPathSection(
+                title: "Included apps",
+                paths: model.inclusionPaths,
+                selection: $model.selectedInclusionPath,
+                emptyText: "No extra included apps",
+                typeTitle: "Included",
+                primaryActionTitle: "Add",
+                primaryActionSystemImage: "plus",
+                primaryAction: model.requestIncludedAppPicker,
+                removeAction: model.removeSelectedInclusion,
+                removeDisabled: model.selectedInclusionPath == nil
+            )
+
+            appPathSection(
+                title: "Hidden apps",
+                paths: model.exclusionPaths,
+                selection: $model.selectedExclusionPath,
+                emptyText: "No hidden apps",
+                typeTitle: "Hidden",
+                primaryActionTitle: nil,
+                primaryActionSystemImage: nil,
+                primaryAction: nil,
+                removeAction: model.removeSelectedExclusion,
+                removeDisabled: model.selectedExclusionPath == nil
+            )
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func appPathSection(
+        title: String,
+        paths: [String],
+        selection: Binding<String?>,
+        emptyText: String,
+        typeTitle: String,
+        primaryActionTitle: String?,
+        primaryActionSystemImage: String?,
+        primaryAction: (() -> Void)?,
+        removeAction: @escaping () -> Void,
+        removeDisabled: Bool
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+
+            ScrollView {
+                LazyVStack(spacing: 8) {
+                    if paths.isEmpty {
+                        Text(emptyText)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, minHeight: 58, alignment: .center)
+                    } else {
+                        ForEach(paths, id: \.self) { path in
+                            SettingsAppPathRow(
+                                path: path,
+                                typeTitle: typeTitle,
+                                isSelected: selection.wrappedValue == path
+                            )
+                            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .onTapGesture {
+                                selection.wrappedValue = path
+                            }
+                        }
+                    }
+                }
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+            .contentShape(Rectangle())
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+            HStack(spacing: 8) {
+                if let primaryActionTitle,
+                   let primaryActionSystemImage,
+                   let primaryAction {
+                    Button {
+                        primaryAction()
+                    } label: {
+                        Label(primaryActionTitle, systemImage: primaryActionSystemImage)
+                    }
+                }
+
+                Button(role: .destructive) {
+                    removeAction()
+                } label: {
+                    Label("Remove", systemImage: "minus")
+                }
+                .disabled(removeDisabled)
+
+                Spacer()
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var actionsPane: some View {
+        customActionsSection
     }
 
     private var animationTimingRow: some View {
@@ -268,56 +586,212 @@ struct SettingsView: View {
         }
     }
 
-    private func pathSection(
-        title: String,
-        paths: [String],
-        selection: Binding<String?>,
-        emptyText: String,
-        primaryActionTitle: String?,
-        primaryActionSystemImage: String?,
-        primaryAction: (() -> Void)?,
-        removeAction: @escaping () -> Void,
-        removeDisabled: Bool
-    ) -> some View {
+    private var customActionsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title)
+            Text("Custom actions")
                 .font(.system(size: 13, weight: .semibold))
 
-            List(selection: selection) {
-                if paths.isEmpty {
-                    Text(emptyText)
+            List(selection: $model.selectedCustomActionID) {
+                if model.customActions.isEmpty {
+                    Text("No custom actions")
                         .foregroundStyle(.secondary)
                 } else {
-                    ForEach(paths, id: \.self) { path in
-                        Text(path)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                            .tag(Optional(path))
+                    ForEach(model.customActions) { action in
+                        HStack(spacing: 8) {
+                            Text(action.name)
+                                .lineLimit(1)
+                            Spacer()
+                            Text(action.command)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                        .tag(Optional(action.id))
                     }
                 }
             }
-            .frame(height: 150)
+            .frame(height: 110)
+            .onChange(of: model.selectedCustomActionID) { _, id in
+                model.selectCustomAction(id)
+            }
 
             HStack(spacing: 8) {
-                if let primaryActionTitle,
-                   let primaryActionSystemImage,
-                   let primaryAction {
-                    Button {
-                        primaryAction()
-                    } label: {
-                        Label(primaryActionTitle, systemImage: primaryActionSystemImage)
-                    }
+                TextField("Name", text: $model.customActionName)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 150)
+
+                TextField("Shell command or script path", text: $model.customActionCommand)
+                    .textFieldStyle(.roundedBorder)
+
+                Button {
+                    model.saveCustomAction()
+                } label: {
+                    Label("Save", systemImage: "checkmark")
                 }
 
                 Button(role: .destructive) {
-                    removeAction()
+                    model.removeSelectedCustomAction()
                 } label: {
                     Label("Remove", systemImage: "minus")
                 }
-                .disabled(removeDisabled)
-
-                Spacer()
+                .disabled(model.selectedCustomActionID == nil)
             }
+        }
+    }
+
+}
+
+@available(macOS 26.0, *)
+private struct SettingsSidebarRow: View {
+    let pane: SettingsPane
+    let isSelected: Bool
+    let isCollapsed: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: pane.systemImage)
+                    .font(.system(size: 15, weight: .semibold))
+                    .frame(width: 18, height: 18)
+
+                if !isCollapsed {
+                    Text(pane.title)
+                        .font(.system(size: 14, weight: .semibold))
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .foregroundStyle(isSelected ? Color.white : Color.primary)
+            .frame(maxWidth: .infinity, minHeight: 36, alignment: isCollapsed ? .center : .leading)
+            .padding(.horizontal, isCollapsed ? 0 : 10)
+            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .background {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(isSelected ? Color.accentColor : Color(nsColor: .controlBackgroundColor).opacity(0.34))
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(
+                    isSelected ? Color.accentColor.opacity(0.62) : Color(nsColor: .separatorColor).opacity(0.45),
+                    lineWidth: isSelected ? 1.35 : 1.15
+                )
+        }
+        .help(pane.title)
+        .accessibilityLabel(pane.title)
+    }
+}
+
+@available(macOS 26.0, *)
+private struct SettingsAppPathRow: View {
+    let path: String
+    let typeTitle: String
+    let isSelected: Bool
+
+    private var displayName: String {
+        let url = URL(fileURLWithPath: path)
+        let bundle = Bundle(url: url)
+        let displayName = bundle?.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
+        let bundleName = bundle?.object(forInfoDictionaryKey: "CFBundleName") as? String
+        return displayName ?? bundleName ?? url.deletingPathExtension().lastPathComponent
+    }
+
+    private var icon: NSImage {
+        NSWorkspace.shared.icon(forFile: path)
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(nsImage: icon)
+                .resizable()
+                .frame(width: 30, height: 30)
+                .layoutPriority(2)
+
+            VStack(alignment: .leading, spacing: 3) {
+                FadeMarqueeText(
+                    text: displayName,
+                    font: .system(size: 13, weight: .medium)
+                )
+
+                FadeMarqueeText(
+                    text: path,
+                    font: .system(size: 11)
+                )
+                .foregroundStyle(.secondary)
+            }
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+            .layoutPriority(1)
+            .clipped()
+
+            Text(typeTitle)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+                .frame(width: 42, alignment: .trailing)
+                .layoutPriority(0)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .clipped()
+        .background {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(isSelected ? Color.accentColor.opacity(0.18) : Color(nsColor: .controlBackgroundColor).opacity(0.42))
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(isSelected ? Color.accentColor.opacity(0.42) : Color(nsColor: .separatorColor).opacity(0.20), lineWidth: 1)
+        }
+        .accessibilityLabel("\(displayName), \(path), \(typeTitle)")
+    }
+}
+
+private enum SettingsPane: String, CaseIterable, Identifiable, Hashable {
+    case general
+    case files
+    case apps
+    case actions
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .general:
+            return "General"
+        case .files:
+            return "Files"
+        case .apps:
+            return "Apps"
+        case .actions:
+            return "Actions"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .general:
+            return "Keyboard, startup, and animation preferences."
+        case .files:
+            return "Choose where file browsing starts."
+        case .apps:
+            return "Manage launcher app inclusions and hidden apps."
+        case .actions:
+            return "Expose named shell commands in app search."
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .general:
+            return "gearshape"
+        case .files:
+            return "folder"
+        case .apps:
+            return "square.grid.2x2"
+        case .actions:
+            return "terminal"
         }
     }
 }

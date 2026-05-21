@@ -295,10 +295,31 @@ final class LauncherModeRoutingTests: XCTestCase {
 
         XCTAssertTrue(source.contains("transaction.disablesAnimations = true"))
         XCTAssertTrue(source.contains("withTransaction(transaction) {\n                model.isPresented = true\n            }\n            finishShow(transitionID: visibilityTransitionID)"))
-        XCTAssertTrue(source.contains("scheduleApplicationReindexIfNeeded(mode: mode)"))
-        XCTAssertTrue(source.contains("guard self.visibilityTransitionID == transitionID,\n                      self.visibilityState == .shown"))
+        XCTAssertFalse(source.contains("scheduleApplicationReindexIfNeeded"))
+        XCTAssertTrue(source.contains("startApplicationIndexSourceStream()"))
         XCTAssertFalse(source.contains("withAnimation(presentationAnimation, completionCriteria: .removed) {\n                model.isPresented = true"))
         XCTAssertFalse(source.contains("if mode == .applications {\n            DispatchQueue.main.async"))
+    }
+
+    @available(macOS 26.0, *)
+    func testHideFadesWholeWindowBeforeRemovingSwiftUIContent() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
+
+        XCTAssertTrue(source.contains("NSAnimationContext.runAnimationGroup"))
+        XCTAssertTrue(source.contains("window.animator().alphaValue = 0"))
+        XCTAssertTrue(source.contains("transaction.disablesAnimations = true\n                withTransaction(transaction) {\n                    self.model.isPresented = false\n                }"))
+        XCTAssertFalse(source.contains("withAnimation(presentationAnimation, completionCriteria: .removed) {\n            model.isPresented = false"))
+    }
+
+    @available(macOS 26.0, *)
+    func testSettingsTransitionPreservesVisibleWindowFrameAndDisplay() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
+
+        XCTAssertTrue(source.contains("if shouldMaterialize {\n            positionWindow(animated: false)\n        }"))
+        XCTAssertTrue(source.contains("let screen = targetDisplayScreen()"))
+        XCTAssertTrue(source.contains("private func targetDisplayScreen() -> NSScreen?"))
+        XCTAssertTrue(source.contains("if window.isVisible, let screen = window.screen"))
+        XCTAssertFalse(source.contains("guard let screen = primaryDisplayScreen() ?? NSScreen.main"))
     }
 
     @available(macOS 26.0, *)
@@ -320,11 +341,58 @@ final class LauncherModeRoutingTests: XCTestCase {
         let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherModel.swift")
 
         XCTAssertFalse(source.contains("calculationHistoryStore.load()\n            dictionaryHistoryStore.load()"))
-        XCTAssertTrue(source.contains("case .calculator, .dictionary:\n            applyToolsResults()"))
+        XCTAssertTrue(source.contains("scheduleModeSnapshot(for: nextMode"))
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testSwitchingToApplicationsDoesNotSynchronouslyRequestReindex() {
+        let model = LiquidGlassLauncherModel(
+            settingsStore: SettingsStore(),
+            inclusionStore: InclusionStore(),
+            exclusionStore: ExclusionStore(),
+            calculationHistoryStore: CalculationHistoryStore()
+        )
+        var reindexCount = 0
+        model.reindexAction = { reindexCount += 1 }
+
+        model.show(mode: .calculator)
+        _ = model.handle(command: .switchMode(.applications))
+
+        XCTAssertEqual(model.mode, .applications)
+        XCTAssertEqual(reindexCount, 0)
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testModeSwitchPublishesModeBeforeDeferredSnapshotWork() {
+        var activationCount = 0
+        let model = LiquidGlassLauncherModel(
+            settingsStore: SettingsStore(),
+            inclusionStore: InclusionStore(),
+            exclusionStore: ExclusionStore(),
+            calculationHistoryStore: CalculationHistoryStore(),
+            fileBrowserModelFactory: {
+                activationCount += 1
+                return FileBrowserModel(
+                    fileSystem: StubFileSystemClient(home: URL(fileURLWithPath: "/Users/test"), entriesByDirectory: [:]),
+                    store: InMemoryFileBrowserStore(state: .defaultValue),
+                    directoryStream: ImmediateDirectoryStream()
+                )
+            }
+        )
+
+        model.show(mode: .applications)
+        XCTAssertEqual(activationCount, 0)
+
+        _ = model.handle(command: .switchMode(.files))
+
+        XCTAssertEqual(model.mode, .files)
+        XCTAssertEqual(activationCount, 0)
     }
 
     @available(macOS 26.0, *)
-    func testDefaultWindowFrameAddsInvisibleShadowBleedAroundVisualLauncherSize() {
+    func testDefaultWindowFrameUsesRealPanelBoundsNotShadowBleed() {
         let visibleFrame = CGRect(x: 0, y: 0, width: 1_440, height: 900)
         let frame = LauncherWindowFramePolicy.frame(
             mode: .applications,
@@ -333,15 +401,34 @@ final class LauncherModeRoutingTests: XCTestCase {
         )
 
         XCTAssertEqual(LauncherWindowFramePolicy.visualContentSize, CGSize(width: 760, height: 460))
-        XCTAssertGreaterThan(LauncherWindowFramePolicy.shadowBleed, 0)
-        XCTAssertEqual(frame.size, LauncherWindowFramePolicy.defaultSize)
-        XCTAssertEqual(
-            frame.size,
-            CGSize(
-                width: LauncherWindowFramePolicy.visualContentSize.width + LauncherWindowFramePolicy.shadowBleed * 2,
-                height: LauncherWindowFramePolicy.visualContentSize.height + LauncherWindowFramePolicy.shadowBleed * 2
-            )
+        XCTAssertEqual(frame.size, LauncherWindowFramePolicy.visualContentSize)
+        XCTAssertEqual(LauncherWindowFramePolicy.defaultSize, LauncherWindowFramePolicy.visualContentSize)
+        XCTAssertFalse(try source(named: "Sources/Bucky/UI/SwiftUI/LauncherWindowFramePolicy.swift").contains("shadowBleed"))
+    }
+
+    @available(macOS 26.0, *)
+    func testSettingsModeKeepsLauncherWindowSize() {
+        let visibleFrame = CGRect(x: 0, y: 0, width: 1_440, height: 900)
+        let launcherSize = LauncherWindowFramePolicy.windowSize(
+            mode: .applications,
+            fileFocusState: nil,
+            visibleFrame: visibleFrame
         )
+        let settingsSize = LauncherWindowFramePolicy.windowSize(
+            mode: .applications,
+            fileFocusState: nil,
+            isShowingSettings: true,
+            visibleFrame: visibleFrame
+        )
+        let settingsFrame = LauncherWindowFramePolicy.frame(
+            mode: .applications,
+            fileFocusState: nil,
+            isShowingSettings: true,
+            visibleFrame: visibleFrame
+        )
+
+        XCTAssertEqual(settingsSize, launcherSize)
+        XCTAssertEqual(settingsFrame.size, launcherSize)
     }
 
     @available(macOS 26.0, *)

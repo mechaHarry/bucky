@@ -1,10 +1,49 @@
 import Foundation
 
+enum LaunchTarget: Hashable {
+    case application(URL)
+    case url(URL)
+    case shellCommand(String)
+}
+enum LaunchItemCategory: String, Codable, Hashable {
+    case app
+    case settings
+    case action
+
+    var title: String {
+        switch self {
+        case .app:
+            return "App"
+        case .settings:
+            return "Settings"
+        case .action:
+            return "Action"
+        }
+    }
+}
 struct LaunchItem: Hashable {
     let title: String
     let subtitle: String
     let url: URL
+    let launchTarget: LaunchTarget
+    let category: LaunchItemCategory
     let searchText: String
+
+    init(
+        title: String,
+        subtitle: String,
+        url: URL,
+        launchTarget: LaunchTarget? = nil,
+        category: LaunchItemCategory = .app,
+        searchText: String
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.url = url
+        self.launchTarget = launchTarget ?? .application(url)
+        self.category = category
+        self.searchText = searchText
+    }
 }
 struct ToolItem: Hashable {
     enum Kind: Hashable {
