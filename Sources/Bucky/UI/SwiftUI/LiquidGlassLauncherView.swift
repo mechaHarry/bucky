@@ -4,6 +4,7 @@ import SwiftUI
 @available(macOS 26.0, *)
 struct LiquidGlassLauncherView: View {
     @ObservedObject var model: LiquidGlassLauncherModel
+    @ObservedObject var settingsModel: SettingsViewModel
     @FocusState private var isSearchFocused: Bool
     @Namespace private var selectionGlassNamespace
     @State private var handledSelectionScrollRequestID = 0
@@ -26,7 +27,7 @@ struct LiquidGlassLauncherView: View {
     var body: some View {
         ZStack {
             if model.isPresented {
-                launcherSurface
+                activeSurface
                     .modifier(LauncherWindowFocusVisualModifier(isKeyWindow: model.isWindowKey))
             }
         }
@@ -37,6 +38,12 @@ struct LiquidGlassLauncherView: View {
         .onChange(of: model.mode) {
             synchronizeSearchFocus()
             preloadApplicationIcons()
+        }
+        .onChange(of: model.isShowingSettings) {
+            synchronizeSearchFocus()
+            if !model.isShowingSettings {
+                preloadApplicationIcons()
+            }
         }
         .onChange(of: model.isPresented) { _, isPresented in
             if isPresented {
@@ -52,6 +59,16 @@ struct LiquidGlassLauncherView: View {
             preloadApplicationIcons()
         }
         .animation(resultUpdateAnimation, value: model.mode)
+        .animation(resultUpdateAnimation, value: model.isShowingSettings)
+    }
+
+    @ViewBuilder
+    private var activeSurface: some View {
+        if model.isShowingSettings {
+            settingsSurface
+        } else {
+            launcherSurface
+        }
     }
 
     private var launcherSurface: some View {
@@ -62,8 +79,15 @@ struct LiquidGlassLauncherView: View {
         .padding(LauncherWindowFramePolicy.shadowBleed)
     }
 
+    private var settingsSurface: some View {
+        SettingsView(model: settingsModel)
+            .padding(LauncherWindowFramePolicy.shadowBleed)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+    }
+
     private func synchronizeSearchFocus() {
-        let shouldFocus = model.isPresented && model.mode.acceptsTextInput
+        let shouldFocus = model.isPresented && !model.isShowingSettings && model.mode.acceptsTextInput
         isSearchFocused = false
         guard shouldFocus else { return }
 

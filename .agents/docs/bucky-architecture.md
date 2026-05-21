@@ -13,7 +13,7 @@ This project is a local-only macOS launcher implemented as a Swift Package macOS
   - `Sources/Bucky/Settings`: settings, inclusion/exclusion, and calculation history stores.
   - `Sources/Bucky/Tools/Calculator`: local arithmetic parsing/evaluation.
   - `Sources/Bucky/Tools/Dictionary`: macOS Dictionary Services lookup and fuzzy matching.
-  - `Sources/Bucky/UI/Shell`: macOS shell controllers for the menu bar item and SwiftUI settings window hosting.
+- `Sources/Bucky/UI/Shell`: macOS shell controllers for the menu bar item.
   - `Sources/Bucky/UI/SwiftUI`: macOS 26 SwiftUI Liquid Glass launcher and settings view.
   - `Sources/Bucky/UI/Shared`: UI contracts, commands, and shared utilities.
 - Build command: `make bundle`.
@@ -67,7 +67,7 @@ Exclusions are applied after indexing and inclusions. An explicitly included app
 - Up and Down move selection by one row; Command+Up and Command+Down jump to the first and last visible result.
 - Command-number shortcuts are handled by the visible launcher window, not global Carbon hotkeys: Cmd+1 Apps, Cmd+2 Calculator, Cmd+3 Dictionary, and Cmd+4 Files.
 - Escape clears the input first; if the input is already blank, it closes the launcher window.
-- The launcher uses `LiquidGlassLauncherWindowController`, a borderless resizable `NSWindow` with an `NSHostingView` surface backed by `LiquidGlassLauncherView` and `LiquidGlassLauncherModel`.
+- The launcher uses `LiquidGlassLauncherWindowController`, a borderless resizable `NSWindow` with an `NSHostingView` surface backed by `LiquidGlassLauncherView`, `LiquidGlassLauncherModel`, and the in-window settings model.
 - SwiftUI owns the Liquid Glass visual system: `GlassEffectContainer`, `glassEffect`, glass button styles, and glass transitions for the main window, header controls, and individual result rows.
 - The previous AppKit launcher mode has been removed. AppKit remains for macOS application plumbing, global hotkeys, menu bar control, and hosting SwiftUI windows.
 - The bundle declares macOS 26 as its minimum OS. The runtime path also shows an unsupported OS alert if the app is somehow launched below that target instead of falling back to a legacy launcher.
@@ -97,8 +97,9 @@ Exclusions are applied after indexing and inclusions. An explicitly included app
 
 ## Settings UX
 
-- Settings opens with Command+Comma and from the menu bar item.
-- Settings window level is `.floating`, so it stays above the launcher.
+- Settings opens with Command+Comma and from the menu bar item inside the existing Bucky launcher panel.
+- Command+Comma toggles the launcher panel between launcher mode and settings mode. The global launcher hotkey also returns from settings to launcher mode.
+- Settings shares the same borderless transparent `BuckyPanelWindow` and hosting view architecture as the launcher, avoiding a second settings panel.
 - Settings supports:
   - Recording the global hotkey.
   - Toggling launch on startup via `SMAppService.mainApp`.

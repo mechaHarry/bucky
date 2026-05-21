@@ -1,15 +1,16 @@
 import AppKit
 
+@MainActor
 final class StatusMenuController: NSObject {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-    private let openAction: () -> Void
-    private let reindexAction: () -> Void
-    private let settingsAction: () -> Void
+    private let openAction: @MainActor () -> Void
+    private let reindexAction: @MainActor () -> Void
+    private let settingsAction: @MainActor () -> Void
 
     init(
-        openAction: @escaping () -> Void,
-        reindexAction: @escaping () -> Void,
-        settingsAction: @escaping () -> Void
+        openAction: @escaping @MainActor () -> Void,
+        reindexAction: @escaping @MainActor () -> Void,
+        settingsAction: @escaping @MainActor () -> Void
     ) {
         self.openAction = openAction
         self.reindexAction = reindexAction
