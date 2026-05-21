@@ -181,6 +181,18 @@ final class SettingsViewLayoutTests: XCTestCase {
         XCTAssertFalse(source.contains("private var appsPane: some View {\n        VStack(alignment: .leading, spacing: 18)"))
     }
 
+    func testSettingsAppRowsConstrainTextWithinRowWidth() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/SettingsView.swift")
+        let rowSource = source.components(separatedBy: "private struct SettingsAppPathRow: View").last ?? ""
+
+        XCTAssertTrue(source.contains(".frame(width: 30, height: 30)\n                .layoutPriority(2)"))
+        XCTAssertTrue(source.contains(".frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)\n            .layoutPriority(1)\n            .clipped()"))
+        XCTAssertTrue(source.contains(".frame(width: 42, alignment: .trailing)\n                .layoutPriority(0)"))
+        XCTAssertTrue(source.contains(".frame(maxWidth: .infinity, alignment: .leading)\n        .clipped()"))
+        XCTAssertTrue(source.contains(".padding(8)\n                .frame(maxWidth: .infinity, alignment: .topLeading)"))
+        XCTAssertFalse(rowSource.contains(".truncationMode(.middle)"))
+    }
+
     private func source(named path: String) throws -> String {
         let sourceURL = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
