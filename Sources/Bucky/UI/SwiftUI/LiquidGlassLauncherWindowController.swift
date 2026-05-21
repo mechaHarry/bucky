@@ -20,8 +20,8 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     private var visibilityState: WindowVisibilityState = .hidden
     private var visibilityTransitionID = 0
     private var applicationIndexSourceStream: ApplicationIndexSourceStream?
-    private var presentationAnimation: Animation {
-        model.animationTiming.animation(duration: 0.24)
+    private var presentationAnimationDuration: TimeInterval {
+        0.24
     }
 
     init(
@@ -221,10 +221,25 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         model.cancelPendingCalculationHistory()
 
         let transitionID = visibilityTransitionID
-        withAnimation(presentationAnimation, completionCriteria: .removed) {
-            model.isPresented = false
-        } completion: { [weak self] in
-            self?.finishHide(transitionID: transitionID)
+        NSAnimationContext.runAnimationGroup { [weak self] context in
+            guard let self else { return }
+            context.duration = presentationAnimationDuration
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            window.animator().alphaValue = 0
+        } completionHandler: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self,
+                      self.visibilityTransitionID == transitionID,
+                      self.visibilityState == .hiding else {
+                    return
+                }
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    self.model.isPresented = false
+                }
+                self.finishHide(transitionID: transitionID)
+            }
         }
     }
 
@@ -333,7 +348,9 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         hostingView.autoresizingMask = [.width, .height]
         hostingView.wantsLayer = true
         hostingView.layer?.backgroundColor = NSColor.clear.cgColor
-        hostingView.layer?.masksToBounds = false
+        hostingView.layer?.cornerRadius = LauncherVisualStyle.windowCornerRadius
+        hostingView.layer?.cornerCurve = .continuous
+        hostingView.layer?.masksToBounds = true
         window.contentView = hostingView
     }
 

@@ -302,6 +302,16 @@ final class LauncherModeRoutingTests: XCTestCase {
     }
 
     @available(macOS 26.0, *)
+    func testHideFadesWholeWindowBeforeRemovingSwiftUIContent() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
+
+        XCTAssertTrue(source.contains("NSAnimationContext.runAnimationGroup"))
+        XCTAssertTrue(source.contains("window.animator().alphaValue = 0"))
+        XCTAssertTrue(source.contains("transaction.disablesAnimations = true\n                withTransaction(transaction) {\n                    self.model.isPresented = false\n                }"))
+        XCTAssertFalse(source.contains("withAnimation(presentationAnimation, completionCriteria: .removed) {\n            model.isPresented = false"))
+    }
+
+    @available(macOS 26.0, *)
     func testSettingsTransitionPreservesVisibleWindowFrameAndDisplay() throws {
         let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
 
