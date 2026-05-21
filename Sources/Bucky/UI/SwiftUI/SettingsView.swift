@@ -453,6 +453,7 @@ private extension SettingsView {
                     }
                 }
                 .padding(8)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
             .contentShape(Rectangle())
             .frame(height: 164)
@@ -669,10 +670,11 @@ private struct SettingsAppPathRow: View {
     }
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             Image(nsImage: icon)
                 .resizable()
                 .frame(width: 30, height: 30)
+                .layoutPriority(2)
 
             VStack(alignment: .leading, spacing: 3) {
                 FadeMarqueeText(
@@ -686,15 +688,21 @@ private struct SettingsAppPathRow: View {
                 )
                 .foregroundStyle(.secondary)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+            .layoutPriority(1)
+            .clipped()
 
             Text(typeTitle)
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
+                .frame(width: 42, alignment: .trailing)
+                .layoutPriority(0)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .clipped()
         .background {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(isSelected ? Color.accentColor.opacity(0.18) : Color(nsColor: .controlBackgroundColor).opacity(0.42))
