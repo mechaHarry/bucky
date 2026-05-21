@@ -529,7 +529,7 @@ private enum ResultRowID: Hashable {
 }
 
 @available(macOS 26.0, *)
-private enum LauncherVisualStyle {
+enum LauncherVisualStyle {
     static let windowCornerRadius: CGFloat = 30
     static let aetherContentSpacing: CGFloat = 14
     static let paneContentSpacing: CGFloat = 12
