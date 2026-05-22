@@ -437,6 +437,45 @@ final class FileBrowserModelTests: XCTestCase {
         XCTAssertEqual(model.focusableActions, [.batchRename, .copyPaths, .copy, .move, .moveToTrash])
     }
 
+    func testUnmountableMountShowsUnmountActionOnlyForSingleFocusedVolume() {
+        let volumes = URL(fileURLWithPath: "/Volumes", isDirectory: true)
+        let mount = volumes.appendingPathComponent("Backup", isDirectory: true)
+        let model = makeModel(entries: [mountEntry(mount, canUnmount: true)], home: volumes)
+
+        XCTAssertEqual(model.availableActions, [.open, .revealInFinder, .copyPath, .unmount])
+
+        model.handle(.space)
+
+        XCTAssertEqual(model.availableActions, [.open, .rename, .revealInFinder, .copyPath, .copy, .move, .moveToTrash])
+    }
+
+    func testUnmountActionRequiresConfirmationBeforeCallingNativeService() {
+        let volumes = URL(fileURLWithPath: "/Volumes", isDirectory: true)
+        let mount = volumes.appendingPathComponent("Backup", isDirectory: true)
+        let service = RecordingFileBrowserServices()
+        let model = makeModel(entries: [mountEntry(mount, canUnmount: true)], home: volumes, fileServices: service)
+
+        perform(.unmount, on: model)
+
+        XCTAssertEqual(model.focusState, .confirming(.unmount(mount)))
+        XCTAssertEqual(service.events, [])
+
+        model.handle(.open)
+
+        XCTAssertEqual(service.events, [.unmount(mount)])
+        XCTAssertEqual(model.focusState, .browse)
+    }
+
+    func testSidebarIncludesMountsShortcutAfterUserPins() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let projects = home.appendingPathComponent("Projects", isDirectory: true)
+        let model = makeModel(home: home, entriesByDirectory: [home: [], projects: []])
+
+        model.togglePin(projects)
+
+        XCTAssertEqual(model.sidebarDirectories.map(\.path), [projects.path, "/Volumes"])
+    }
+
     func testActionOverlayKeyboardSelectionAndReturnStartsFocusedAction() {
         let model = makeModel(entries: entries(["one.txt"]))
 
@@ -1432,6 +1471,19 @@ final class FileBrowserModelTests: XCTestCase {
 
     private func fileEntry(_ url: URL) -> FileBrowserEntry {
         FileBrowserEntry(url: url, kind: .file, size: 1, createdAt: nil, modifiedAt: nil, isHidden: false)
+    }
+
+    private func mountEntry(_ url: URL, canUnmount: Bool) -> FileBrowserEntry {
+        FileBrowserEntry(
+            url: url,
+            kind: .directory,
+            size: nil,
+            createdAt: nil,
+            modifiedAt: nil,
+            isHidden: false,
+            isMount: true,
+            canUnmount: canUnmount
+        )
     }
 
     private func perform(_ action: FileBrowserAction, on model: FileBrowserModel) {
