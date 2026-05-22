@@ -177,7 +177,7 @@ enum LauncherKeyRoutingPolicy {
             return false
         }
 
-        let reservedLauncherKeys: Set<String> = ["1", "2", "3", "4", "r", ",", "p", "[", "]"]
+        let reservedLauncherKeys: Set<String> = ["1", "2", "3", "4", "5", "r", ",", "p", "[", "]"]
         guard !reservedLauncherKeys.contains(key) else {
             return false
         }

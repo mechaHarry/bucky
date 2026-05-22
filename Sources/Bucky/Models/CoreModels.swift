@@ -90,8 +90,9 @@ enum LauncherMode: Int, CaseIterable {
     case calculator = 2
     case dictionary = 3
     case files = 4
+    case agenda = 5
 
-    static let ordered: [LauncherMode] = [.applications, .calculator, .dictionary, .files]
+    static let ordered: [LauncherMode] = [.applications, .calculator, .dictionary, .files, .agenda]
 
     init?(commandNumber: Int) {
         self.init(rawValue: commandNumber)
@@ -107,6 +108,8 @@ enum LauncherMode: Int, CaseIterable {
             return "Search Dictionary Here"
         case .files:
             return "Browse Files"
+        case .agenda:
+            return "Agenda Scratchpad"
         }
     }
 

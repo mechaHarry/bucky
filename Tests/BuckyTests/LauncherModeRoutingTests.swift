@@ -8,7 +8,8 @@ final class LauncherModeRoutingTests: XCTestCase {
             .applications,
             .calculator,
             .dictionary,
-            .files
+            .files,
+            .agenda
         ])
     }
 
@@ -17,7 +18,8 @@ final class LauncherModeRoutingTests: XCTestCase {
         XCTAssertEqual(LauncherMode(commandNumber: 2), .calculator)
         XCTAssertEqual(LauncherMode(commandNumber: 3), .dictionary)
         XCTAssertEqual(LauncherMode(commandNumber: 4), .files)
-        XCTAssertNil(LauncherMode(commandNumber: 5))
+        XCTAssertEqual(LauncherMode(commandNumber: 5), .agenda)
+        XCTAssertNil(LauncherMode(commandNumber: 6))
     }
 
     func testModePlaceholdersAreSeparated() {
@@ -25,6 +27,7 @@ final class LauncherModeRoutingTests: XCTestCase {
         XCTAssertEqual(LauncherMode.calculator.placeholder, "Perform Calculations Here")
         XCTAssertEqual(LauncherMode.dictionary.placeholder, "Search Dictionary Here")
         XCTAssertEqual(LauncherMode.files.placeholder, "Browse Files")
+        XCTAssertEqual(LauncherMode.agenda.placeholder, "Agenda Scratchpad")
     }
 
     func testTextInputFocusModesExcludeFiles() {
@@ -32,6 +35,7 @@ final class LauncherModeRoutingTests: XCTestCase {
         XCTAssertTrue(LauncherMode.calculator.acceptsTextInput)
         XCTAssertTrue(LauncherMode.dictionary.acceptsTextInput)
         XCTAssertFalse(LauncherMode.files.acceptsTextInput)
+        XCTAssertTrue(LauncherMode.agenda.acceptsTextInput)
     }
 
     @available(macOS 26.0, *)
@@ -159,7 +163,7 @@ final class LauncherModeRoutingTests: XCTestCase {
     }
 
     func testReservedLauncherCommandKeysDoNotPassThroughAsTextEditingCommands() {
-        for key in ["1", "2", "3", "4", "r", ",", "p", "[", "]"] {
+        for key in ["1", "2", "3", "4", "5", "r", ",", "p", "[", "]"] {
             XCTAssertFalse(
                 LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
                     mode: .applications,

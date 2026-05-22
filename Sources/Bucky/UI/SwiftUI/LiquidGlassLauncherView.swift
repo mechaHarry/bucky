@@ -216,6 +216,8 @@ struct LiquidGlassLauncherView: View {
                                 model.prepareFileBrowserMode()
                             }
                     }
+                case .agenda:
+                    EmptyView()
                 }
             }
         }
@@ -408,6 +410,8 @@ struct LiquidGlassLauncherView: View {
         case .files:
             guard index >= 0, index < model.fileBrowserModel.entries.count else { return nil }
             return .file(model.fileBrowserModel.entries[index].url)
+        case .agenda:
+            return nil
         }
     }
 

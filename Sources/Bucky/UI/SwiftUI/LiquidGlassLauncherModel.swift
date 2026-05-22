@@ -40,6 +40,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private var applicationQuery = ""
     private var calculatorQuery = ""
     private var dictionaryQuery = ""
+    private var agendaQuery = ""
     private var needsReindexAfterCurrent = false
     private var pendingCalculationHistoryTimer: Timer?
     private var pendingCalculationHistoryExpression: String?
@@ -118,7 +119,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         switch mode {
         case .applications:
             return filteredItemIDs.count
-        case .calculator, .dictionary:
+        case .calculator, .dictionary, .agenda:
             return toolItems.count
         case .files:
             return MainActor.assumeIsolated {
@@ -151,6 +152,10 @@ final class LiquidGlassLauncherModel: ObservableObject {
         case .files:
             if MainActor.assumeIsolated({ fileBrowserModel.entries.isEmpty }) {
                 return "No files"
+            }
+        case .agenda:
+            if inputIsBlank {
+                return "Agenda scratchpad"
             }
         }
 
@@ -434,6 +439,10 @@ final class LiquidGlassLauncherModel: ObservableObject {
             applyApplicationFilter(preservePreviousOnEmpty: preservePreviousOnEmpty)
         case .calculator, .dictionary:
             applyToolsResults()
+        case .agenda:
+            cancelPendingCalculationHistory()
+            cancelPendingDictionaryLookup()
+            toolItems = []
         case .files:
             cancelPendingCalculationHistory()
             cancelPendingDictionaryLookup()
@@ -720,7 +729,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
 
     private func makeToolItems(for trimmedQuery: String, scheduleHistory: Bool) -> [ToolItem] {
         switch mode {
-        case .applications, .files:
+        case .applications, .files, .agenda:
             return []
         case .calculator:
             if trimmedQuery.isEmpty {
@@ -904,6 +913,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
             dictionaryQuery = query
         case .files:
             break
+        case .agenda:
+            agendaQuery = query
         }
     }
 
@@ -917,6 +928,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
             return dictionaryQuery
         case .files:
             return ""
+        case .agenda:
+            return agendaQuery
         }
     }
 
@@ -939,7 +952,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         switch mode {
         case .applications:
             break
-        case .calculator, .dictionary, .files:
+        case .calculator, .dictionary, .files, .agenda:
             toolItems = []
         }
     }
@@ -1043,6 +1056,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
             MainActor.assumeIsolated {
                 fileBrowserModel.handle(.open)
             }
+        case .agenda:
+            break
         }
     }
 

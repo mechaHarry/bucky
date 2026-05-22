@@ -7,6 +7,7 @@ final class LauncherModeTintPolicyTests: XCTestCase {
         XCTAssertEqual(LauncherModeTintPolicy.tint(for: .calculator).activeHex, 0xFFD300)
         XCTAssertEqual(LauncherModeTintPolicy.tint(for: .dictionary).activeHex, 0xE429F2)
         XCTAssertEqual(LauncherModeTintPolicy.tint(for: .files).activeHex, 0xFF0130)
+        XCTAssertEqual(LauncherModeTintPolicy.tint(for: .agenda).activeHex, 0x12E772)
     }
 
     func testCalculatorModeUsesContrastingIconInk() {
@@ -14,10 +15,12 @@ final class LauncherModeTintPolicyTests: XCTestCase {
         XCTAssertEqual(LauncherModeTintPolicy.tint(for: .calculator).iconHex, 0x3A2B00)
         XCTAssertEqual(LauncherModeTintPolicy.tint(for: .dictionary).iconHex, 0x6E1977)
         XCTAssertEqual(LauncherModeTintPolicy.tint(for: .files).iconHex, 0x7A0018)
+        XCTAssertEqual(LauncherModeTintPolicy.tint(for: .agenda).iconHex, 0x0D5F2F)
         XCTAssertEqual(LauncherModeTintPolicy.tint(for: .applications).darkModeIconHex, 0x9CC7FF)
         XCTAssertEqual(LauncherModeTintPolicy.tint(for: .calculator).darkModeIconHex, 0xFFF0A3)
         XCTAssertEqual(LauncherModeTintPolicy.tint(for: .dictionary).darkModeIconHex, 0xF5B8FF)
         XCTAssertEqual(LauncherModeTintPolicy.tint(for: .files).darkModeIconHex, 0xFFA6B8)
+        XCTAssertEqual(LauncherModeTintPolicy.tint(for: .agenda).darkModeIconHex, 0xB7FFD1)
         XCTAssertNotEqual(
             LauncherModeTintPolicy.tint(for: .applications).iconHex,
             LauncherModeTintPolicy.tint(for: .applications).activeHex
@@ -34,6 +37,10 @@ final class LauncherModeTintPolicyTests: XCTestCase {
             LauncherModeTintPolicy.tint(for: .files).iconHex,
             LauncherModeTintPolicy.tint(for: .files).activeHex
         )
+        XCTAssertNotEqual(
+            LauncherModeTintPolicy.tint(for: .agenda).iconHex,
+            LauncherModeTintPolicy.tint(for: .agenda).activeHex
+        )
     }
 
     func testModeTintPaletteUsesDarkPanelCompanions() {
@@ -41,6 +48,7 @@ final class LauncherModeTintPolicyTests: XCTestCase {
         XCTAssertEqual(LauncherModeTintPolicy.tint(for: .calculator).panelHex, 0xFFC239)
         XCTAssertEqual(LauncherModeTintPolicy.tint(for: .dictionary).panelHex, 0xBF00FF)
         XCTAssertEqual(LauncherModeTintPolicy.tint(for: .files).panelHex, 0xC60404)
+        XCTAssertEqual(LauncherModeTintPolicy.tint(for: .agenda).panelHex, 0x35B535)
     }
 
     func testInactiveOrbGlassTintIsSofterThanIconTint() {
@@ -123,6 +131,7 @@ final class LauncherModeTintPolicyTests: XCTestCase {
         XCTAssertTrue(modeSwitcher.contains("Command+2"))
         XCTAssertTrue(modeSwitcher.contains("Command+3"))
         XCTAssertTrue(modeSwitcher.contains("Command+4"))
+        XCTAssertTrue(modeSwitcher.contains("Command+5"))
     }
 
     func testCalculatorModeUsesNumberIconInsteadOfFunctionIcon() throws {
