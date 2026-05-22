@@ -65,7 +65,7 @@ struct FileBrowserView: View {
         .onChange(of: model.entries.map(\.url)) { _, _ in
             preloadFileIcons()
         }
-        .onChange(of: model.pinnedDirectories) { _, _ in
+        .onChange(of: model.sidebarDirectories) { _, _ in
             preloadFileIcons()
         }
         .onChange(of: model.wobbleEvent?.id) { _, id in
@@ -99,14 +99,14 @@ struct FileBrowserView: View {
 
     private var pinnedRail: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if model.pinnedDirectories.isEmpty {
-                placeholder("Pinned items will appear here")
+            if model.sidebarDirectories.isEmpty {
+                placeholder("Mounts and pins will appear here")
             } else {
                 LauncherResultList(
                     scrollTargetID: $pinnedScrollTargetID,
                     reconstructionID: pinnedReconstructionIdentity
                 ) {
-                    ForEach(Array(model.pinnedDirectories.enumerated()), id: \.element) { index, url in
+                    ForEach(Array(model.sidebarDirectories.enumerated()), id: \.element) { index, url in
                         FileBrowserPinnedRow(
                             url: url,
                             isSelected: model.focusState == .pinnedItems && index == model.focusedPinnedIndex,
@@ -244,6 +244,12 @@ struct FileBrowserView: View {
                     : "Return moves the selected item\(urls.count == 1 ? "" : "s") to Trash. Escape cancels."
             )
             .transition(.scale(scale: 0.97).combined(with: .opacity))
+        case let .confirming(.unmount(url)):
+            ConfirmationOverlay(
+                title: "Unmount \(displayName(for: url))?",
+                message: "Return asks macOS to unmount this volume. Escape cancels."
+            )
+            .transition(.scale(scale: 0.97).combined(with: .opacity))
         case let .confirming(.conflict(_, _, conflicts)):
             ConflictOverlay(conflicts: conflicts, focusedResolution: model.focusedConflictResolution)
                 .transition(.scale(scale: 0.97).combined(with: .opacity))
@@ -285,13 +291,13 @@ struct FileBrowserView: View {
     }
 
     private var pinnedReconstructionIdentity: AnyHashable {
-        AnyHashable(model.pinnedDirectories.map(\.path).joined(separator: "\u{1F}"))
+        AnyHashable(model.sidebarDirectories.map(\.path).joined(separator: "\u{1F}"))
     }
 
     private func preloadFileIcons() {
         let urls = FileIconPreloadPolicy.preloadURLs(
             entries: model.entries,
-            pinnedDirectories: model.pinnedDirectories
+            pinnedDirectories: model.sidebarDirectories
         )
         guard !urls.isEmpty else { return }
 
@@ -1453,6 +1459,8 @@ private extension FileBrowserAction {
             return "Move"
         case .moveToTrash:
             return "Move to Trash"
+        case .unmount:
+            return "Unmount"
         }
     }
 
@@ -1472,6 +1480,8 @@ private extension FileBrowserAction {
             return "arrow.right.square"
         case .moveToTrash:
             return "trash"
+        case .unmount:
+            return "eject"
         }
     }
 }

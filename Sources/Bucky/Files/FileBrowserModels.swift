@@ -18,6 +18,8 @@ struct FileBrowserEntry: Identifiable, Hashable {
     let createdAt: Date?
     let modifiedAt: Date?
     let isHidden: Bool
+    let isMount: Bool
+    let canUnmount: Bool
 
     init(
         url: URL,
@@ -25,7 +27,9 @@ struct FileBrowserEntry: Identifiable, Hashable {
         size: Int64?,
         createdAt: Date?,
         modifiedAt: Date?,
-        isHidden: Bool
+        isHidden: Bool,
+        isMount: Bool = false,
+        canUnmount: Bool = false
     ) {
         self.id = url
         self.url = url
@@ -35,6 +39,8 @@ struct FileBrowserEntry: Identifiable, Hashable {
         self.createdAt = createdAt
         self.modifiedAt = modifiedAt
         self.isHidden = isHidden
+        self.isMount = isMount
+        self.canUnmount = canUnmount
     }
 }
 
@@ -163,6 +169,7 @@ protocol FileBrowserNativeServicing {
     func copy(_ urls: [URL], to destinationDirectory: URL, conflict: FileBrowserConflictResolution) throws
     func move(_ urls: [URL], to destinationDirectory: URL, conflict: FileBrowserConflictResolution) throws
     func trash(_ urls: [URL]) throws
+    func unmount(_ url: URL) throws
     func rename(_ url: URL, to proposedName: String) throws -> URL
     func batchRename(_ urls: [URL], baseName: String) throws -> [URL]
     func conflictingDestinations(for urls: [URL], in destinationDirectory: URL) -> [FileBrowserConflict]
@@ -195,6 +202,7 @@ enum FileBrowserAction: String, CaseIterable, Equatable {
     case copy
     case move
     case moveToTrash
+    case unmount
 }
 
 enum FileBrowserActionIntent: Equatable {
@@ -234,6 +242,7 @@ enum FileBrowserTransfer: Equatable {
 enum FileBrowserConfirmation: Equatable {
     case transfer(FileBrowserTransfer, destination: URL)
     case trash([URL], step: Int)
+    case unmount(URL)
     case conflict(FileBrowserTransfer, destination: URL, conflicts: [FileBrowserConflict])
 }
 
@@ -477,6 +486,12 @@ struct FileBrowserDragPolicy {
 
 struct FileBrowserIconPolicy {
     static func systemSymbolOverride(for url: URL) -> String? {
-        url.lastPathComponent == ".Trash" ? "trash" : nil
+        if url.lastPathComponent == ".Trash" {
+            return "trash"
+        }
+        if url.standardizedFileURL.path == "/Volumes" {
+            return "externaldrive"
+        }
+        return nil
     }
 }

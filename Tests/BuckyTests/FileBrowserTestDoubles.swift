@@ -246,6 +246,7 @@ final class RecordingFileBrowserServices: FileBrowserNativeServicing {
         case copy([URL], URL, FileBrowserConflictResolution)
         case move([URL], URL, FileBrowserConflictResolution)
         case trash([URL])
+        case unmount(URL)
         case rename(URL, String)
         case batchRename([URL], String)
     }
@@ -302,6 +303,11 @@ final class RecordingFileBrowserServices: FileBrowserNativeServicing {
     func trash(_ urls: [URL]) throws {
         if let error { throw error }
         events.append(.trash(urls))
+    }
+
+    func unmount(_ url: URL) throws {
+        if let error { throw error }
+        events.append(.unmount(url))
     }
 
     func rename(_ url: URL, to proposedName: String) throws -> URL {

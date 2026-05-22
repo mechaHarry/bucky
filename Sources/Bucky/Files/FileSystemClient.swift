@@ -59,6 +59,10 @@ struct FileSystemClient {
             .isSymbolicLinkKey,
             .isAliasFileKey,
             .isHiddenKey,
+            .isVolumeKey,
+            .volumeIsEjectableKey,
+            .volumeIsRemovableKey,
+            .volumeURLKey,
             .fileSizeKey,
             .creationDateKey,
             .contentModificationDateKey
@@ -78,7 +82,9 @@ struct FileSystemClient {
                     size: values.fileSize.map(Int64.init),
                     createdAt: values.creationDate,
                     modifiedAt: values.contentModificationDate,
-                    isHidden: values.isHidden ?? url.lastPathComponent.hasPrefix(".")
+                    isHidden: values.isHidden ?? url.lastPathComponent.hasPrefix("."),
+                    isMount: isMount(url: url, values: values),
+                    canUnmount: canUnmount(values: values)
                 )
             }
         return Self.sorted(entries, by: sort)
@@ -101,6 +107,19 @@ struct FileSystemClient {
             return .directory
         }
         return .file
+    }
+
+    private func isMount(url: URL, values: URLResourceValues) -> Bool {
+        if values.isVolume == true {
+            return true
+        }
+
+        guard let volumeURL = values.volume else { return false }
+        return volumeURL.standardizedFileURL.path == url.standardizedFileURL.path
+    }
+
+    private func canUnmount(values: URLResourceValues) -> Bool {
+        values.volumeIsEjectable == true || values.volumeIsRemovable == true
     }
 
     private static func compare(_ lhs: FileBrowserEntry, _ rhs: FileBrowserEntry, sort: FileBrowserSort) -> Bool {
