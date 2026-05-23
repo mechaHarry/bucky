@@ -271,6 +271,20 @@ extension NSEvent {
             && keyCode == UInt16(kVK_DownArrow)
     }
 
+    var isCommandLeftArrow: Bool {
+        let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
+        return flags.contains(.command)
+            && flags.intersection([.shift, .option, .control]).isEmpty
+            && keyCode == UInt16(kVK_LeftArrow)
+    }
+
+    var isCommandRightArrow: Bool {
+        let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
+        return flags.contains(.command)
+            && flags.intersection([.shift, .option, .control]).isEmpty
+            && keyCode == UInt16(kVK_RightArrow)
+    }
+
     var isCommandLeftBracket: Bool {
         let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
         return flags == .command && charactersIgnoringModifiers == "["

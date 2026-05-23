@@ -430,6 +430,12 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             if event.isCommandDownArrow {
                 return self.handleLauncherCommand(.bottom) ? nil : event
             }
+            if event.isCommandLeftArrow {
+                return self.handleLauncherCommand(.previousMode) ? nil : event
+            }
+            if event.isCommandRightArrow {
+                return self.handleLauncherCommand(.nextMode) ? nil : event
+            }
 
             switch event.keyCode {
             case UInt16(kVK_UpArrow):
@@ -502,6 +508,12 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         }
         if event.isCommandDownArrow {
             return handleLauncherCommand(.bottom)
+        }
+        if event.isCommandLeftArrow {
+            return handleLauncherCommand(.previousMode)
+        }
+        if event.isCommandRightArrow {
+            return handleLauncherCommand(.nextMode)
         }
         return false
     }

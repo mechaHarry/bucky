@@ -249,6 +249,10 @@ final class LiquidGlassLauncherModel: ObservableObject {
             openSettingsAction?()
         case let .switchMode(nextMode):
             return switchMode(nextMode)
+        case .previousMode:
+            return switchMode(mode.previousMode)
+        case .nextMode:
+            return switchMode(mode.nextMode)
         case .clearHistory:
             clearHistory()
         case .togglePin:

@@ -22,6 +22,16 @@ final class LauncherModeRoutingTests: XCTestCase {
         XCTAssertNil(LauncherMode(commandNumber: 6))
     }
 
+    func testModeCycleWrapsThroughOrderedModes() {
+        XCTAssertEqual(LauncherMode.applications.previousMode, .agenda)
+        XCTAssertEqual(LauncherMode.applications.nextMode, .calculator)
+        XCTAssertEqual(LauncherMode.calculator.nextMode, .dictionary)
+        XCTAssertEqual(LauncherMode.dictionary.nextMode, .files)
+        XCTAssertEqual(LauncherMode.files.nextMode, .agenda)
+        XCTAssertEqual(LauncherMode.agenda.nextMode, .applications)
+        XCTAssertEqual(LauncherMode.agenda.previousMode, .files)
+    }
+
     func testModePlaceholdersAreSeparated() {
         XCTAssertEqual(LauncherMode.applications.placeholder, "Search Apps Here")
         XCTAssertEqual(LauncherMode.calculator.placeholder, "Perform Calculations Here")
@@ -282,6 +292,19 @@ final class LauncherModeRoutingTests: XCTestCase {
         XCTAssertFalse(LauncherWindowRepositionPolicy.shouldReposition(after: .down))
         XCTAssertFalse(LauncherWindowRepositionPolicy.shouldReposition(after: .up))
         XCTAssertTrue(LauncherWindowRepositionPolicy.shouldReposition(after: .switchMode(.files)))
+        XCTAssertTrue(LauncherWindowRepositionPolicy.shouldReposition(after: .previousMode))
+        XCTAssertTrue(LauncherWindowRepositionPolicy.shouldReposition(after: .nextMode))
+    }
+
+    func testCommandArrowRoutingCyclesModesWhenLauncherIsActive() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
+
+        XCTAssertTrue(source.contains("if event.isCommandLeftArrow"))
+        XCTAssertTrue(source.contains("return self.handleLauncherCommand(.previousMode) ? nil : event"))
+        XCTAssertTrue(source.contains("if event.isCommandRightArrow"))
+        XCTAssertTrue(source.contains("return self.handleLauncherCommand(.nextMode) ? nil : event"))
+        XCTAssertTrue(source.contains("return handleLauncherCommand(.previousMode)"))
+        XCTAssertTrue(source.contains("return handleLauncherCommand(.nextMode)"))
     }
 
     func testHotKeyDoesNotAddExtraMainQueueHopWhenAlreadyOnMainThread() throws {
@@ -525,6 +548,32 @@ final class LauncherModeRoutingTests: XCTestCase {
         XCTAssertEqual(model.query, "2+2")
         _ = model.handle(command: .switchMode(.dictionary))
         XCTAssertEqual(model.query, "hello")
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testModeCycleCommandsUseDoublyLinkedModeOrder() {
+        let model = LiquidGlassLauncherModel(
+            settingsStore: SettingsStore(),
+            inclusionStore: InclusionStore(),
+            exclusionStore: ExclusionStore(),
+            calculationHistoryStore: CalculationHistoryStore(),
+            fileBrowserModel: FileBrowserModel(
+                fileSystem: StubFileSystemClient(home: URL(fileURLWithPath: "/Users/test"), entriesByDirectory: [:]),
+                store: InMemoryFileBrowserStore(state: .defaultValue),
+                directoryStream: ImmediateDirectoryStream()
+            )
+        )
+
+        model.show(mode: .applications)
+        _ = model.handle(command: .previousMode)
+        XCTAssertEqual(model.mode, .agenda)
+
+        _ = model.handle(command: .nextMode)
+        XCTAssertEqual(model.mode, .applications)
+
+        _ = model.handle(command: .nextMode)
+        XCTAssertEqual(model.mode, .calculator)
     }
 
     @MainActor

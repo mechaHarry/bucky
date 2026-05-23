@@ -66,6 +66,7 @@ Exclusions are applied after indexing and inclusions. An explicitly included app
 - Hotkey can be changed in Settings and is persisted in `settings.json`.
 - Up and Down move selection by one row; Command+Up and Command+Down jump to the first and last visible result.
 - Command-number shortcuts are handled by the visible launcher window, not global Carbon hotkeys: Cmd+1 Apps, Cmd+2 Calculator, Cmd+3 Dictionary, Cmd+4 Files, and Cmd+5 Agenda.
+- While the launcher is open and not showing Settings, Command+Left and Command+Right cycle across modes in ordered wraparound sequence.
 - Escape clears the input first; if the input is already blank, it closes the launcher window.
 - The launcher uses `LiquidGlassLauncherWindowController`, a borderless resizable `NSWindow` with an `NSHostingView` surface backed by `LiquidGlassLauncherView`, `LiquidGlassLauncherModel`, and the in-window settings model.
 - SwiftUI owns the Liquid Glass visual system: `GlassEffectContainer`, `glassEffect`, glass button styles, and glass transitions for the main window, header controls, and individual result rows.
