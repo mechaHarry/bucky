@@ -7,24 +7,48 @@ struct AgendaView: View {
     @State private var noteSearchText = ""
     @State private var noteSearchRequest = 0
     @State private var noteSearchBackwards = false
-    @State private var isShowingNoteSearch = false
     @FocusState private var isNoteEditorFocused: Bool
+    @FocusState private var isNoteSearchFocused: Bool
 
     var body: some View {
         ZStack {
             columnsPane
                 .opacity(model.openedAgendaNote == nil ? 1 : 0)
                 .allowsHitTesting(model.openedAgendaNote == nil)
+                .blur(radius: model.isCreatingAgendaReminder ? 8 : 0)
+                .opacity(model.isCreatingAgendaReminder ? 0.42 : 1)
 
             if model.openedAgendaNote != nil {
                 openedNotePane
                     .transition(.opacity.combined(with: .scale(scale: 0.985)))
             }
+
+            if model.isCreatingAgendaReminder {
+                AgendaReminderDraftOverlay(
+                    reminder: $model.draftAgendaReminder,
+                    onCancel: model.cancelDraftAgendaReminder,
+                    onCreate: model.createDraftAgendaReminder
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.985)))
+            }
         }
         .padding(12)
         .animation(.smooth(duration: 0.16), value: model.openedAgendaNote?.id)
+        .animation(.smooth(duration: 0.16), value: model.isCreatingAgendaReminder)
+        .animation(.smooth(duration: 0.12), value: model.isAgendaNoteSearchVisible)
         .onChange(of: model.openedAgendaNote?.id) {
             if model.openedAgendaNote != nil {
+                DispatchQueue.main.async {
+                    isNoteEditorFocused = true
+                }
+            }
+        }
+        .onChange(of: model.isAgendaNoteSearchVisible) {
+            if model.isAgendaNoteSearchVisible {
+                DispatchQueue.main.async {
+                    isNoteSearchFocused = true
+                }
+            } else if model.openedAgendaNote != nil {
                 DispatchQueue.main.async {
                     isNoteEditorFocused = true
                 }
@@ -76,10 +100,11 @@ struct AgendaView: View {
                     .lineLimit(1)
             }
 
-            if isShowingNoteSearch {
+            if model.isAgendaNoteSearchVisible {
                 HStack(spacing: 8) {
                     TextField("Search", text: $noteSearchText)
                         .textFieldStyle(.roundedBorder)
+                        .focused($isNoteSearchFocused)
                         .onSubmit {
                             searchNote(backwards: false)
                         }
@@ -95,13 +120,14 @@ struct AgendaView: View {
             }
 
             AgendaNoteEditor(
+                noteID: model.openedAgendaNote?.id,
                 text: $model.agendaOpenNoteText,
                 isFocused: isNoteEditorFocused,
                 searchText: noteSearchText,
                 searchRequest: noteSearchRequest,
                 searchBackwards: noteSearchBackwards,
                 onBeginSearch: {
-                    isShowingNoteSearch = true
+                    model.isAgendaNoteSearchVisible = true
                 }
             )
             .focused($isNoteEditorFocused)
@@ -126,6 +152,7 @@ struct AgendaView: View {
 
 @available(macOS 26.0, *)
 private struct AgendaNoteEditor: NSViewRepresentable {
+    let noteID: UUID?
     @Binding var text: String
     let isFocused: Bool
     let searchText: String
@@ -142,8 +169,9 @@ private struct AgendaNoteEditor: NSViewRepresentable {
         scrollView.hasVerticalScroller = true
         scrollView.drawsBackground = false
 
-        let textView = VimTextView()
+        let textView = AgendaTextView()
         textView.string = text
+        textView.setSelectedRange(NSRange(location: 0, length: 0))
         textView.isRichText = false
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
@@ -160,13 +188,19 @@ private struct AgendaNoteEditor: NSViewRepresentable {
         textView.onBeginSearch = onBeginSearch
         scrollView.documentView = textView
         context.coordinator.textView = textView
+        context.coordinator.noteID = noteID
         return scrollView
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
-        guard let textView = scrollView.documentView as? VimTextView else { return }
+        guard let textView = scrollView.documentView as? AgendaTextView else { return }
         textView.onBeginSearch = onBeginSearch
-        if textView.string != text {
+        if context.coordinator.noteID != noteID {
+            context.coordinator.noteID = noteID
+            textView.string = text
+            textView.setSelectedRange(NSRange(location: 0, length: 0))
+            textView.scrollRangeToVisible(NSRange(location: 0, length: 0))
+        } else if textView.string != text {
             textView.string = text
         }
         if context.coordinator.lastSearchRequest != searchRequest {
@@ -182,8 +216,9 @@ private struct AgendaNoteEditor: NSViewRepresentable {
 
     final class Coordinator: NSObject, NSTextViewDelegate {
         @Binding var text: String
-        weak var textView: VimTextView?
+        weak var textView: AgendaTextView?
         var lastSearchRequest = 0
+        var noteID: UUID?
 
         init(text: Binding<String>) {
             _text = text
@@ -196,7 +231,7 @@ private struct AgendaNoteEditor: NSViewRepresentable {
     }
 }
 
-private final class VimTextView: NSTextView {
+private final class AgendaTextView: NSTextView {
     var onBeginSearch: (() -> Void)?
 
     override func keyDown(with event: NSEvent) {
@@ -204,25 +239,6 @@ private final class VimTextView: NSTextView {
         if flags.isEmpty, event.charactersIgnoringModifiers == "/" {
             onBeginSearch?()
             return
-        }
-
-        if flags.isEmpty, let key = event.charactersIgnoringModifiers?.lowercased() {
-            switch key {
-            case "h":
-                moveLeft(nil)
-                return
-            case "j":
-                moveDown(nil)
-                return
-            case "k":
-                moveUp(nil)
-                return
-            case "l":
-                moveRight(nil)
-                return
-            default:
-                break
-            }
         }
 
         super.keyDown(with: event)
@@ -252,6 +268,67 @@ private final class VimTextView: NSTextView {
         guard match.location != NSNotFound else { return }
         setSelectedRange(match)
         scrollRangeToVisible(match)
+    }
+}
+
+@available(macOS 26.0, *)
+private struct AgendaReminderDraftOverlay: View {
+    @Binding var reminder: AgendaReminder
+    let onCancel: () -> Void
+    let onCreate: () -> Void
+    @FocusState private var isNameFocused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("New Reminder")
+                .font(.system(size: 15, weight: .semibold))
+
+            VStack(spacing: 8) {
+                TextField("Name", text: $reminder.name)
+                    .focused($isNameFocused)
+                TextField("Date", text: $reminder.date)
+                TextField("Time", text: $reminder.time)
+                TextField("URL", text: $reminder.urlString)
+                TextEditor(text: $reminder.details)
+                    .font(.system(size: 13))
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 96)
+                    .background {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color(nsColor: .textBackgroundColor).opacity(0.28))
+                    }
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(Color(nsColor: .separatorColor).opacity(0.22), lineWidth: 1)
+                    }
+            }
+            .textFieldStyle(.roundedBorder)
+
+            HStack {
+                Button("Cancel", action: onCancel)
+                    .keyboardShortcut(.cancelAction)
+                Spacer()
+                Button("Create", action: onCreate)
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(16)
+        .frame(width: 360)
+        .background {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(.regularMaterial)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.32), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.18), radius: 24, y: 12)
+        .onAppear {
+            DispatchQueue.main.async {
+                isNameFocused = true
+            }
+        }
     }
 }
 

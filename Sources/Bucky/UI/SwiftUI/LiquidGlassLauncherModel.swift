@@ -23,6 +23,9 @@ final class LiquidGlassLauncherModel: ObservableObject {
     @Published private(set) var agendaReminders: [AgendaReminder] = []
     @Published private(set) var openedAgendaNote: AgendaNoteReference?
     @Published var agendaOpenNoteText = ""
+    @Published var isAgendaNoteSearchVisible = false
+    @Published var isCreatingAgendaReminder = false
+    @Published var draftAgendaReminder = AgendaReminder(name: "")
     @Published var isPinned = false {
         didSet { pinnedChangedAction?(isPinned) }
     }
@@ -1067,6 +1070,27 @@ final class LiquidGlassLauncherModel: ObservableObject {
         syncAgendaSnapshot()
     }
 
+    func createDraftAgendaReminder() {
+        let reminder = agendaStore.createReminder(
+            name: draftAgendaReminder.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? "New Reminder"
+                : draftAgendaReminder.name,
+            date: draftAgendaReminder.date,
+            time: draftAgendaReminder.time,
+            urlString: draftAgendaReminder.urlString,
+            details: draftAgendaReminder.details
+        )
+        syncAgendaSnapshot()
+        agendaSelectionColumn = .reminders
+        agendaSelectedReminderIndex = filteredAgendaReminders.firstIndex { $0.id == reminder.id } ?? 0
+        cancelDraftAgendaReminder()
+    }
+
+    func cancelDraftAgendaReminder() {
+        isCreatingAgendaReminder = false
+        draftAgendaReminder = AgendaReminder(name: "")
+    }
+
     private func syncAgendaSnapshot() {
         agendaNotes = agendaStore.notes
         agendaReminders = agendaStore.reminders
@@ -1089,9 +1113,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
             if agendaSelectionColumn == .notes {
                 openAgendaNoteAction?()
             } else {
-                agendaStore.createReminder()
-                syncAgendaSnapshot()
-                agendaSelectedReminderIndex = 0
+                draftAgendaReminder = AgendaReminder(name: "")
+                isCreatingAgendaReminder = true
             }
             return true
         case .removeAgendaSelection:
@@ -1110,8 +1133,17 @@ final class LiquidGlassLauncherModel: ObservableObject {
             saveOpenedAgendaNote()
             return true
         case .close:
+            if isCreatingAgendaReminder {
+                cancelDraftAgendaReminder()
+                return true
+            }
+            if isAgendaNoteSearchVisible {
+                isAgendaNoteSearchVisible = false
+                return true
+            }
             openedAgendaNote = nil
             agendaOpenNoteText = ""
+            isAgendaNoteSearchVisible = false
             return true
         case let .agendaMoveSelection(direction):
             moveAgendaSelection(direction)
@@ -1153,6 +1185,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private func openAgendaNote(_ note: AgendaNoteReference) {
         openedAgendaNote = note
         agendaOpenNoteText = (try? String(contentsOf: note.url, encoding: .utf8)) ?? ""
+        isAgendaNoteSearchVisible = false
     }
 
     private func saveOpenedAgendaNote() {

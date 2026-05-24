@@ -142,6 +142,67 @@ final class AgendaStoreTests: XCTestCase {
         XCTAssertNil(model.openedAgendaNote)
     }
 
+    @MainActor
+    @available(macOS 26.0, *)
+    func testCreatingReminderUsesDraftOverlayBeforePersisting() {
+        let fileURL = temporaryStoreURL()
+        let store = AgendaStore(fileURL: fileURL)
+        let model = LiquidGlassLauncherModel(
+            settingsStore: SettingsStore(),
+            inclusionStore: InclusionStore(),
+            exclusionStore: ExclusionStore(),
+            calculationHistoryStore: CalculationHistoryStore(),
+            agendaStore: store
+        )
+
+        model.show(mode: .agenda)
+        model.agendaSelectionColumn = .reminders
+        XCTAssertTrue(model.handle(command: .createAgendaItem))
+
+        XCTAssertTrue(model.isCreatingAgendaReminder)
+        XCTAssertTrue(store.reminders.isEmpty)
+
+        model.draftAgendaReminder.name = "Design review"
+        model.draftAgendaReminder.date = "2026-05-24"
+        model.draftAgendaReminder.time = "09:30"
+        model.draftAgendaReminder.urlString = "bucky://agenda"
+        model.draftAgendaReminder.details = "Review the reminder overlay"
+        model.createDraftAgendaReminder()
+
+        XCTAssertFalse(model.isCreatingAgendaReminder)
+        XCTAssertEqual(store.reminders.map(\.name), ["Design review"])
+        XCTAssertEqual(store.reminders.first?.date, "2026-05-24")
+        XCTAssertEqual(store.reminders.first?.time, "09:30")
+        XCTAssertEqual(store.reminders.first?.urlString, "bucky://agenda")
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testClosingAgendaSearchDoesNotCloseOpenedNote() throws {
+        let fileURL = temporaryStoreURL()
+        let noteURL = fileURL.deletingLastPathComponent().appendingPathComponent("Search.md")
+        try "alpha beta".write(to: noteURL, atomically: true, encoding: .utf8)
+        let store = AgendaStore(fileURL: fileURL)
+        let note = store.rememberNote(url: noteURL)
+        let model = LiquidGlassLauncherModel(
+            settingsStore: SettingsStore(),
+            inclusionStore: InclusionStore(),
+            exclusionStore: ExclusionStore(),
+            calculationHistoryStore: CalculationHistoryStore(),
+            agendaStore: store
+        )
+
+        model.show(mode: .agenda)
+        model.agendaSelectionColumn = .notes
+        XCTAssertTrue(model.handle(command: .open))
+        model.isAgendaNoteSearchVisible = true
+
+        XCTAssertTrue(model.handle(command: .close))
+
+        XCTAssertFalse(model.isAgendaNoteSearchVisible)
+        XCTAssertEqual(model.openedAgendaNote?.id, note.id)
+    }
+
     private func temporaryStoreURL() -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("BuckyAgendaStoreTests-\(UUID().uuidString)", isDirectory: true)
