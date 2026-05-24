@@ -110,6 +110,38 @@ final class AgendaStoreTests: XCTestCase {
         XCTAssertTrue(store.reminders.isEmpty)
     }
 
+    @MainActor
+    @available(macOS 26.0, *)
+    func testOpeningNoteUsesExplicitSaveAndEscapeClosesEditor() throws {
+        let fileURL = temporaryStoreURL()
+        let noteURL = fileURL.deletingLastPathComponent().appendingPathComponent("Draft.md")
+        try "original".write(to: noteURL, atomically: true, encoding: .utf8)
+        let store = AgendaStore(fileURL: fileURL)
+        let note = store.rememberNote(url: noteURL)
+        let model = LiquidGlassLauncherModel(
+            settingsStore: SettingsStore(),
+            inclusionStore: InclusionStore(),
+            exclusionStore: ExclusionStore(),
+            calculationHistoryStore: CalculationHistoryStore(),
+            agendaStore: store
+        )
+
+        model.show(mode: .agenda)
+        model.agendaSelectionColumn = .notes
+        XCTAssertTrue(model.handle(command: .open))
+        XCTAssertEqual(model.openedAgendaNote?.id, note.id)
+        XCTAssertEqual(model.agendaOpenNoteText, "original")
+
+        model.agendaOpenNoteText = "draft text"
+        XCTAssertEqual(try String(contentsOf: noteURL, encoding: .utf8), "original")
+
+        XCTAssertTrue(model.handle(command: .saveAgendaNote))
+        XCTAssertEqual(try String(contentsOf: noteURL, encoding: .utf8), "draft text")
+
+        XCTAssertTrue(model.handle(command: .close))
+        XCTAssertNil(model.openedAgendaNote)
+    }
+
     private func temporaryStoreURL() -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("BuckyAgendaStoreTests-\(UUID().uuidString)", isDirectory: true)

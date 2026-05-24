@@ -17,6 +17,7 @@ enum LauncherCommand {
     case togglePin
     case createAgendaItem
     case removeAgendaSelection
+    case saveAgendaNote
     case agendaMoveSelection(AgendaNavigationDirection)
     case prepareSpaceInteraction
     case space

@@ -223,12 +223,15 @@ final class SettingsViewLayoutTests: XCTestCase {
         XCTAssertTrue(agendaSource.contains("struct AgendaView: View"))
         XCTAssertTrue(agendaSource.contains("AgendaColumn(title: \"Notes\""))
         XCTAssertTrue(agendaSource.contains("AgendaColumn(title: \"Reminders\""))
-        XCTAssertTrue(agendaSource.contains("TextEditor(text: $noteText)"))
+        XCTAssertTrue(agendaSource.contains("if model.openedAgendaNote != nil"))
+        XCTAssertTrue(agendaSource.contains(".opacity(model.openedAgendaNote == nil ? 1 : 0)"))
+        XCTAssertTrue(agendaSource.contains("TextEditor(text: $model.agendaOpenNoteText)"))
         XCTAssertTrue(agendaSource.contains("TextField(\"Name\", text: $draftReminder.name)"))
         XCTAssertTrue(agendaSource.contains("TextField(\"Date\", text: $draftReminder.date)"))
         XCTAssertTrue(agendaSource.contains("TextField(\"Time\", text: $draftReminder.time)"))
         XCTAssertTrue(agendaSource.contains("TextField(\"URL\", text: $draftReminder.urlString)"))
         XCTAssertTrue(agendaSource.contains("TextEditor(text: $draftReminder.details)"))
+        XCTAssertFalse(agendaSource.contains(".onChange(of: noteText)"))
         XCTAssertTrue(launcher.contains("AgendaView(model: model)"))
     }
 

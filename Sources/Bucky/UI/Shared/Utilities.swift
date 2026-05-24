@@ -177,7 +177,7 @@ enum LauncherKeyRoutingPolicy {
             return false
         }
 
-        let agendaReservedLauncherKeys: Set<String> = ["=", "-"]
+        let agendaReservedLauncherKeys: Set<String> = ["=", "-", "s"]
         let reservedLauncherKeys: Set<String> = Set(["1", "2", "3", "4", "5", "r", ",", "p", "[", "]"])
             .union(agendaReservedLauncherKeys)
         guard !reservedLauncherKeys.contains(key) else {
@@ -216,6 +216,11 @@ extension NSEvent {
     var isCommandMinus: Bool {
         modifierFlags.intersection(.deviceIndependentFlagsMask) == .command
             && charactersIgnoringModifiers == "-"
+    }
+
+    var isCommandS: Bool {
+        modifierFlags.intersection(.deviceIndependentFlagsMask) == .command
+            && charactersIgnoringModifiers?.lowercased() == "s"
     }
 
     var optionArrowDirection: AgendaNavigationDirection? {

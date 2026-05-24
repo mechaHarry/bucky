@@ -3,8 +3,6 @@ import SwiftUI
 @available(macOS 26.0, *)
 struct AgendaView: View {
     @ObservedObject var model: LiquidGlassLauncherModel
-    @State private var noteText = ""
-    @State private var loadedNoteID: UUID?
     @State private var draftReminder = AgendaReminder(name: "")
 
     private var selectedNote: AgendaNoteReference? {
@@ -20,6 +18,31 @@ struct AgendaView: View {
     }
 
     var body: some View {
+        ZStack {
+            columnsPane
+                .opacity(model.openedAgendaNote == nil ? 1 : 0)
+                .allowsHitTesting(model.openedAgendaNote == nil)
+
+            if model.openedAgendaNote != nil {
+                openedNotePane
+                    .transition(.opacity.combined(with: .scale(scale: 0.985)))
+            }
+        }
+        .padding(12)
+        .animation(.smooth(duration: 0.16), value: model.openedAgendaNote?.id)
+        .onAppear {
+            loadSelectedReminder()
+        }
+        .onChange(of: model.agendaSelectedReminderIndex) {
+            loadSelectedReminder()
+        }
+        .onChange(of: model.filteredAgendaReminders) {
+            loadSelectedReminder()
+        }
+    }
+
+    @ViewBuilder
+    private var columnsPane: some View {
         HStack(spacing: 12) {
             AgendaColumn(title: "Notes", isActive: model.agendaSelectionColumn == .notes) {
                 ForEach(Array(model.filteredAgendaNotes.enumerated()), id: \.element.id) { index, note in
@@ -54,23 +77,6 @@ struct AgendaView: View {
 
             detailPane
         }
-        .padding(12)
-        .onAppear {
-            loadSelectedNote()
-            loadSelectedReminder()
-        }
-        .onChange(of: model.agendaSelectedNoteIndex) {
-            loadSelectedNote()
-        }
-        .onChange(of: model.filteredAgendaNotes) {
-            loadSelectedNote()
-        }
-        .onChange(of: model.agendaSelectedReminderIndex) {
-            loadSelectedReminder()
-        }
-        .onChange(of: model.filteredAgendaReminders) {
-            loadSelectedReminder()
-        }
     }
 
     @ViewBuilder
@@ -83,12 +89,7 @@ struct AgendaView: View {
                         .font(.system(size: 15, weight: .semibold))
                         .lineLimit(1)
 
-                    TextEditor(text: $noteText)
-                        .font(.system(size: 13, design: .monospaced))
-                        .scrollContentBackground(.hidden)
-                        .onChange(of: noteText) {
-                            saveSelectedNote()
-                        }
+                    AgendaPlaceholder(text: "Press Return to open")
                 } else {
                     AgendaPlaceholder(text: "No notes")
                 }
@@ -99,6 +100,30 @@ struct AgendaView: View {
                     AgendaPlaceholder(text: "No reminders")
                 }
             }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color(nsColor: .controlBackgroundColor).opacity(0.26))
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.28), lineWidth: 1)
+        }
+    }
+
+    private var openedNotePane: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let note = model.openedAgendaNote {
+                Text(note.title)
+                    .font(.system(size: 15, weight: .semibold))
+                    .lineLimit(1)
+            }
+
+            TextEditor(text: $model.agendaOpenNoteText)
+                .font(.system(size: 13, design: .monospaced))
+                .scrollContentBackground(.hidden)
         }
         .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -126,23 +151,6 @@ struct AgendaView: View {
         .onChange(of: draftReminder) {
             model.updateAgendaReminder(draftReminder)
         }
-    }
-
-    private func loadSelectedNote() {
-        guard let selectedNote else {
-            loadedNoteID = nil
-            noteText = ""
-            return
-        }
-        guard loadedNoteID != selectedNote.id else { return }
-        loadedNoteID = selectedNote.id
-        noteText = (try? String(contentsOf: selectedNote.url, encoding: .utf8)) ?? ""
-    }
-
-    private func saveSelectedNote() {
-        guard let selectedNote,
-              loadedNoteID == selectedNote.id else { return }
-        try? noteText.write(to: selectedNote.url, atomically: true, encoding: .utf8)
     }
 
     private func loadSelectedReminder() {
