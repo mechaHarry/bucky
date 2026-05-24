@@ -216,7 +216,7 @@ final class SettingsViewLayoutTests: XCTestCase {
         XCTAssertFalse(source.contains("HelpShortcut(title: \"Preview\", keys: \"Space\""))
     }
 
-    func testAgendaViewUsesTwoColumnsAndEditableDetail() throws {
+    func testAgendaViewUsesTwoColumnsAndFullNoteEditor() throws {
         let agendaSource = try source(named: "Sources/Bucky/UI/SwiftUI/AgendaView.swift")
         let launcher = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
 
@@ -225,14 +225,18 @@ final class SettingsViewLayoutTests: XCTestCase {
         XCTAssertTrue(agendaSource.contains("AgendaColumn(title: \"Reminders\""))
         XCTAssertTrue(agendaSource.contains("if model.openedAgendaNote != nil"))
         XCTAssertTrue(agendaSource.contains(".opacity(model.openedAgendaNote == nil ? 1 : 0)"))
-        XCTAssertTrue(agendaSource.contains("TextEditor(text: $model.agendaOpenNoteText)"))
-        XCTAssertTrue(agendaSource.contains("TextField(\"Name\", text: $draftReminder.name)"))
-        XCTAssertTrue(agendaSource.contains("TextField(\"Date\", text: $draftReminder.date)"))
-        XCTAssertTrue(agendaSource.contains("TextField(\"Time\", text: $draftReminder.time)"))
-        XCTAssertTrue(agendaSource.contains("TextField(\"URL\", text: $draftReminder.urlString)"))
-        XCTAssertTrue(agendaSource.contains("TextEditor(text: $draftReminder.details)"))
+        XCTAssertTrue(agendaSource.contains("@FocusState private var isNoteEditorFocused"))
+        XCTAssertTrue(agendaSource.contains("AgendaNoteEditor("))
+        XCTAssertTrue(agendaSource.contains("text: $model.agendaOpenNoteText"))
+        XCTAssertTrue(agendaSource.contains("TextField(\"Search\", text: $noteSearchText)"))
+        XCTAssertTrue(agendaSource.contains(".focused($isNoteEditorFocused)"))
+        XCTAssertTrue(agendaSource.contains(".onChange(of: model.openedAgendaNote?.id)"))
         XCTAssertFalse(agendaSource.contains(".onChange(of: noteText)"))
+        XCTAssertFalse(agendaSource.contains("detailPane"))
+        XCTAssertFalse(agendaSource.contains("reminderEditor"))
         XCTAssertTrue(launcher.contains("AgendaView(model: model)"))
+        XCTAssertTrue(launcher.contains("!(model.mode == .agenda && model.openedAgendaNote != nil)"))
+        XCTAssertTrue(launcher.contains(".onChange(of: model.openedAgendaNote?.id)"))
     }
 
     func testSettingsAndHelpSidebarsUseBackCollapseControls() throws {

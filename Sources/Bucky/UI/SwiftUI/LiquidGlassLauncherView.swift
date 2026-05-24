@@ -72,6 +72,9 @@ struct LiquidGlassLauncherView: View {
         .onChange(of: model.filteredItemIDs) {
             preloadApplicationIcons()
         }
+        .onChange(of: model.openedAgendaNote?.id) {
+            synchronizeSearchFocus()
+        }
         .animation(resultUpdateAnimation, value: model.mode)
         .animation(settingsModeAnimation, value: model.isShowingSettings)
         .animation(settingsModeAnimation, value: model.isShowingHelp)
@@ -117,11 +120,16 @@ struct LiquidGlassLauncherView: View {
 
     private func synchronizeSearchFocus() {
         let shouldFocus = model.isPresented && !model.isShowingSettings && !model.isShowingHelp && model.mode.acceptsTextInput
+            && !(model.mode == .agenda && model.openedAgendaNote != nil)
         isSearchFocused = false
         guard shouldFocus else { return }
 
         DispatchQueue.main.async {
-            guard model.isPresented, !model.isShowingSettings, !model.isShowingHelp, model.mode.acceptsTextInput else { return }
+            guard model.isPresented,
+                  !model.isShowingSettings,
+                  !model.isShowingHelp,
+                  model.mode.acceptsTextInput,
+                  !(model.mode == .agenda && model.openedAgendaNote != nil) else { return }
             isSearchFocused = true
         }
     }

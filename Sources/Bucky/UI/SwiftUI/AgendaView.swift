@@ -1,21 +1,14 @@
+import AppKit
 import SwiftUI
 
 @available(macOS 26.0, *)
 struct AgendaView: View {
     @ObservedObject var model: LiquidGlassLauncherModel
-    @State private var draftReminder = AgendaReminder(name: "")
-
-    private var selectedNote: AgendaNoteReference? {
-        let notes = model.filteredAgendaNotes
-        guard notes.indices.contains(model.agendaSelectedNoteIndex) else { return nil }
-        return notes[model.agendaSelectedNoteIndex]
-    }
-
-    private var selectedReminder: AgendaReminder? {
-        let reminders = model.filteredAgendaReminders
-        guard reminders.indices.contains(model.agendaSelectedReminderIndex) else { return nil }
-        return reminders[model.agendaSelectedReminderIndex]
-    }
+    @State private var noteSearchText = ""
+    @State private var noteSearchRequest = 0
+    @State private var noteSearchBackwards = false
+    @State private var isShowingNoteSearch = false
+    @FocusState private var isNoteEditorFocused: Bool
 
     var body: some View {
         ZStack {
@@ -30,15 +23,14 @@ struct AgendaView: View {
         }
         .padding(12)
         .animation(.smooth(duration: 0.16), value: model.openedAgendaNote?.id)
-        .onAppear {
-            loadSelectedReminder()
+        .onChange(of: model.openedAgendaNote?.id) {
+            if model.openedAgendaNote != nil {
+                DispatchQueue.main.async {
+                    isNoteEditorFocused = true
+                }
+            }
         }
-        .onChange(of: model.agendaSelectedReminderIndex) {
-            loadSelectedReminder()
-        }
-        .onChange(of: model.filteredAgendaReminders) {
-            loadSelectedReminder()
-        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     @ViewBuilder
@@ -70,46 +62,9 @@ struct AgendaView: View {
                     .onTapGesture {
                         model.agendaSelectionColumn = .reminders
                         model.agendaSelectedReminderIndex = index
-                        loadReminderDraft(reminder)
                     }
                 }
             }
-
-            detailPane
-        }
-    }
-
-    @ViewBuilder
-    private var detailPane: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            switch model.agendaSelectionColumn {
-            case .notes:
-                if let note = selectedNote {
-                    Text(note.title)
-                        .font(.system(size: 15, weight: .semibold))
-                        .lineLimit(1)
-
-                    AgendaPlaceholder(text: "Press Return to open")
-                } else {
-                    AgendaPlaceholder(text: "No notes")
-                }
-            case .reminders:
-                if selectedReminder != nil {
-                    reminderEditor
-                } else {
-                    AgendaPlaceholder(text: "No reminders")
-                }
-            }
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor).opacity(0.26))
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.28), lineWidth: 1)
         }
     }
 
@@ -121,9 +76,35 @@ struct AgendaView: View {
                     .lineLimit(1)
             }
 
-            TextEditor(text: $model.agendaOpenNoteText)
-                .font(.system(size: 13, design: .monospaced))
-                .scrollContentBackground(.hidden)
+            if isShowingNoteSearch {
+                HStack(spacing: 8) {
+                    TextField("Search", text: $noteSearchText)
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit {
+                            searchNote(backwards: false)
+                        }
+
+                    Button("Prev") {
+                        searchNote(backwards: true)
+                    }
+
+                    Button("Next") {
+                        searchNote(backwards: false)
+                    }
+                }
+            }
+
+            AgendaNoteEditor(
+                text: $model.agendaOpenNoteText,
+                isFocused: isNoteEditorFocused,
+                searchText: noteSearchText,
+                searchRequest: noteSearchRequest,
+                searchBackwards: noteSearchBackwards,
+                onBeginSearch: {
+                    isShowingNoteSearch = true
+                }
+            )
+            .focused($isNoteEditorFocused)
         }
         .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -137,33 +118,140 @@ struct AgendaView: View {
         }
     }
 
-    private var reminderEditor: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            TextField("Name", text: $draftReminder.name)
-            TextField("Date", text: $draftReminder.date)
-            TextField("Time", text: $draftReminder.time)
-            TextField("URL", text: $draftReminder.urlString)
-            TextEditor(text: $draftReminder.details)
-                .scrollContentBackground(.hidden)
-                .frame(minHeight: 120)
+    private func searchNote(backwards: Bool) {
+        noteSearchBackwards = backwards
+        noteSearchRequest += 1
+    }
+}
+
+@available(macOS 26.0, *)
+private struct AgendaNoteEditor: NSViewRepresentable {
+    @Binding var text: String
+    let isFocused: Bool
+    let searchText: String
+    let searchRequest: Int
+    let searchBackwards: Bool
+    let onBeginSearch: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(text: $text)
+    }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSScrollView()
+        scrollView.hasVerticalScroller = true
+        scrollView.drawsBackground = false
+
+        let textView = VimTextView()
+        textView.string = text
+        textView.isRichText = false
+        textView.isAutomaticQuoteSubstitutionEnabled = false
+        textView.isAutomaticDashSubstitutionEnabled = false
+        textView.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
+        textView.backgroundColor = .clear
+        textView.textContainerInset = NSSize(width: 6, height: 6)
+        textView.minSize = NSSize(width: 0, height: 0)
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
+        textView.textContainer?.widthTracksTextView = true
+        textView.delegate = context.coordinator
+        textView.onBeginSearch = onBeginSearch
+        scrollView.documentView = textView
+        context.coordinator.textView = textView
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        guard let textView = scrollView.documentView as? VimTextView else { return }
+        textView.onBeginSearch = onBeginSearch
+        if textView.string != text {
+            textView.string = text
         }
-        .textFieldStyle(.roundedBorder)
-        .onChange(of: draftReminder) {
-            model.updateAgendaReminder(draftReminder)
+        if context.coordinator.lastSearchRequest != searchRequest {
+            context.coordinator.lastSearchRequest = searchRequest
+            textView.find(searchText, backwards: searchBackwards)
+        }
+        if isFocused, textView.window?.firstResponder !== textView {
+            DispatchQueue.main.async {
+                textView.window?.makeFirstResponder(textView)
+            }
         }
     }
 
-    private func loadSelectedReminder() {
-        guard let selectedReminder else {
-            draftReminder = AgendaReminder(name: "")
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        @Binding var text: String
+        weak var textView: VimTextView?
+        var lastSearchRequest = 0
+
+        init(text: Binding<String>) {
+            _text = text
+        }
+
+        func textDidChange(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else { return }
+            text = textView.string
+        }
+    }
+}
+
+private final class VimTextView: NSTextView {
+    var onBeginSearch: (() -> Void)?
+
+    override func keyDown(with event: NSEvent) {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if flags.isEmpty, event.charactersIgnoringModifiers == "/" {
+            onBeginSearch?()
             return
         }
-        loadReminderDraft(selectedReminder)
+
+        if flags.isEmpty, let key = event.charactersIgnoringModifiers?.lowercased() {
+            switch key {
+            case "h":
+                moveLeft(nil)
+                return
+            case "j":
+                moveDown(nil)
+                return
+            case "k":
+                moveUp(nil)
+                return
+            case "l":
+                moveRight(nil)
+                return
+            default:
+                break
+            }
+        }
+
+        super.keyDown(with: event)
     }
 
-    private func loadReminderDraft(_ reminder: AgendaReminder) {
-        guard draftReminder.id != reminder.id else { return }
-        draftReminder = reminder
+    func find(_ query: String, backwards: Bool) {
+        guard !query.isEmpty else { return }
+        let source = string as NSString
+        let selectedRange = selectedRange()
+        let options: NSString.CompareOptions = backwards ? [.caseInsensitive, .backwards] : [.caseInsensitive]
+        let range: NSRange
+        if backwards {
+            range = NSRange(location: 0, length: selectedRange.location)
+        } else {
+            let start = selectedRange.location + selectedRange.length
+            range = NSRange(location: start, length: max(source.length - start, 0))
+        }
+
+        var match = source.range(of: query, options: options, range: range)
+        if match.location == NSNotFound {
+            match = source.range(
+                of: query,
+                options: options,
+                range: NSRange(location: 0, length: source.length)
+            )
+        }
+        guard match.location != NSNotFound else { return }
+        setSelectedRange(match)
+        scrollRangeToVisible(match)
     }
 }
 
@@ -188,8 +276,7 @@ private struct AgendaColumn<Content: View>: View {
             .scrollIndicators(.hidden)
         }
         .padding(10)
-        .frame(width: 190, alignment: .topLeading)
-        .frame(maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(Color(nsColor: .controlBackgroundColor).opacity(isActive ? 0.34 : 0.22))

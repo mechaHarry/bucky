@@ -137,6 +137,32 @@ extension String {
 }
 
 enum LauncherKeyRoutingPolicy {
+    static func agendaNavigationDirection(
+        modifierFlags: NSEvent.ModifierFlags,
+        keyCode: UInt16
+    ) -> AgendaNavigationDirection? {
+        let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard flags.contains(.option),
+              !flags.contains(.command),
+              !flags.contains(.control),
+              !flags.contains(.shift) else {
+            return nil
+        }
+
+        switch keyCode {
+        case UInt16(kVK_UpArrow):
+            return .up
+        case UInt16(kVK_DownArrow):
+            return .down
+        case UInt16(kVK_LeftArrow):
+            return .left
+        case UInt16(kVK_RightArrow):
+            return .right
+        default:
+            return nil
+        }
+    }
+
     static func shouldRouteAlphaNumeric(mode: LauncherMode, fileFocusState: FileBrowserFocusState?) -> Bool {
         guard mode == .files else { return true }
         return fileFocusState != .renaming
@@ -224,19 +250,10 @@ extension NSEvent {
     }
 
     var optionArrowDirection: AgendaNavigationDirection? {
-        guard modifierFlags.intersection(.deviceIndependentFlagsMask) == .option else { return nil }
-        switch keyCode {
-        case UInt16(kVK_UpArrow):
-            return .up
-        case UInt16(kVK_DownArrow):
-            return .down
-        case UInt16(kVK_LeftArrow):
-            return .left
-        case UInt16(kVK_RightArrow):
-            return .right
-        default:
-            return nil
-        }
+        LauncherKeyRoutingPolicy.agendaNavigationDirection(
+            modifierFlags: modifierFlags,
+            keyCode: keyCode
+        )
     }
 
     var firstAlphaNumericCharacter: Character? {

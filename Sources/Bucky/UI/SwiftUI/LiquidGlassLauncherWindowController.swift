@@ -497,6 +497,16 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
                 return event
             }
 
+            if self.model.mode == .agenda, self.model.openedAgendaNote != nil {
+                if event.isCommandS {
+                    return self.handleLauncherCommand(.saveAgendaNote) ? nil : event
+                }
+                if event.keyCode == UInt16(kVK_Escape) {
+                    return self.handleLauncherCommand(.close) ? nil : event
+                }
+                return event
+            }
+
             if let mode = event.commandNumberMode {
                 return self.handleLauncherCommand(.switchMode(mode)) ? nil : event
             }

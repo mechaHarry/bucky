@@ -173,7 +173,7 @@ final class LauncherModeRoutingTests: XCTestCase {
     }
 
     func testReservedLauncherCommandKeysDoNotPassThroughAsTextEditingCommands() {
-        for key in ["1", "2", "3", "4", "5", "r", ",", "p", "[", "]"] {
+        for key in ["1", "2", "3", "4", "5", "r", ",", "p", "[", "]", "=", "-", "s"] {
             XCTAssertFalse(
                 LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
                     mode: .applications,
@@ -185,6 +185,20 @@ final class LauncherModeRoutingTests: XCTestCase {
                 "Expected Command+\(key) to remain reserved for launcher routing"
             )
         }
+    }
+
+    func testOptionArrowNavigationIgnoresSystemAddedDeviceFlags() {
+        XCTAssertEqual(
+            LauncherKeyRoutingPolicy.agendaNavigationDirection(
+                modifierFlags: [.option, .numericPad],
+                keyCode: UInt16(kVK_RightArrow)
+            ),
+            .right
+        )
+        XCTAssertNil(LauncherKeyRoutingPolicy.agendaNavigationDirection(
+            modifierFlags: [.option, .command],
+            keyCode: UInt16(kVK_RightArrow)
+        ))
     }
 
     func testFilesRenamePassesThroughNativeEditingCommands() {
@@ -377,6 +391,7 @@ final class LauncherModeRoutingTests: XCTestCase {
         XCTAssertTrue(utilities.contains("var isCommandMinus: Bool"))
         XCTAssertTrue(utilities.contains("var isCommandS: Bool"))
         XCTAssertTrue(utilities.contains("var optionArrowDirection: AgendaNavigationDirection?"))
+        XCTAssertTrue(utilities.contains("LauncherKeyRoutingPolicy.agendaNavigationDirection("))
         XCTAssertTrue(utilities.contains("\"=\", \"-\", \"s\""))
         XCTAssertTrue(controller.contains("event.isCommandEqual"))
         XCTAssertTrue(controller.contains(".createAgendaItem"))
