@@ -100,6 +100,8 @@ Exclusions are applied after indexing and inclusions. An explicitly included app
 
 - Settings opens with Command+Comma and from the menu bar item inside the existing Bucky launcher panel.
 - Command+Comma toggles the launcher panel between launcher mode and settings mode. The global launcher hotkey also returns from settings to launcher mode.
+- Help opens with Command+Slash inside the same launcher panel. Help lists global and per-mode hotkeys in a glass split pane.
+- Settings and Help include a Back to Bucky control in the sidebar footer, alongside the sidebar collapse control when collapsed.
 - Settings shares the same borderless transparent `BuckyPanelWindow` and hosting view architecture as the launcher, avoiding a second settings panel.
 - Settings supports:
   - Recording the global hotkey.

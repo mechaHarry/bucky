@@ -252,6 +252,11 @@ extension NSEvent {
         return flags == .command && charactersIgnoringModifiers == ","
     }
 
+    var isCommandSlash: Bool {
+        let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
+        return flags == .command && charactersIgnoringModifiers == "/"
+    }
+
     var isCommandP: Bool {
         let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
         return flags == .command && charactersIgnoringModifiers?.lowercased() == "p"

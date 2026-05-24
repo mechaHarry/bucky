@@ -125,6 +125,36 @@ enum LauncherMode: Int, CaseIterable {
         self != .files
     }
 
+    var shortTitle: String {
+        switch self {
+        case .applications:
+            return "Apps"
+        case .calculator:
+            return "Calculator"
+        case .dictionary:
+            return "Dictionary"
+        case .files:
+            return "Files"
+        case .agenda:
+            return "Agenda"
+        }
+    }
+
+    var helpSystemImage: String {
+        switch self {
+        case .applications:
+            return "square.grid.2x2"
+        case .calculator:
+            return "123.rectangle.fill"
+        case .dictionary:
+            return "text.book.closed"
+        case .files:
+            return "folder"
+        case .agenda:
+            return "checklist"
+        }
+    }
+
     private func adjacentMode(offset: Int) -> LauncherMode {
         guard let index = Self.ordered.firstIndex(of: self) else { return self }
         let count = Self.ordered.count

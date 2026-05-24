@@ -80,6 +80,8 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
 
         model.hideAction = { [weak self] in self?.hide() }
         model.openSettingsAction = { [weak self] in self?.toggleSettings() }
+        model.openHelpAction = { [weak self] in self?.toggleHelp() }
+        model.returnToLauncherAction = { [weak self] in self?.showLauncherFromPanel() }
         model.reindexAction = { [weak self] in self?.reindex() }
         model.pinnedChangedAction = { [weak self] isPinned in
             self?.setPinned(isPinned)
@@ -115,8 +117,8 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     }
 
     func toggle() {
-        if model.isShowingSettings {
-            showLauncherFromSettings()
+        if model.isShowingSettings || model.isShowingHelp {
+            showLauncherFromPanel()
             return
         }
 
@@ -166,17 +168,54 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         finishShow(transitionID: visibilityTransitionID)
     }
 
+    private func showHelp() {
+        beginVisibilityTransition(.showing)
+        closeQuickLookPreviewPanel()
+        cancelSpaceHoldState(deliverEndHold: true)
+        cancelOptionPinnedFocus()
+        settingsModel.refresh()
+
+        let shouldMaterialize = !window.isVisible || !model.isPresented
+        if shouldMaterialize {
+            model.isPresented = false
+        }
+        model.showHelp()
+        if shouldMaterialize {
+            positionWindow(animated: false)
+        }
+        window.alphaValue = 1
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        model.setWindowKeyState(true)
+        if shouldMaterialize {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                model.isPresented = true
+            }
+        }
+        finishShow(transitionID: visibilityTransitionID)
+    }
+
     private func toggleSettings() {
         if model.isShowingSettings {
-            showLauncherFromSettings()
+            showLauncherFromPanel()
         } else {
             showSettings()
         }
     }
 
-    private func showLauncherFromSettings() {
+    private func toggleHelp() {
+        if model.isShowingHelp {
+            showLauncherFromPanel()
+        } else {
+            showHelp()
+        }
+    }
+
+    private func showLauncherFromPanel() {
         stopRecordingSettingsHotKey()
-        model.hideSettings()
+        model.showLauncherSurface()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         model.setWindowKeyState(true)
@@ -373,6 +412,23 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
                 if event.isCommandComma {
                     return self.handleLauncherCommand(.settings) ? nil : event
                 }
+                if event.isCommandSlash {
+                    return self.handleLauncherCommand(.help) ? nil : event
+                }
+                if event.keyCode == UInt16(kVK_Escape) {
+                    return self.handleLauncherCommand(.close) ? nil : event
+                }
+                return event
+            }
+
+            if self.model.isShowingHelp {
+                guard event.type == .keyDown else { return event }
+                if event.isCommandSlash {
+                    return self.handleLauncherCommand(.help) ? nil : event
+                }
+                if event.isCommandComma {
+                    return self.handleLauncherCommand(.settings) ? nil : event
+                }
                 if event.keyCode == UInt16(kVK_Escape) {
                     return self.handleLauncherCommand(.close) ? nil : event
                 }
@@ -414,6 +470,9 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             }
             if event.isCommandComma {
                 return self.handleLauncherCommand(.settings) ? nil : event
+            }
+            if event.isCommandSlash {
+                return self.handleLauncherCommand(.help) ? nil : event
             }
             if event.isCommandP {
                 return self.handleLauncherCommand(.togglePin) ? nil : event
@@ -494,6 +553,9 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         if event.isCommandComma {
             return handleLauncherCommand(.settings)
         }
+        if event.isCommandSlash {
+            return handleLauncherCommand(.help)
+        }
         if event.isCommandP {
             return handleLauncherCommand(.togglePin)
         }
@@ -545,6 +607,25 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             switch command {
             case .settings:
                 toggleSettings()
+                return true
+            case .help:
+                showHelp()
+                return true
+            case .close:
+                hide()
+                return true
+            default:
+                return false
+            }
+        }
+
+        if model.isShowingHelp {
+            switch command {
+            case .help:
+                toggleHelp()
+                return true
+            case .settings:
+                showSettings()
                 return true
             case .close:
                 hide()

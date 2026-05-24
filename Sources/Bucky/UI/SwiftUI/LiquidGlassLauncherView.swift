@@ -53,6 +53,12 @@ struct LiquidGlassLauncherView: View {
                 preloadApplicationIcons()
             }
         }
+        .onChange(of: model.isShowingHelp) {
+            synchronizeSearchFocus()
+            if !model.isShowingHelp {
+                preloadApplicationIcons()
+            }
+        }
         .onChange(of: model.isPresented) { _, isPresented in
             if isPresented {
                 synchronizeSearchFocus()
@@ -76,6 +82,9 @@ struct LiquidGlassLauncherView: View {
             if model.isShowingSettings {
                 settingsSurface
                     .transition(settingsModeTransition)
+            } else if model.isShowingHelp {
+                helpSurface
+                    .transition(settingsModeTransition)
             } else {
                 launcherSurface
                     .transition(settingsModeTransition)
@@ -90,18 +99,28 @@ struct LiquidGlassLauncherView: View {
     }
 
     private var settingsSurface: some View {
-        SettingsView(model: settingsModel)
+        SettingsView(model: settingsModel, onBack: {
+            model.returnToLauncherAction?()
+        })
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+    }
+
+    private var helpSurface: some View {
+        HelpView(globalHotKeyTitle: settingsModel.hotKeyTitle, onBack: {
+            model.returnToLauncherAction?()
+        })
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(Rectangle())
     }
 
     private func synchronizeSearchFocus() {
-        let shouldFocus = model.isPresented && !model.isShowingSettings && model.mode.acceptsTextInput
+        let shouldFocus = model.isPresented && !model.isShowingSettings && !model.isShowingHelp && model.mode.acceptsTextInput
         isSearchFocused = false
         guard shouldFocus else { return }
 
         DispatchQueue.main.async {
-            guard model.isPresented, model.mode.acceptsTextInput else { return }
+            guard model.isPresented, !model.isShowingSettings, !model.isShowingHelp, model.mode.acceptsTextInput else { return }
             isSearchFocused = true
         }
     }

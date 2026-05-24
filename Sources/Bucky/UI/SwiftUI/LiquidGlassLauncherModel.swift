@@ -15,12 +15,15 @@ final class LiquidGlassLauncherModel: ObservableObject {
     @Published var isPresented = false
     @Published var isWindowKey = true
     @Published var isShowingSettings = false
+    @Published var isShowingHelp = false
     @Published var isPinned = false {
         didSet { pinnedChangedAction?(isPinned) }
     }
 
     var hideAction: (() -> Void)?
     var openSettingsAction: (() -> Void)?
+    var openHelpAction: (() -> Void)?
+    var returnToLauncherAction: (() -> Void)?
     var reindexAction: (() -> Void)?
     var pinnedChangedAction: ((Bool) -> Void)?
     var modeWillSwitchAction: ((LauncherMode, LauncherMode) -> Void)?
@@ -168,6 +171,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
 
     func show(mode: LauncherMode) {
         isShowingSettings = false
+        isShowingHelp = false
         applicationQuery = ""
         calculatorQuery = ""
         dictionaryQuery = ""
@@ -181,11 +185,27 @@ final class LiquidGlassLauncherModel: ObservableObject {
 
     func showSettings() {
         isShowingSettings = true
+        isShowingHelp = false
         isPinned = false
     }
 
     func hideSettings() {
         isShowingSettings = false
+    }
+
+    func showHelp() {
+        isShowingSettings = false
+        isShowingHelp = true
+        isPinned = false
+    }
+
+    func hideHelp() {
+        isShowingHelp = false
+    }
+
+    func showLauncherSurface() {
+        isShowingSettings = false
+        isShowingHelp = false
     }
 
     func setWindowKeyState(_ isWindowKey: Bool) {
@@ -247,6 +267,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
             reindex()
         case .settings:
             openSettingsAction?()
+        case .help:
+            openHelpAction?()
         case let .switchMode(nextMode):
             return switchMode(nextMode)
         case .previousMode:
