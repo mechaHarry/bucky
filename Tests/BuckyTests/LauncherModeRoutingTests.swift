@@ -364,6 +364,27 @@ final class LauncherModeRoutingTests: XCTestCase {
     }
 
     @available(macOS 26.0, *)
+    func testAgendaKeyboardCommandsAreReservedAndRouted() throws {
+        let command = try source(named: "Sources/Bucky/UI/Shared/LauncherCommand.swift")
+        let controller = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
+        let utilities = try source(named: "Sources/Bucky/UI/Shared/Utilities.swift")
+
+        XCTAssertTrue(command.contains("case createAgendaItem"))
+        XCTAssertTrue(command.contains("case removeAgendaSelection"))
+        XCTAssertTrue(command.contains("case agendaMoveSelection(AgendaNavigationDirection)"))
+        XCTAssertTrue(utilities.contains("var isCommandEqual: Bool"))
+        XCTAssertTrue(utilities.contains("var isCommandMinus: Bool"))
+        XCTAssertTrue(utilities.contains("var optionArrowDirection: AgendaNavigationDirection?"))
+        XCTAssertTrue(utilities.contains("\"=\", \"-\""))
+        XCTAssertTrue(controller.contains("event.isCommandEqual"))
+        XCTAssertTrue(controller.contains(".createAgendaItem"))
+        XCTAssertTrue(controller.contains("event.isCommandMinus"))
+        XCTAssertTrue(controller.contains(".removeAgendaSelection"))
+        XCTAssertTrue(controller.contains("event.optionArrowDirection"))
+        XCTAssertTrue(controller.contains(".agendaMoveSelection(direction)"))
+    }
+
+    @available(macOS 26.0, *)
     func testModeSwitchDoesNotSynchronouslyReloadHistoryStores() throws {
         let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherModel.swift")
 

@@ -175,7 +175,10 @@ struct LiquidGlassLauncherView: View {
 
     @ViewBuilder
     private var results: some View {
-        if model.mode == .files {
+        if model.mode == .agenda {
+            AgendaView(model: model)
+                .transition(.opacity)
+        } else if model.mode == .files {
             if let fileBrowserModel = model.activeFileBrowserModel {
                 FileBrowserView(
                     model: fileBrowserModel,
@@ -237,7 +240,7 @@ struct LiquidGlassLauncherView: View {
                             }
                     }
                 case .agenda:
-                    EmptyView()
+                    AgendaView(model: model)
                 }
             }
         }

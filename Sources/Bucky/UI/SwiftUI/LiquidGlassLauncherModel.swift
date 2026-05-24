@@ -16,6 +16,11 @@ final class LiquidGlassLauncherModel: ObservableObject {
     @Published var isWindowKey = true
     @Published var isShowingSettings = false
     @Published var isShowingHelp = false
+    @Published var agendaSelectionColumn: AgendaSelectionColumn = .notes
+    @Published var agendaSelectedNoteIndex = 0
+    @Published var agendaSelectedReminderIndex = 0
+    @Published private(set) var agendaNotes: [AgendaNoteReference] = []
+    @Published private(set) var agendaReminders: [AgendaReminder] = []
     @Published var isPinned = false {
         didSet { pinnedChangedAction?(isPinned) }
     }
@@ -27,12 +32,15 @@ final class LiquidGlassLauncherModel: ObservableObject {
     var reindexAction: (() -> Void)?
     var pinnedChangedAction: ((Bool) -> Void)?
     var modeWillSwitchAction: ((LauncherMode, LauncherMode) -> Void)?
+    var openAgendaNoteAction: (() -> Void)?
+    var confirmAgendaRemovalAction: ((AgendaSelectionColumn) -> Bool)?
 
     private let settingsStore: SettingsStore
     private let inclusionStore: InclusionStore
     private let exclusionStore: ExclusionStore
     private let calculationHistoryStore: CalculationHistoryStore
     private let dictionaryHistoryStore: DictionaryHistoryStore
+    private let agendaStore: AgendaStore
     private let dictionaryLookup: @Sendable (String) -> [DictionaryResult]
     private let dictionaryOpenHandler: (String) -> Void
     private let fileBrowserModelFactory: () -> FileBrowserModel
@@ -65,6 +73,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         dictionaryHistoryStore: DictionaryHistoryStore = DictionaryHistoryStore(),
         dictionaryLookup: @escaping @Sendable (String) -> [DictionaryResult] = { DictionaryLookup.results(for: $0) },
         dictionaryOpenHandler: @escaping (String) -> Void = LiquidGlassLauncherModel.openDictionaryTerm,
+        agendaStore: AgendaStore = AgendaStore(),
         fileBrowserModel: FileBrowserModel? = nil,
         fileBrowserModelFactory: (() -> FileBrowserModel)? = nil,
         applicationIndexSnapshotCache: ApplicationIndexSnapshotCache = ApplicationIndexSnapshotCache()
@@ -76,6 +85,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         self.dictionaryHistoryStore = dictionaryHistoryStore
         self.dictionaryLookup = dictionaryLookup
         self.dictionaryOpenHandler = dictionaryOpenHandler
+        self.agendaStore = agendaStore
         self.applicationIndexSnapshotCache = applicationIndexSnapshotCache
         self.activatedFileBrowserModel = fileBrowserModel
         self.fileBrowserModelFactory = fileBrowserModelFactory ?? {
@@ -84,6 +94,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
             }
         }
         animationTiming = settingsStore.settings.animationTiming
+        syncAgendaSnapshot()
         loadCachedApplicationSnapshot()
     }
 
@@ -114,6 +125,14 @@ final class LiquidGlassLauncherModel: ObservableObject {
         activatedFileBrowserModel
     }
 
+    var filteredAgendaNotes: [AgendaNoteReference] {
+        AgendaFilter.filterNotes(agendaNotes, query: query)
+    }
+
+    var filteredAgendaReminders: [AgendaReminder] {
+        AgendaFilter.filterReminders(agendaReminders, query: query)
+    }
+
     var placeholder: String {
         mode.placeholder
     }
@@ -123,6 +142,9 @@ final class LiquidGlassLauncherModel: ObservableObject {
         case .applications:
             return filteredItemIDs.count
         case .calculator, .dictionary, .agenda:
+            if mode == .agenda {
+                return agendaSelectionColumn == .notes ? filteredAgendaNotes.count : filteredAgendaReminders.count
+            }
             return toolItems.count
         case .files:
             return MainActor.assumeIsolated {
@@ -157,8 +179,11 @@ final class LiquidGlassLauncherModel: ObservableObject {
                 return "No files"
             }
         case .agenda:
-            if inputIsBlank {
+            if inputIsBlank, agendaNotes.isEmpty, agendaReminders.isEmpty {
                 return "Agenda scratchpad"
+            }
+            if !inputIsBlank, filteredAgendaNotes.isEmpty, filteredAgendaReminders.isEmpty {
+                return "No agenda matches"
             }
         }
 
@@ -234,11 +259,17 @@ final class LiquidGlassLauncherModel: ObservableObject {
     func handle(command: LauncherCommand) -> Bool {
         switch command {
         case .up:
+            if mode == .agenda {
+                return handleAgendaCommand(.agendaMoveSelection(.up))
+            }
             if mode == .files {
                 return handleFileBrowserCommand(command)
             }
             moveSelection(by: -1)
         case .down:
+            if mode == .agenda {
+                return handleAgendaCommand(.agendaMoveSelection(.down))
+            }
             if mode == .files {
                 return handleFileBrowserCommand(command)
             }
@@ -254,6 +285,9 @@ final class LiquidGlassLauncherModel: ObservableObject {
             }
             moveSelection(to: resultCount - 1, anchor: .bottom)
         case .open:
+            if mode == .agenda {
+                return handleAgendaCommand(command)
+            }
             if mode == .files {
                 return handleFileBrowserCommand(command)
             }
@@ -282,6 +316,12 @@ final class LiquidGlassLauncherModel: ObservableObject {
                 return handleFileBrowserCommand(command)
             }
             isPinned.toggle()
+        case .createAgendaItem, .removeAgendaSelection:
+            guard mode == .agenda else { return false }
+            return handleAgendaCommand(command)
+        case .agendaMoveSelection:
+            guard mode == .agenda else { return false }
+            return handleAgendaCommand(command)
         case .left, .right, .prepareSpaceInteraction, .space, .shiftSpace, .beginSpaceHold, .endSpaceHold,
                 .alphaNumeric, .shiftAlphaNumeric, .beginPinnedFocus, .endPinnedFocus, .historyBack, .historyForward:
             guard mode == .files else { return false }
@@ -469,6 +509,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
             cancelPendingCalculationHistory()
             cancelPendingDictionaryLookup()
             toolItems = []
+            clampAgendaSelection()
         case .files:
             cancelPendingCalculationHistory()
             cancelPendingDictionaryLookup()
@@ -1007,6 +1048,90 @@ final class LiquidGlassLauncherModel: ObservableObject {
         MainActor.assumeIsolated {
             fileBrowserModel.focusState
         }
+    }
+
+    func rememberAgendaNote(url: URL) {
+        agendaStore.rememberNote(url: url)
+        syncAgendaSnapshot()
+        agendaSelectionColumn = .notes
+        agendaSelectedNoteIndex = 0
+    }
+
+    func updateAgendaReminder(_ reminder: AgendaReminder) {
+        agendaStore.updateReminder(reminder)
+        syncAgendaSnapshot()
+    }
+
+    private func syncAgendaSnapshot() {
+        agendaNotes = agendaStore.notes
+        agendaReminders = agendaStore.reminders
+        clampAgendaSelection()
+    }
+
+    private func handleAgendaCommand(_ command: LauncherCommand) -> Bool {
+        switch command {
+        case .open:
+            if agendaSelectionColumn == .notes {
+                openAgendaNoteAction?()
+                return true
+            }
+            return false
+        case .createAgendaItem:
+            if agendaSelectionColumn == .notes {
+                openAgendaNoteAction?()
+            } else {
+                agendaStore.createReminder()
+                syncAgendaSnapshot()
+                agendaSelectedReminderIndex = 0
+            }
+            return true
+        case .removeAgendaSelection:
+            guard confirmAgendaRemovalAction?(agendaSelectionColumn) ?? true else { return true }
+            switch agendaSelectionColumn {
+            case .notes:
+                guard filteredAgendaNotes.indices.contains(agendaSelectedNoteIndex) else { return true }
+                agendaStore.removeNote(id: filteredAgendaNotes[agendaSelectedNoteIndex].id)
+            case .reminders:
+                guard filteredAgendaReminders.indices.contains(agendaSelectedReminderIndex) else { return true }
+                agendaStore.removeReminder(id: filteredAgendaReminders[agendaSelectedReminderIndex].id)
+            }
+            syncAgendaSnapshot()
+            return true
+        case let .agendaMoveSelection(direction):
+            moveAgendaSelection(direction)
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func moveAgendaSelection(_ direction: AgendaNavigationDirection) {
+        switch direction {
+        case .left:
+            agendaSelectionColumn = .notes
+        case .right:
+            agendaSelectionColumn = .reminders
+        case .up:
+            switch agendaSelectionColumn {
+            case .notes:
+                agendaSelectedNoteIndex = max(agendaSelectedNoteIndex - 1, 0)
+            case .reminders:
+                agendaSelectedReminderIndex = max(agendaSelectedReminderIndex - 1, 0)
+            }
+        case .down:
+            switch agendaSelectionColumn {
+            case .notes:
+                agendaSelectedNoteIndex = min(agendaSelectedNoteIndex + 1, max(filteredAgendaNotes.count - 1, 0))
+            case .reminders:
+                agendaSelectedReminderIndex = min(agendaSelectedReminderIndex + 1, max(filteredAgendaReminders.count - 1, 0))
+            }
+        }
+        clampAgendaSelection()
+    }
+
+    private func clampAgendaSelection() {
+        agendaSelectedNoteIndex = min(max(agendaSelectedNoteIndex, 0), max(filteredAgendaNotes.count - 1, 0))
+        agendaSelectedReminderIndex = min(max(agendaSelectedReminderIndex, 0), max(filteredAgendaReminders.count - 1, 0))
     }
 
     private func handleFileBrowserCommand(

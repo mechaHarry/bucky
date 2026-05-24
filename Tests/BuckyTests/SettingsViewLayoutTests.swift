@@ -216,6 +216,22 @@ final class SettingsViewLayoutTests: XCTestCase {
         XCTAssertFalse(source.contains("HelpShortcut(title: \"Preview\", keys: \"Space\""))
     }
 
+    func testAgendaViewUsesTwoColumnsAndEditableDetail() throws {
+        let agendaSource = try source(named: "Sources/Bucky/UI/SwiftUI/AgendaView.swift")
+        let launcher = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
+
+        XCTAssertTrue(agendaSource.contains("struct AgendaView: View"))
+        XCTAssertTrue(agendaSource.contains("AgendaColumn(title: \"Notes\""))
+        XCTAssertTrue(agendaSource.contains("AgendaColumn(title: \"Reminders\""))
+        XCTAssertTrue(agendaSource.contains("TextEditor(text: $noteText)"))
+        XCTAssertTrue(agendaSource.contains("TextField(\"Name\", text: $draftReminder.name)"))
+        XCTAssertTrue(agendaSource.contains("TextField(\"Date\", text: $draftReminder.date)"))
+        XCTAssertTrue(agendaSource.contains("TextField(\"Time\", text: $draftReminder.time)"))
+        XCTAssertTrue(agendaSource.contains("TextField(\"URL\", text: $draftReminder.urlString)"))
+        XCTAssertTrue(agendaSource.contains("TextEditor(text: $draftReminder.details)"))
+        XCTAssertTrue(launcher.contains("AgendaView(model: model)"))
+    }
+
     func testSettingsAndHelpSidebarsUseBackCollapseControls() throws {
         let source = try source(named: "Sources/Bucky/UI/SwiftUI/SettingsView.swift")
 

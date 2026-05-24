@@ -83,6 +83,10 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         model.openHelpAction = { [weak self] in self?.toggleHelp() }
         model.returnToLauncherAction = { [weak self] in self?.showLauncherFromPanel() }
         model.reindexAction = { [weak self] in self?.reindex() }
+        model.openAgendaNoteAction = { [weak self] in self?.presentAgendaNotePicker() }
+        model.confirmAgendaRemovalAction = { [weak self] column in
+            self?.confirmAgendaRemoval(column: column) ?? true
+        }
         model.pinnedChangedAction = { [weak self] isPinned in
             self?.setPinned(isPinned)
         }
@@ -362,6 +366,37 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         }
     }
 
+    private func presentAgendaNotePicker() {
+        let panel = NSOpenPanel()
+        panel.title = "Open Agenda Note"
+        panel.prompt = "Open"
+        panel.allowsMultipleSelection = true
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.canCreateDirectories = true
+        panel.allowedContentTypes = ["md", "mdx", "txt", "json", "yaml", "yml"].compactMap {
+            UTType(filenameExtension: $0)
+        }
+
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK else { return }
+            for url in panel.urls {
+                self?.model.rememberAgendaNote(url: url)
+            }
+        }
+    }
+
+    private func confirmAgendaRemoval(column: AgendaSelectionColumn) -> Bool {
+        let alert = NSAlert()
+        alert.messageText = column == .notes ? "Remove note from Agenda?" : "Delete reminder?"
+        alert.informativeText = column == .notes
+            ? "The file stays on disk. Bucky only forgets it from Agenda."
+            : "This removes the reminder from Bucky."
+        alert.addButton(withTitle: column == .notes ? "Remove" : "Delete")
+        alert.addButton(withTitle: "Cancel")
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
     private func buildWindow() {
         window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
@@ -495,6 +530,15 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             if event.isCommandRightArrow {
                 return self.handleLauncherCommand(.nextMode) ? nil : event
             }
+            if event.isCommandEqual {
+                return self.handleLauncherCommand(.createAgendaItem) ? nil : event
+            }
+            if event.isCommandMinus {
+                return self.handleLauncherCommand(.removeAgendaSelection) ? nil : event
+            }
+            if let direction = event.optionArrowDirection {
+                return self.handleLauncherCommand(.agendaMoveSelection(direction)) ? nil : event
+            }
 
             switch event.keyCode {
             case UInt16(kVK_UpArrow):
@@ -576,6 +620,15 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         }
         if event.isCommandRightArrow {
             return handleLauncherCommand(.nextMode)
+        }
+        if event.isCommandEqual {
+            return handleLauncherCommand(.createAgendaItem)
+        }
+        if event.isCommandMinus {
+            return handleLauncherCommand(.removeAgendaSelection)
+        }
+        if let direction = event.optionArrowDirection {
+            return handleLauncherCommand(.agendaMoveSelection(direction))
         }
         return false
     }

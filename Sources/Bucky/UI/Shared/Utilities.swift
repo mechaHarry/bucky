@@ -177,7 +177,9 @@ enum LauncherKeyRoutingPolicy {
             return false
         }
 
-        let reservedLauncherKeys: Set<String> = ["1", "2", "3", "4", "5", "r", ",", "p", "[", "]"]
+        let agendaReservedLauncherKeys: Set<String> = ["=", "-"]
+        let reservedLauncherKeys: Set<String> = Set(["1", "2", "3", "4", "5", "r", ",", "p", "[", "]"])
+            .union(agendaReservedLauncherKeys)
         guard !reservedLauncherKeys.contains(key) else {
             return false
         }
@@ -204,6 +206,32 @@ extension NSEvent {
             return nil
         }
         return LauncherMode(commandNumber: number)
+    }
+
+    var isCommandEqual: Bool {
+        modifierFlags.intersection(.deviceIndependentFlagsMask) == .command
+            && charactersIgnoringModifiers == "="
+    }
+
+    var isCommandMinus: Bool {
+        modifierFlags.intersection(.deviceIndependentFlagsMask) == .command
+            && charactersIgnoringModifiers == "-"
+    }
+
+    var optionArrowDirection: AgendaNavigationDirection? {
+        guard modifierFlags.intersection(.deviceIndependentFlagsMask) == .option else { return nil }
+        switch keyCode {
+        case UInt16(kVK_UpArrow):
+            return .up
+        case UInt16(kVK_DownArrow):
+            return .down
+        case UInt16(kVK_LeftArrow):
+            return .left
+        case UInt16(kVK_RightArrow):
+            return .right
+        default:
+            return nil
+        }
     }
 
     var firstAlphaNumericCharacter: Character? {
