@@ -64,6 +64,23 @@ final class AgendaStoreTests: XCTestCase {
         XCTAssertEqual(reminders.map(\.name), ["Renew cert"])
     }
 
+    func testReminderMetadataExposesEveryVisibleListField() {
+        let reminder = AgendaReminder(
+            name: "Renew cert",
+            date: "2026-06-01",
+            time: "14:00",
+            urlString: "bucky://security",
+            details: "Check expiry"
+        )
+
+        XCTAssertEqual(reminder.metadataLines, [
+            "2026-06-01",
+            "14:00",
+            "bucky://security",
+            "Check expiry"
+        ])
+    }
+
     func testMalformedStoreFallsBackToEmptyAgenda() throws {
         let fileURL = temporaryStoreURL()
         try "{ bad json".write(to: fileURL, atomically: true, encoding: .utf8)
@@ -183,12 +200,14 @@ final class AgendaStoreTests: XCTestCase {
     func testCreatingReminderUsesDraftOverlayBeforePersisting() {
         let fileURL = temporaryStoreURL()
         let store = AgendaStore(fileURL: fileURL)
+        let scheduler = RecordingAgendaReminderScheduler()
         let model = LiquidGlassLauncherModel(
             settingsStore: SettingsStore(),
             inclusionStore: InclusionStore(),
             exclusionStore: ExclusionStore(),
             calculationHistoryStore: CalculationHistoryStore(),
-            agendaStore: store
+            agendaStore: store,
+            agendaReminderScheduler: scheduler
         )
 
         model.show(mode: .agenda)
@@ -210,6 +229,32 @@ final class AgendaStoreTests: XCTestCase {
         XCTAssertEqual(store.reminders.first?.date, "2026-05-24")
         XCTAssertEqual(store.reminders.first?.time, "09:30")
         XCTAssertEqual(store.reminders.first?.urlString, "bucky://agenda")
+        XCTAssertEqual(scheduler.scheduledReminderIDs, store.reminders.map(\.id))
+        XCTAssertEqual(scheduler.scheduledReminders.first?.notificationDateComponents?.year, 2026)
+        XCTAssertEqual(scheduler.scheduledReminders.first?.notificationDateComponents?.month, 5)
+        XCTAssertEqual(scheduler.scheduledReminders.first?.notificationDateComponents?.day, 24)
+        XCTAssertEqual(scheduler.scheduledReminders.first?.notificationDateComponents?.hour, 9)
+        XCTAssertEqual(scheduler.scheduledReminders.first?.notificationDateComponents?.minute, 30)
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testExistingRemindersSyncToNotificationSchedulerOnLaunch() {
+        let fileURL = temporaryStoreURL()
+        let store = AgendaStore(fileURL: fileURL)
+        let reminder = store.createReminder(name: "Standup", date: "2026-05-24", time: "10:00")
+        let scheduler = RecordingAgendaReminderScheduler()
+
+        _ = LiquidGlassLauncherModel(
+            settingsStore: SettingsStore(),
+            inclusionStore: InclusionStore(),
+            exclusionStore: ExclusionStore(),
+            calculationHistoryStore: CalculationHistoryStore(),
+            agendaStore: store,
+            agendaReminderScheduler: scheduler
+        )
+
+        XCTAssertEqual(scheduler.syncedReminders.map(\.id), [reminder.id])
     }
 
     @MainActor
@@ -244,5 +289,27 @@ final class AgendaStoreTests: XCTestCase {
             .appendingPathComponent("BuckyAgendaStoreTests-\(UUID().uuidString)", isDirectory: true)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory.appendingPathComponent("agenda.json")
+    }
+}
+
+private final class RecordingAgendaReminderScheduler: AgendaReminderScheduling {
+    private(set) var syncedReminders: [AgendaReminder] = []
+    private(set) var scheduledReminders: [AgendaReminder] = []
+    private(set) var canceledReminderIDs: [UUID] = []
+
+    var scheduledReminderIDs: [UUID] {
+        scheduledReminders.map(\.id)
+    }
+
+    func sync(reminders: [AgendaReminder]) {
+        syncedReminders = reminders
+    }
+
+    func schedule(_ reminder: AgendaReminder) {
+        scheduledReminders.append(reminder)
+    }
+
+    func cancelReminder(id: UUID) {
+        canceledReminderIDs.append(id)
     }
 }

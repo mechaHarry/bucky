@@ -47,6 +47,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private let calculationHistoryStore: CalculationHistoryStore
     private let dictionaryHistoryStore: DictionaryHistoryStore
     private let agendaStore: AgendaStore
+    private let agendaReminderScheduler: AgendaReminderScheduling
     private let dictionaryLookup: @Sendable (String) -> [DictionaryResult]
     private let dictionaryOpenHandler: (String) -> Void
     private let fileBrowserModelFactory: () -> FileBrowserModel
@@ -80,6 +81,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         dictionaryLookup: @escaping @Sendable (String) -> [DictionaryResult] = { DictionaryLookup.results(for: $0) },
         dictionaryOpenHandler: @escaping (String) -> Void = LiquidGlassLauncherModel.openDictionaryTerm,
         agendaStore: AgendaStore = AgendaStore(),
+        agendaReminderScheduler: AgendaReminderScheduling = NoOpAgendaReminderScheduler(),
         fileBrowserModel: FileBrowserModel? = nil,
         fileBrowserModelFactory: (() -> FileBrowserModel)? = nil,
         applicationIndexSnapshotCache: ApplicationIndexSnapshotCache = ApplicationIndexSnapshotCache()
@@ -92,6 +94,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         self.dictionaryLookup = dictionaryLookup
         self.dictionaryOpenHandler = dictionaryOpenHandler
         self.agendaStore = agendaStore
+        self.agendaReminderScheduler = agendaReminderScheduler
         self.applicationIndexSnapshotCache = applicationIndexSnapshotCache
         self.activatedFileBrowserModel = fileBrowserModel
         self.fileBrowserModelFactory = fileBrowserModelFactory ?? {
@@ -101,6 +104,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         }
         animationTiming = settingsStore.settings.animationTiming
         syncAgendaSnapshot()
+        agendaReminderScheduler.sync(reminders: agendaReminders)
         loadCachedApplicationSnapshot()
     }
 
@@ -1070,6 +1074,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     func updateAgendaReminder(_ reminder: AgendaReminder) {
         agendaStore.updateReminder(reminder)
         syncAgendaSnapshot()
+        agendaReminderScheduler.schedule(reminder)
     }
 
     func createDraftAgendaReminder() {
@@ -1083,6 +1088,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
             details: draftAgendaReminder.details
         )
         syncAgendaSnapshot()
+        agendaReminderScheduler.schedule(reminder)
         agendaSelectionColumn = .reminders
         agendaSelectedReminderIndex = filteredAgendaReminders.firstIndex { $0.id == reminder.id } ?? 0
         cancelDraftAgendaReminder()
@@ -1107,7 +1113,9 @@ final class LiquidGlassLauncherModel: ObservableObject {
                 cancelAgendaRemoval()
                 return
             }
-            agendaStore.removeReminder(id: filteredAgendaReminders[agendaSelectedReminderIndex].id)
+            let reminderID = filteredAgendaReminders[agendaSelectedReminderIndex].id
+            agendaStore.removeReminder(id: reminderID)
+            agendaReminderScheduler.cancelReminder(id: reminderID)
         }
         syncAgendaSnapshot()
         cancelAgendaRemoval()

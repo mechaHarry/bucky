@@ -62,14 +62,49 @@ struct AgendaReminder: Identifiable, Codable, Equatable, Hashable {
         return details
     }
 
+    var metadataLines: [String] {
+        [date, time, urlString, details].filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    }
+
     var searchText: String {
         AgendaFilter.normalized([name, date, time, urlString, details].joined(separator: " "))
+    }
+
+    var notificationDateComponents: DateComponents? {
+        guard let dateComponents = AgendaReminderDateParser.dateComponents(from: date) else { return nil }
+        var components = dateComponents
+        if let timeComponents = AgendaReminderDateParser.timeComponents(from: time) {
+            components.hour = timeComponents.hour
+            components.minute = timeComponents.minute
+        } else {
+            components.hour = 9
+            components.minute = 0
+        }
+        return components
     }
 }
 
 struct AgendaFile: Codable {
     var notes: [AgendaNoteReference]
     var reminders: [AgendaReminder]
+}
+
+enum AgendaReminderDateParser {
+    static func dateComponents(from value: String) -> DateComponents? {
+        let parts = value.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return nil }
+        return DateComponents(calendar: calendar, year: parts[0], month: parts[1], day: parts[2])
+    }
+
+    static func timeComponents(from value: String) -> DateComponents? {
+        let parts = value.split(separator: ":").compactMap { Int($0) }
+        guard parts.count == 2 else { return nil }
+        return DateComponents(calendar: calendar, hour: parts[0], minute: parts[1])
+    }
+
+    private static var calendar: Calendar {
+        Calendar(identifier: .gregorian)
+    }
 }
 
 enum AgendaSelectionColumn: String, Codable, Equatable {

@@ -235,6 +235,8 @@ final class SettingsViewLayoutTests: XCTestCase {
         XCTAssertTrue(agendaSource.contains(".onChange(of: model.openedAgendaNote?.id)"))
         XCTAssertTrue(agendaSource.contains("setSelectedRange(NSRange(location: 0, length: 0))"))
         XCTAssertTrue(agendaSource.contains("AgendaReminderDraftOverlay("))
+        XCTAssertTrue(agendaSource.contains("metadataLines: reminder.metadataLines"))
+        XCTAssertTrue(agendaSource.contains("ForEach(metadataLines"))
         XCTAssertTrue(agendaSource.contains("AgendaRemovalConfirmationOverlay("))
         XCTAssertTrue(agendaSource.contains("DatePicker(\"Date\""))
         XCTAssertTrue(agendaSource.contains("DatePicker(\"Time\""))

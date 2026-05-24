@@ -75,6 +75,7 @@ struct AgendaView: View {
                     AgendaRow(
                         title: note.title,
                         subtitle: note.subtitle,
+                        metadataLines: [],
                         isSelected: model.agendaSelectionColumn == .notes && model.agendaSelectedNoteIndex == index
                     )
                     .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -90,6 +91,7 @@ struct AgendaView: View {
                     AgendaRow(
                         title: reminder.name,
                         subtitle: reminder.subtitle,
+                        metadataLines: reminder.metadataLines,
                         isSelected: model.agendaSelectionColumn == .reminders && model.agendaSelectedReminderIndex == index
                     )
                     .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -473,6 +475,7 @@ private struct AgendaColumn<Content: View>: View {
 private struct AgendaRow: View {
     let title: String
     let subtitle: String
+    let metadataLines: [String]
     let isSelected: Bool
 
     var body: some View {
@@ -485,6 +488,14 @@ private struct AgendaRow: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+            }
+            ForEach(metadataLines, id: \.self) { metadataLine in
+                if metadataLine != subtitle {
+                    Text(metadataLine)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
         }
         .padding(.horizontal, 8)

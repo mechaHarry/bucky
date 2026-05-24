@@ -40,6 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 exclusionStore: exclusionStore,
                 calculationHistoryStore: calculationHistoryStore,
                 dictionaryHistoryStore: dictionaryHistoryStore,
+                agendaReminderScheduler: UserNotificationAgendaReminderScheduler(),
                 hotKeyChangeHandler: { [weak self] hotKey in
                     self?.registerHotKey(hotKey) ?? false
                 }

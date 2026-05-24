@@ -30,6 +30,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         exclusionStore: ExclusionStore,
         calculationHistoryStore: CalculationHistoryStore,
         dictionaryHistoryStore: DictionaryHistoryStore,
+        agendaReminderScheduler: AgendaReminderScheduling = NoOpAgendaReminderScheduler(),
         hotKeyChangeHandler: @escaping @MainActor (HotKeyConfiguration) -> Bool
     ) {
         model = LiquidGlassLauncherModel(
@@ -37,7 +38,8 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             inclusionStore: inclusionStore,
             exclusionStore: exclusionStore,
             calculationHistoryStore: calculationHistoryStore,
-            dictionaryHistoryStore: dictionaryHistoryStore
+            dictionaryHistoryStore: dictionaryHistoryStore,
+            agendaReminderScheduler: agendaReminderScheduler
         )
         window = BuckyPanelWindow(
             contentRect: NSRect(
