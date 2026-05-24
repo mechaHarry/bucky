@@ -26,6 +26,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
     @Published var isAgendaNoteSearchVisible = false
     @Published var isCreatingAgendaReminder = false
     @Published var draftAgendaReminder = AgendaReminder(name: "")
+    @Published var isConfirmingAgendaRemoval = false
+    @Published var pendingAgendaRemovalColumn: AgendaSelectionColumn?
     @Published var isPinned = false {
         didSet { pinnedChangedAction?(isPinned) }
     }
@@ -38,7 +40,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
     var pinnedChangedAction: ((Bool) -> Void)?
     var modeWillSwitchAction: ((LauncherMode, LauncherMode) -> Void)?
     var openAgendaNoteAction: (() -> Void)?
-    var confirmAgendaRemovalAction: ((AgendaSelectionColumn) -> Bool)?
 
     private let settingsStore: SettingsStore
     private let inclusionStore: InclusionStore
@@ -298,7 +299,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
             }
             activateSelected()
         case .close:
-            if mode == .agenda, openedAgendaNote != nil {
+            if mode == .agenda,
+               (openedAgendaNote != nil || isConfirmingAgendaRemoval || isCreatingAgendaReminder) {
                 return handleAgendaCommand(command)
             }
             if mode == .files, fileBrowserFocusState != .browse {
@@ -1091,6 +1093,31 @@ final class LiquidGlassLauncherModel: ObservableObject {
         draftAgendaReminder = AgendaReminder(name: "")
     }
 
+    func confirmAgendaRemoval() {
+        guard let column = pendingAgendaRemovalColumn else { return }
+        switch column {
+        case .notes:
+            guard filteredAgendaNotes.indices.contains(agendaSelectedNoteIndex) else {
+                cancelAgendaRemoval()
+                return
+            }
+            agendaStore.removeNote(id: filteredAgendaNotes[agendaSelectedNoteIndex].id)
+        case .reminders:
+            guard filteredAgendaReminders.indices.contains(agendaSelectedReminderIndex) else {
+                cancelAgendaRemoval()
+                return
+            }
+            agendaStore.removeReminder(id: filteredAgendaReminders[agendaSelectedReminderIndex].id)
+        }
+        syncAgendaSnapshot()
+        cancelAgendaRemoval()
+    }
+
+    func cancelAgendaRemoval() {
+        isConfirmingAgendaRemoval = false
+        pendingAgendaRemovalColumn = nil
+    }
+
     private func syncAgendaSnapshot() {
         agendaNotes = agendaStore.notes
         agendaReminders = agendaStore.reminders
@@ -1118,21 +1145,17 @@ final class LiquidGlassLauncherModel: ObservableObject {
             }
             return true
         case .removeAgendaSelection:
-            guard confirmAgendaRemovalAction?(agendaSelectionColumn) ?? true else { return true }
-            switch agendaSelectionColumn {
-            case .notes:
-                guard filteredAgendaNotes.indices.contains(agendaSelectedNoteIndex) else { return true }
-                agendaStore.removeNote(id: filteredAgendaNotes[agendaSelectedNoteIndex].id)
-            case .reminders:
-                guard filteredAgendaReminders.indices.contains(agendaSelectedReminderIndex) else { return true }
-                agendaStore.removeReminder(id: filteredAgendaReminders[agendaSelectedReminderIndex].id)
-            }
-            syncAgendaSnapshot()
+            pendingAgendaRemovalColumn = agendaSelectionColumn
+            isConfirmingAgendaRemoval = true
             return true
         case .saveAgendaNote:
             saveOpenedAgendaNote()
             return true
         case .close:
+            if isConfirmingAgendaRemoval {
+                cancelAgendaRemoval()
+                return true
+            }
             if isCreatingAgendaReminder {
                 cancelDraftAgendaReminder()
                 return true

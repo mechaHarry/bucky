@@ -244,6 +244,11 @@ extension NSEvent {
             && charactersIgnoringModifiers == "-"
     }
 
+    var isControlMinus: Bool {
+        modifierFlags.intersection(.deviceIndependentFlagsMask) == .control
+            && charactersIgnoringModifiers == "-"
+    }
+
     var isCommandS: Bool {
         modifierFlags.intersection(.deviceIndependentFlagsMask) == .command
             && charactersIgnoringModifiers?.lowercased() == "s"

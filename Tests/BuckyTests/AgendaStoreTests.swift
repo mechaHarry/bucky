@@ -101,13 +101,49 @@ final class AgendaStoreTests: XCTestCase {
 
         model.agendaSelectionColumn = .notes
         XCTAssertTrue(model.handle(command: .removeAgendaSelection))
+        XCTAssertTrue(model.isConfirmingAgendaRemoval)
+        XCTAssertEqual(model.pendingAgendaRemovalColumn, .notes)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: note.url.path))
+        XCTAssertEqual(store.notes.map(\.id), [note.id])
+        model.confirmAgendaRemoval()
         XCTAssertTrue(FileManager.default.fileExists(atPath: note.url.path))
         XCTAssertTrue(store.notes.isEmpty)
         XCTAssertEqual(store.reminders.map(\.id), [reminder.id])
 
         model.agendaSelectionColumn = .reminders
         XCTAssertTrue(model.handle(command: .removeAgendaSelection))
+        XCTAssertTrue(model.isConfirmingAgendaRemoval)
+        XCTAssertEqual(model.pendingAgendaRemovalColumn, .reminders)
+        XCTAssertEqual(store.reminders.map(\.id), [reminder.id])
+        model.confirmAgendaRemoval()
         XCTAssertTrue(store.reminders.isEmpty)
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testCancellingAgendaRemovalKeepsSelectedRow() throws {
+        let fileURL = temporaryStoreURL()
+        let noteURL = fileURL.deletingLastPathComponent().appendingPathComponent("Keep.md")
+        try "keep".write(to: noteURL, atomically: true, encoding: .utf8)
+        let store = AgendaStore(fileURL: fileURL)
+        let note = store.rememberNote(url: noteURL)
+        let model = LiquidGlassLauncherModel(
+            settingsStore: SettingsStore(),
+            inclusionStore: InclusionStore(),
+            exclusionStore: ExclusionStore(),
+            calculationHistoryStore: CalculationHistoryStore(),
+            agendaStore: store
+        )
+
+        model.show(mode: .agenda)
+        model.agendaSelectionColumn = .notes
+        XCTAssertTrue(model.handle(command: .removeAgendaSelection))
+        XCTAssertTrue(model.isConfirmingAgendaRemoval)
+
+        XCTAssertTrue(model.handle(command: .close))
+
+        XCTAssertFalse(model.isConfirmingAgendaRemoval)
+        XCTAssertEqual(store.notes.map(\.id), [note.id])
     }
 
     @MainActor

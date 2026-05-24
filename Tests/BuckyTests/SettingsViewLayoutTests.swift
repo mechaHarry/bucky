@@ -235,7 +235,14 @@ final class SettingsViewLayoutTests: XCTestCase {
         XCTAssertTrue(agendaSource.contains(".onChange(of: model.openedAgendaNote?.id)"))
         XCTAssertTrue(agendaSource.contains("setSelectedRange(NSRange(location: 0, length: 0))"))
         XCTAssertTrue(agendaSource.contains("AgendaReminderDraftOverlay("))
+        XCTAssertTrue(agendaSource.contains("AgendaRemovalConfirmationOverlay("))
+        XCTAssertTrue(agendaSource.contains("DatePicker(\"Date\""))
+        XCTAssertTrue(agendaSource.contains("DatePicker(\"Time\""))
+        XCTAssertTrue(agendaSource.contains("displayedComponents: .date"))
+        XCTAssertTrue(agendaSource.contains("displayedComponents: .hourAndMinute"))
         XCTAssertTrue(agendaSource.contains("Create"))
+        XCTAssertFalse(agendaSource.contains("TextField(\"Date\", text: $reminder.date)"))
+        XCTAssertFalse(agendaSource.contains("TextField(\"Time\", text: $reminder.time)"))
         XCTAssertFalse(agendaSource.contains(".onChange(of: noteText)"))
         XCTAssertFalse(agendaSource.contains("VimTextView"))
         XCTAssertFalse(agendaSource.contains("case \"h\":"))
@@ -247,6 +254,18 @@ final class SettingsViewLayoutTests: XCTestCase {
         XCTAssertTrue(launcher.contains("AgendaView(model: model)"))
         XCTAssertTrue(launcher.contains("!(model.mode == .agenda && model.openedAgendaNote != nil)"))
         XCTAssertTrue(launcher.contains(".onChange(of: model.openedAgendaNote?.id)"))
+    }
+
+    func testAgendaRemovalConfirmationStaysInsideLauncher() throws {
+        let modelSource = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherModel.swift")
+        let controllerSource = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
+
+        XCTAssertTrue(modelSource.contains("@Published var isConfirmingAgendaRemoval"))
+        XCTAssertTrue(modelSource.contains("func confirmAgendaRemoval()"))
+        XCTAssertTrue(modelSource.contains("func cancelAgendaRemoval()"))
+        XCTAssertFalse(modelSource.contains("confirmAgendaRemovalAction"))
+        XCTAssertFalse(controllerSource.contains("private func confirmAgendaRemoval"))
+        XCTAssertFalse(controllerSource.contains("alert.runModal()"))
     }
 
     func testSettingsAndHelpSidebarsUseBackCollapseControls() throws {
