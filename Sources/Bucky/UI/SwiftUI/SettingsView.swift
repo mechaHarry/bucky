@@ -497,10 +497,25 @@ struct HelpView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    @ViewBuilder
     private var shortcutsList: some View {
+        let content = HelpShortcutCatalog.content(for: selectedPane, globalHotKeyTitle: globalHotKeyTitle)
+
         VStack(alignment: .leading, spacing: 10) {
-            ForEach(HelpShortcutCatalog.shortcuts(for: selectedPane, globalHotKeyTitle: globalHotKeyTitle)) { shortcut in
-                HelpShortcutRow(shortcut: shortcut)
+            if !content.shortcuts.isEmpty {
+                Section("Hotkeys") {
+                    ForEach(content.shortcuts) { shortcut in
+                        HelpShortcutRow(shortcut: shortcut)
+                    }
+                }
+            }
+
+            if !content.explanations.isEmpty {
+                Section("Others") {
+                    ForEach(content.explanations) { explanation in
+                        HelpExplanationRow(explanation: explanation)
+                    }
+                }
             }
         }
     }
@@ -512,6 +527,7 @@ private struct SidebarBackCollapseControls: View {
     let backTitle: String
     let onBack: () -> Void
     let onToggleCollapse: () -> Void
+    @State private var isBackHovered = false
 
     var body: some View {
         HStack(spacing: 8) {
@@ -529,12 +545,8 @@ private struct SidebarBackCollapseControls: View {
                 .frame(maxWidth: .infinity, minHeight: 34, alignment: isCollapsed ? .center : .leading)
                 .padding(.horizontal, isCollapsed ? 0 : 10)
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
-            .background {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color(nsColor: .controlBackgroundColor).opacity(0.34))
-            }
+            .buttonStyle(SidebarBackButtonStyle(isHovered: isBackHovered))
+            .onHover { isBackHovered = $0 }
             .help(backTitle)
 
             Button(action: onToggleCollapse) {
@@ -546,6 +558,27 @@ private struct SidebarBackCollapseControls: View {
             .foregroundStyle(.secondary)
             .help(isCollapsed ? "Expand sidebar" : "Collapse sidebar")
         }
+    }
+}
+
+@available(macOS 26.0, *)
+private struct SidebarBackButtonStyle: ButtonStyle {
+    let isHovered: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(configuration.isPressed ? Color.accentColor : Color.secondary)
+            .background {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.accentColor.opacity(configuration.isPressed ? 0.18 : isHovered ? 0.12 : 0.08))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(Color.accentColor.opacity(isHovered ? 0.55 : 0.32), lineWidth: 1.15)
+            }
+            .scaleEffect(configuration.isPressed ? 0.96 : isHovered ? 1.015 : 1)
+            .animation(.snappy(duration: 0.12), value: configuration.isPressed)
+            .animation(.snappy(duration: 0.14), value: isHovered)
     }
 }
 
@@ -1000,6 +1033,35 @@ private struct HelpShortcutRow: View {
     }
 }
 
+@available(macOS 26.0, *)
+private struct HelpExplanationRow: View {
+    let explanation: HelpExplanation
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(explanation.title)
+                .font(.system(size: 14, weight: .semibold))
+                .lineLimit(1)
+
+            Text(explanation.detail)
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .lineLimit(3)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color(nsColor: .controlBackgroundColor).opacity(0.24))
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.18), lineWidth: 1)
+        }
+    }
+}
+
 private struct HelpShortcut: Identifiable, Equatable {
     let title: String
     let keys: String
@@ -1010,55 +1072,97 @@ private struct HelpShortcut: Identifiable, Equatable {
     }
 }
 
+private struct HelpExplanation: Identifiable, Equatable {
+    let title: String
+    let detail: String
+
+    var id: String {
+        title
+    }
+}
+
+private struct HelpPageContent: Equatable {
+    let shortcuts: [HelpShortcut]
+    let explanations: [HelpExplanation]
+}
+
 private enum HelpShortcutCatalog {
-    static func shortcuts(for pane: HelpPane, globalHotKeyTitle: String) -> [HelpShortcut] {
+    static func content(for pane: HelpPane, globalHotKeyTitle: String) -> HelpPageContent {
         switch pane {
         case .global:
-            return [
-                HelpShortcut(title: "Open Bucky", keys: globalHotKeyTitle.isEmpty ? "Option+Space" : globalHotKeyTitle, detail: "Show or hide the launcher with the configured global shortcut."),
-                HelpShortcut(title: "Open Settings", keys: "Command+,", detail: "Open Bucky settings inside the glass panel."),
-                HelpShortcut(title: "Open Help", keys: "Command+/", detail: "Open this hotkey reference."),
-                HelpShortcut(title: "Previous mode", keys: "Command+Left", detail: "Cycle to the previous launcher mode with wraparound."),
-                HelpShortcut(title: "Next mode", keys: "Command+Right", detail: "Cycle to the next launcher mode with wraparound.")
-            ]
+            return HelpPageContent(
+                shortcuts: [
+                    HelpShortcut(title: "Open Bucky", keys: globalHotKeyTitle.isEmpty ? "Option+Space" : globalHotKeyTitle, detail: "Show or hide the launcher with the configured global shortcut."),
+                    HelpShortcut(title: "Open Settings", keys: "Command+,", detail: "Open Bucky settings inside the glass panel."),
+                    HelpShortcut(title: "Open Help", keys: "Command+/", detail: "Open this hotkey reference."),
+                    HelpShortcut(title: "Previous mode", keys: "Command+Left", detail: "Cycle to the previous launcher mode with wraparound."),
+                    HelpShortcut(title: "Next mode", keys: "Command+Right", detail: "Cycle to the next launcher mode with wraparound.")
+                ],
+                explanations: [
+                    HelpExplanation(title: "Search text", detail: "Typing in launcher mode updates the active mode filter when that mode accepts text input.")
+                ]
+            )
         case let .mode(mode):
-            return shortcuts(for: mode)
+            return content(for: mode)
         }
     }
 
-    private static func shortcuts(for mode: LauncherMode) -> [HelpShortcut] {
+    private static func content(for mode: LauncherMode) -> HelpPageContent {
         let openMode = HelpShortcut(title: "Open \(mode.shortTitle)", keys: "Command+\(mode.rawValue)", detail: "Switch directly to \(mode.shortTitle).")
         switch mode {
         case .applications:
-            return [
-                openMode,
-                HelpShortcut(title: "Reindex apps", keys: "Command+R", detail: "Refresh the application and custom action index."),
-                HelpShortcut(title: "Hide result", keys: "Eye button", detail: "Hide a selected launch item from app search.")
-            ]
+            return HelpPageContent(
+                shortcuts: [
+                    openMode,
+                    HelpShortcut(title: "Reindex apps", keys: "Command+R", detail: "Refresh the application and custom action index.")
+                ],
+                explanations: [
+                    HelpExplanation(title: "Hide result", detail: "Use the row hide affordance to remove a launch item from app search results.")
+                ]
+            )
         case .calculator:
-            return [
-                openMode,
-                HelpShortcut(title: "Copy result", keys: "Return", detail: "Copy the selected calculation result."),
-                HelpShortcut(title: "Clear history", keys: "Trash button", detail: "Remove calculation history.")
-            ]
+            return HelpPageContent(
+                shortcuts: [
+                    openMode
+                ],
+                explanations: [
+                    HelpExplanation(title: "Copy result", detail: "Press Return on the selected calculation result to copy it."),
+                    HelpExplanation(title: "Clear history", detail: "Use the clear-history affordance to remove calculation history.")
+                ]
+            )
         case .dictionary:
-            return [
-                openMode,
-                HelpShortcut(title: "Open definition", keys: "Return", detail: "Open the selected term in Dictionary."),
-                HelpShortcut(title: "Remove history row", keys: "Minus button", detail: "Remove a saved dictionary lookup.")
-            ]
+            return HelpPageContent(
+                shortcuts: [
+                    openMode
+                ],
+                explanations: [
+                    HelpExplanation(title: "Open definition", detail: "Press Return on a selected term to open it in Dictionary."),
+                    HelpExplanation(title: "Remove history row", detail: "Use the row remove affordance to delete a saved dictionary lookup.")
+                ]
+            )
         case .files:
-            return [
-                openMode,
-                HelpShortcut(title: "Move selection", keys: "Arrow keys", detail: "Navigate file rows and directories."),
-                HelpShortcut(title: "Preview", keys: "Space", detail: "Preview the selected file with the native preview path."),
-                HelpShortcut(title: "History", keys: "Command+[ / ]", detail: "Move backward or forward through visited directories.")
-            ]
+            return HelpPageContent(
+                shortcuts: [
+                    openMode,
+                    HelpShortcut(title: "Move selection", keys: "Arrow keys", detail: "Navigate file rows and directories."),
+                    HelpShortcut(title: "Select item", keys: "Space", detail: "Select or deselect the focused file row."),
+                    HelpShortcut(title: "Range select", keys: "Shift+Space", detail: "Extend selection across file rows."),
+                    HelpShortcut(title: "Preview selected file", keys: "Hold Space", detail: "Hold Space to show the native preview, then release to dismiss it."),
+                    HelpShortcut(title: "History", keys: "Command+[ / ]", detail: "Move backward or forward through visited directories.")
+                ],
+                explanations: [
+                    HelpExplanation(title: "Directory entry", detail: "Use the right and left arrow navigation flow to enter and leave directories.")
+                ]
+            )
         case .agenda:
-            return [
-                openMode,
-                HelpShortcut(title: "Filter Agenda", keys: "Type", detail: "Filter notes and reminders when Agenda is implemented.")
-            ]
+            return HelpPageContent(
+                shortcuts: [
+                    openMode
+                ],
+                explanations: [
+                    HelpExplanation(title: "Agenda filter", detail: "Typing will filter notes and reminders when Agenda is implemented.")
+                ]
+            )
         }
     }
 }

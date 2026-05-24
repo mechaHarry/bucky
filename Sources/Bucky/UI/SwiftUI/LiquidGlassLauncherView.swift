@@ -74,6 +74,7 @@ struct LiquidGlassLauncherView: View {
         }
         .animation(resultUpdateAnimation, value: model.mode)
         .animation(settingsModeAnimation, value: model.isShowingSettings)
+        .animation(settingsModeAnimation, value: model.isShowingHelp)
     }
 
     @ViewBuilder

@@ -184,6 +184,7 @@ final class SettingsViewLayoutTests: XCTestCase {
         XCTAssertTrue(launcherView.contains("HelpView(globalHotKeyTitle: settingsModel.hotKeyTitle, onBack:"))
         XCTAssertTrue(launcherView.contains("if model.isShowingSettings"))
         XCTAssertTrue(launcherView.contains("else if model.isShowingHelp"))
+        XCTAssertTrue(launcherView.contains(".animation(settingsModeAnimation, value: model.isShowingHelp)"))
     }
 
     func testHelpPaneListsGlobalAndModeHotkeys() throws {
@@ -192,12 +193,27 @@ final class SettingsViewLayoutTests: XCTestCase {
         XCTAssertTrue(source.contains("struct HelpView: View"))
         XCTAssertTrue(source.contains("case global"))
         XCTAssertTrue(source.contains("case mode(LauncherMode)"))
-        XCTAssertTrue(source.contains("HelpShortcutCatalog.shortcuts(for: selectedPane, globalHotKeyTitle: globalHotKeyTitle)"))
+        XCTAssertTrue(source.contains("HelpShortcutCatalog.content(for: selectedPane, globalHotKeyTitle: globalHotKeyTitle)"))
+        XCTAssertTrue(source.contains("Section(\"Hotkeys\")"))
+        XCTAssertTrue(source.contains("Section(\"Others\")"))
         XCTAssertTrue(source.contains("Command+/"))
         XCTAssertTrue(source.contains("Command+Left"))
         XCTAssertTrue(source.contains("Command+Right"))
         XCTAssertTrue(source.contains("Command+\\(mode.rawValue)"))
         XCTAssertTrue(source.contains("mode.shortTitle"))
+        XCTAssertFalse(source.contains("keys: \"Eye button\""))
+        XCTAssertFalse(source.contains("keys: \"Trash button\""))
+        XCTAssertFalse(source.contains("keys: \"Minus button\""))
+        XCTAssertFalse(source.contains("keys: \"Type\""))
+    }
+
+    func testFilesHelpDistinguishesSelectionFromHoldToPreview() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/SettingsView.swift")
+
+        XCTAssertTrue(source.contains("HelpShortcut(title: \"Select item\", keys: \"Space\""))
+        XCTAssertTrue(source.contains("HelpShortcut(title: \"Range select\", keys: \"Shift+Space\""))
+        XCTAssertTrue(source.contains("HelpShortcut(title: \"Preview selected file\", keys: \"Hold Space\""))
+        XCTAssertFalse(source.contains("HelpShortcut(title: \"Preview\", keys: \"Space\""))
     }
 
     func testSettingsAndHelpSidebarsUseBackCollapseControls() throws {
@@ -211,6 +227,19 @@ final class SettingsViewLayoutTests: XCTestCase {
         XCTAssertTrue(source.contains(".frame(maxWidth: .infinity, minHeight: 34, alignment: isCollapsed ? .center : .leading)"))
         XCTAssertTrue(source.contains("HStack(spacing: 8)"))
         XCTAssertTrue(source.contains("isCollapsed ? 19 : 15"))
+    }
+
+    func testBackToBuckyControlHasDedicatedHoverAndPressTreatment() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/SettingsView.swift")
+
+        XCTAssertTrue(source.contains("private struct SidebarBackButtonStyle: ButtonStyle"))
+        XCTAssertTrue(source.contains("configuration.isPressed"))
+        XCTAssertTrue(source.contains("@State private var isBackHovered = false"))
+        XCTAssertTrue(source.contains(".onHover { isBackHovered = $0 }"))
+        XCTAssertTrue(source.contains(".buttonStyle(SidebarBackButtonStyle(isHovered: isBackHovered))"))
+        XCTAssertTrue(source.contains(".scaleEffect(configuration.isPressed ? 0.96 : isHovered ? 1.015 : 1)"))
+        XCTAssertTrue(source.contains(".animation(.snappy(duration: 0.12), value: configuration.isPressed)"))
+        XCTAssertTrue(source.contains(".strokeBorder(Color.accentColor.opacity(isHovered ? 0.55 : 0.32), lineWidth: 1.15)"))
     }
 
     func testAppsPaneUsesLauncherStyleRows() throws {
@@ -271,6 +300,7 @@ final class SettingsViewLayoutTests: XCTestCase {
         XCTAssertTrue(source.contains("private var settingsModeTransition: AnyTransition"))
         XCTAssertTrue(source.contains(".transition(settingsModeTransition)"))
         XCTAssertTrue(source.contains(".animation(settingsModeAnimation, value: model.isShowingSettings)"))
+        XCTAssertTrue(source.contains(".animation(settingsModeAnimation, value: model.isShowingHelp)"))
         XCTAssertFalse(source.contains(".animation(resultUpdateAnimation, value: model.isShowingSettings)"))
     }
 
