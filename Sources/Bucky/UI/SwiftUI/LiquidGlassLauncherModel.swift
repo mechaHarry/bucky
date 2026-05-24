@@ -1135,6 +1135,14 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private func handleAgendaCommand(_ command: LauncherCommand) -> Bool {
         switch command {
         case .open:
+            if isConfirmingAgendaRemoval {
+                confirmAgendaRemoval()
+                return true
+            }
+            if isCreatingAgendaReminder {
+                createDraftAgendaReminder()
+                return true
+            }
             if agendaSelectionColumn == .notes {
                 guard filteredAgendaNotes.indices.contains(agendaSelectedNoteIndex) else {
                     openAgendaNoteAction?()

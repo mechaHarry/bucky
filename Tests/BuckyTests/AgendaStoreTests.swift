@@ -74,8 +74,7 @@ final class AgendaStoreTests: XCTestCase {
         )
 
         XCTAssertEqual(reminder.metadataLines, [
-            "2026-06-01",
-            "14:00",
+            "2026-06-01 14:00",
             "bucky://security",
             "Check expiry"
         ])
@@ -89,6 +88,30 @@ final class AgendaStoreTests: XCTestCase {
 
         XCTAssertTrue(store.notes.isEmpty)
         XCTAssertTrue(store.reminders.isEmpty)
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testReturnConfirmsAgendaRemovalOverlay() {
+        let fileURL = temporaryStoreURL()
+        let store = AgendaStore(fileURL: fileURL)
+        let reminder = store.createReminder(name: "Delete me")
+        let model = LiquidGlassLauncherModel(
+            settingsStore: SettingsStore(),
+            inclusionStore: InclusionStore(),
+            exclusionStore: ExclusionStore(),
+            calculationHistoryStore: CalculationHistoryStore(),
+            agendaStore: store
+        )
+
+        model.show(mode: .agenda)
+        model.agendaSelectionColumn = .reminders
+        XCTAssertTrue(model.handle(command: .removeAgendaSelection))
+
+        XCTAssertTrue(model.handle(command: .open))
+
+        XCTAssertFalse(model.isConfirmingAgendaRemoval)
+        XCTAssertFalse(store.reminders.contains { $0.id == reminder.id })
     }
 
     @MainActor

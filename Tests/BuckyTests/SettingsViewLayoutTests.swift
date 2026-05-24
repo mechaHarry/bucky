@@ -270,6 +270,19 @@ final class SettingsViewLayoutTests: XCTestCase {
         XCTAssertFalse(controllerSource.contains("alert.runModal()"))
     }
 
+    func testAgendaNotificationsPresentWhileBuckyIsRunning() throws {
+        let schedulerSource = try source(named: "Sources/Bucky/Agenda/AgendaReminderScheduler.swift")
+        let modelSource = try source(named: "Sources/Bucky/Agenda/AgendaModels.swift")
+
+        XCTAssertTrue(schedulerSource.contains("UNUserNotificationCenterDelegate"))
+        XCTAssertTrue(schedulerSource.contains("center.delegate = self"))
+        XCTAssertTrue(schedulerSource.contains("willPresent notification"))
+        XCTAssertTrue(schedulerSource.contains(".banner"))
+        XCTAssertTrue(schedulerSource.contains(".sound"))
+        XCTAssertTrue(modelSource.contains("components.timeZone = .current"))
+        XCTAssertTrue(modelSource.contains("components.second = 0"))
+    }
+
     func testSettingsAndHelpSidebarsUseBackCollapseControls() throws {
         let source = try source(named: "Sources/Bucky/UI/SwiftUI/SettingsView.swift")
 

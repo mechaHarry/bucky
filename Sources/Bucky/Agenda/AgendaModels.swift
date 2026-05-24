@@ -63,7 +63,7 @@ struct AgendaReminder: Identifiable, Codable, Equatable, Hashable {
     }
 
     var metadataLines: [String] {
-        [date, time, urlString, details].filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        [subtitle, urlString, details].filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 
     var searchText: String {
@@ -93,13 +93,19 @@ enum AgendaReminderDateParser {
     static func dateComponents(from value: String) -> DateComponents? {
         let parts = value.split(separator: "-").compactMap { Int($0) }
         guard parts.count == 3 else { return nil }
-        return DateComponents(calendar: calendar, year: parts[0], month: parts[1], day: parts[2])
+        var components = DateComponents(calendar: calendar, year: parts[0], month: parts[1], day: parts[2])
+        components.timeZone = .current
+        components.second = 0
+        return components
     }
 
     static func timeComponents(from value: String) -> DateComponents? {
         let parts = value.split(separator: ":").compactMap { Int($0) }
         guard parts.count == 2 else { return nil }
-        return DateComponents(calendar: calendar, hour: parts[0], minute: parts[1])
+        var components = DateComponents(calendar: calendar, hour: parts[0], minute: parts[1])
+        components.timeZone = .current
+        components.second = 0
+        return components
     }
 
     private static var calendar: Calendar {

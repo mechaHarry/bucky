@@ -13,12 +13,14 @@ struct NoOpAgendaReminderScheduler: AgendaReminderScheduling {
     func cancelReminder(id: UUID) {}
 }
 
-final class UserNotificationAgendaReminderScheduler: AgendaReminderScheduling {
+final class UserNotificationAgendaReminderScheduler: NSObject, AgendaReminderScheduling {
     private let center: UNUserNotificationCenter
     private let identifierPrefix = "bucky.agenda.reminder."
 
     init(center: UNUserNotificationCenter = .current()) {
         self.center = center
+        super.init()
+        center.delegate = self
     }
 
     func sync(reminders: [AgendaReminder]) {
@@ -83,5 +85,15 @@ final class UserNotificationAgendaReminderScheduler: AgendaReminderScheduling {
                 completion(false)
             }
         }
+    }
+}
+
+extension UserNotificationAgendaReminderScheduler: UNUserNotificationCenterDelegate {
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .list, .sound])
     }
 }
