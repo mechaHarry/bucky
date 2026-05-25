@@ -537,7 +537,8 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             if event.isCommandS {
                 return self.handleLauncherCommand(.saveAgendaNote) ? nil : event
             }
-            if let direction = event.optionArrowDirection {
+            if self.model.mode == .agenda,
+               let direction = event.optionArrowDirection {
                 return self.handleLauncherCommand(.agendaMoveSelection(direction)) ? nil : event
             }
 
@@ -631,7 +632,8 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         if event.isCommandS {
             return handleLauncherCommand(.saveAgendaNote)
         }
-        if let direction = event.optionArrowDirection {
+        if model.mode == .agenda,
+           let direction = event.optionArrowDirection {
             return handleLauncherCommand(.agendaMoveSelection(direction))
         }
         return false

@@ -402,6 +402,8 @@ final class LauncherModeRoutingTests: XCTestCase {
         XCTAssertTrue(controller.contains("event.isCommandS"))
         XCTAssertTrue(controller.contains(".saveAgendaNote"))
         XCTAssertTrue(controller.contains("event.optionArrowDirection"))
+        XCTAssertTrue(controller.contains("self.model.mode == .agenda,\n               let direction = event.optionArrowDirection"))
+        XCTAssertTrue(controller.contains("model.mode == .agenda,\n           let direction = event.optionArrowDirection"))
         XCTAssertTrue(controller.contains(".agendaMoveSelection(direction)"))
     }
 
