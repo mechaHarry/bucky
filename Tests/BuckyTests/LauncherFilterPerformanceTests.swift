@@ -80,7 +80,7 @@ final class LauncherFilterPerformanceRunner {
             "Calculator",
             "Preview",
             "Messages",
-            "Reminders"
+            "Shortcuts"
         ]
         let modifiers = [
             "Daily",
