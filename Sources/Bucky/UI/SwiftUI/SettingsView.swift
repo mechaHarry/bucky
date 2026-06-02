@@ -1160,7 +1160,7 @@ private enum HelpShortcutCatalog {
                     openMode
                 ],
                 explanations: [
-                    HelpExplanation(title: "Agenda filter", detail: "Typing will filter notes and reminders when Agenda is implemented.")
+                    HelpExplanation(title: "Agenda filter", detail: "Typing filters remembered notes.")
                 ]
             )
         }

@@ -216,13 +216,13 @@ final class SettingsViewLayoutTests: XCTestCase {
         XCTAssertFalse(source.contains("HelpShortcut(title: \"Preview\", keys: \"Space\""))
     }
 
-    func testAgendaViewUsesTwoColumnsAndFullNoteEditor() throws {
+    func testAgendaViewUsesNotesListAndFullNoteEditor() throws {
         let agendaSource = try source(named: "Sources/Bucky/UI/SwiftUI/AgendaView.swift")
         let launcher = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
 
         XCTAssertTrue(agendaSource.contains("struct AgendaView: View"))
         XCTAssertTrue(agendaSource.contains("AgendaColumn(title: \"Notes\""))
-        XCTAssertTrue(agendaSource.contains("AgendaColumn(title: \"Reminders\""))
+        XCTAssertFalse(agendaSource.contains("AgendaColumn(title: \"Reminders\""))
         XCTAssertTrue(agendaSource.contains("if model.openedAgendaNote != nil"))
         XCTAssertTrue(agendaSource.contains(".opacity(model.openedAgendaNote == nil ? 1 : 0)"))
         XCTAssertTrue(agendaSource.contains("@FocusState private var isNoteEditorFocused"))
@@ -234,17 +234,9 @@ final class SettingsViewLayoutTests: XCTestCase {
         XCTAssertTrue(agendaSource.contains(".focused($isNoteEditorFocused)"))
         XCTAssertTrue(agendaSource.contains(".onChange(of: model.openedAgendaNote?.id)"))
         XCTAssertTrue(agendaSource.contains("setSelectedRange(NSRange(location: 0, length: 0))"))
-        XCTAssertTrue(agendaSource.contains("AgendaReminderDraftOverlay("))
-        XCTAssertTrue(agendaSource.contains("metadataLines: reminder.metadataLines"))
-        XCTAssertTrue(agendaSource.contains("ForEach(metadataLines"))
         XCTAssertTrue(agendaSource.contains("AgendaRemovalConfirmationOverlay("))
-        XCTAssertTrue(agendaSource.contains("DatePicker(\"Date\""))
-        XCTAssertTrue(agendaSource.contains("DatePicker(\"Time\""))
-        XCTAssertTrue(agendaSource.contains("displayedComponents: .date"))
-        XCTAssertTrue(agendaSource.contains("displayedComponents: .hourAndMinute"))
-        XCTAssertTrue(agendaSource.contains("Create"))
-        XCTAssertFalse(agendaSource.contains("TextField(\"Date\", text: $reminder.date)"))
-        XCTAssertFalse(agendaSource.contains("TextField(\"Time\", text: $reminder.time)"))
+        XCTAssertFalse(agendaSource.contains("AgendaReminderDraftOverlay("))
+        XCTAssertFalse(agendaSource.contains("DatePicker(\"Date\""))
         XCTAssertFalse(agendaSource.contains(".onChange(of: noteText)"))
         XCTAssertFalse(agendaSource.contains("VimTextView"))
         XCTAssertFalse(agendaSource.contains("case \"h\":"))
@@ -268,19 +260,6 @@ final class SettingsViewLayoutTests: XCTestCase {
         XCTAssertFalse(modelSource.contains("confirmAgendaRemovalAction"))
         XCTAssertFalse(controllerSource.contains("private func confirmAgendaRemoval"))
         XCTAssertFalse(controllerSource.contains("alert.runModal()"))
-    }
-
-    func testAgendaNotificationsPresentWhileBuckyIsRunning() throws {
-        let schedulerSource = try source(named: "Sources/Bucky/Agenda/AgendaReminderScheduler.swift")
-        let modelSource = try source(named: "Sources/Bucky/Agenda/AgendaModels.swift")
-
-        XCTAssertTrue(schedulerSource.contains("UNUserNotificationCenterDelegate"))
-        XCTAssertTrue(schedulerSource.contains("center.delegate = self"))
-        XCTAssertTrue(schedulerSource.contains("willPresent notification"))
-        XCTAssertTrue(schedulerSource.contains(".banner"))
-        XCTAssertTrue(schedulerSource.contains(".sound"))
-        XCTAssertTrue(modelSource.contains("components.timeZone = .current"))
-        XCTAssertTrue(modelSource.contains("components.second = 0"))
     }
 
     func testSettingsAndHelpSidebarsUseBackCollapseControls() throws {

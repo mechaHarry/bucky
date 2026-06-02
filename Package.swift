@@ -19,8 +19,7 @@ let package = Package(
                 .linkedFramework("CoreServices"),
                 .linkedFramework("QuickLookThumbnailing"),
                 .linkedFramework("ServiceManagement"),
-                .linkedFramework("SwiftUI"),
-                .linkedFramework("UserNotifications")
+                .linkedFramework("SwiftUI")
             ]
         ),
         .testTarget(

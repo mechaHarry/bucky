@@ -16,18 +16,12 @@ final class LiquidGlassLauncherModel: ObservableObject {
     @Published var isWindowKey = true
     @Published var isShowingSettings = false
     @Published var isShowingHelp = false
-    @Published var agendaSelectionColumn: AgendaSelectionColumn = .notes
     @Published var agendaSelectedNoteIndex = 0
-    @Published var agendaSelectedReminderIndex = 0
     @Published private(set) var agendaNotes: [AgendaNoteReference] = []
-    @Published private(set) var agendaReminders: [AgendaReminder] = []
     @Published private(set) var openedAgendaNote: AgendaNoteReference?
     @Published var agendaOpenNoteText = ""
     @Published var isAgendaNoteSearchVisible = false
-    @Published var isCreatingAgendaReminder = false
-    @Published var draftAgendaReminder = AgendaReminder(name: "")
     @Published var isConfirmingAgendaRemoval = false
-    @Published var pendingAgendaRemovalColumn: AgendaSelectionColumn?
     @Published var isPinned = false {
         didSet { pinnedChangedAction?(isPinned) }
     }
@@ -47,7 +41,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private let calculationHistoryStore: CalculationHistoryStore
     private let dictionaryHistoryStore: DictionaryHistoryStore
     private let agendaStore: AgendaStore
-    private let agendaReminderScheduler: AgendaReminderScheduling
     private let dictionaryLookup: @Sendable (String) -> [DictionaryResult]
     private let dictionaryOpenHandler: (String) -> Void
     private let fileBrowserModelFactory: () -> FileBrowserModel
@@ -81,7 +74,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
         dictionaryLookup: @escaping @Sendable (String) -> [DictionaryResult] = { DictionaryLookup.results(for: $0) },
         dictionaryOpenHandler: @escaping (String) -> Void = LiquidGlassLauncherModel.openDictionaryTerm,
         agendaStore: AgendaStore = AgendaStore(),
-        agendaReminderScheduler: AgendaReminderScheduling = NoOpAgendaReminderScheduler(),
         fileBrowserModel: FileBrowserModel? = nil,
         fileBrowserModelFactory: (() -> FileBrowserModel)? = nil,
         applicationIndexSnapshotCache: ApplicationIndexSnapshotCache = ApplicationIndexSnapshotCache()
@@ -94,7 +86,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
         self.dictionaryLookup = dictionaryLookup
         self.dictionaryOpenHandler = dictionaryOpenHandler
         self.agendaStore = agendaStore
-        self.agendaReminderScheduler = agendaReminderScheduler
         self.applicationIndexSnapshotCache = applicationIndexSnapshotCache
         self.activatedFileBrowserModel = fileBrowserModel
         self.fileBrowserModelFactory = fileBrowserModelFactory ?? {
@@ -104,7 +95,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
         }
         animationTiming = settingsStore.settings.animationTiming
         syncAgendaSnapshot()
-        agendaReminderScheduler.sync(reminders: agendaReminders)
         loadCachedApplicationSnapshot()
     }
 
@@ -139,10 +129,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
         AgendaFilter.filterNotes(agendaNotes, query: query)
     }
 
-    var filteredAgendaReminders: [AgendaReminder] {
-        AgendaFilter.filterReminders(agendaReminders, query: query)
-    }
-
     var placeholder: String {
         mode.placeholder
     }
@@ -153,7 +139,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
             return filteredItemIDs.count
         case .calculator, .dictionary, .agenda:
             if mode == .agenda {
-                return agendaSelectionColumn == .notes ? filteredAgendaNotes.count : filteredAgendaReminders.count
+                return filteredAgendaNotes.count
             }
             return toolItems.count
         case .files:
@@ -189,10 +175,10 @@ final class LiquidGlassLauncherModel: ObservableObject {
                 return "No files"
             }
         case .agenda:
-            if inputIsBlank, agendaNotes.isEmpty, agendaReminders.isEmpty {
+            if inputIsBlank, agendaNotes.isEmpty {
                 return "Agenda scratchpad"
             }
-            if !inputIsBlank, filteredAgendaNotes.isEmpty, filteredAgendaReminders.isEmpty {
+            if !inputIsBlank, filteredAgendaNotes.isEmpty {
                 return "No agenda matches"
             }
         }
@@ -304,7 +290,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
             activateSelected()
         case .close:
             if mode == .agenda,
-               (openedAgendaNote != nil || isConfirmingAgendaRemoval || isCreatingAgendaReminder) {
+               (openedAgendaNote != nil || isConfirmingAgendaRemoval) {
                 return handleAgendaCommand(command)
             }
             if mode == .files, fileBrowserFocusState != .browse {
@@ -1067,68 +1053,25 @@ final class LiquidGlassLauncherModel: ObservableObject {
     func rememberAgendaNote(url: URL) {
         agendaStore.rememberNote(url: url)
         syncAgendaSnapshot()
-        agendaSelectionColumn = .notes
         agendaSelectedNoteIndex = 0
     }
 
-    func updateAgendaReminder(_ reminder: AgendaReminder) {
-        agendaStore.updateReminder(reminder)
-        syncAgendaSnapshot()
-        agendaReminderScheduler.schedule(reminder)
-    }
-
-    func createDraftAgendaReminder() {
-        let reminder = agendaStore.createReminder(
-            name: draftAgendaReminder.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                ? "New Reminder"
-                : draftAgendaReminder.name,
-            date: draftAgendaReminder.date,
-            time: draftAgendaReminder.time,
-            urlString: draftAgendaReminder.urlString,
-            details: draftAgendaReminder.details
-        )
-        syncAgendaSnapshot()
-        agendaReminderScheduler.schedule(reminder)
-        agendaSelectionColumn = .reminders
-        agendaSelectedReminderIndex = filteredAgendaReminders.firstIndex { $0.id == reminder.id } ?? 0
-        cancelDraftAgendaReminder()
-    }
-
-    func cancelDraftAgendaReminder() {
-        isCreatingAgendaReminder = false
-        draftAgendaReminder = AgendaReminder(name: "")
-    }
-
     func confirmAgendaRemoval() {
-        guard let column = pendingAgendaRemovalColumn else { return }
-        switch column {
-        case .notes:
-            guard filteredAgendaNotes.indices.contains(agendaSelectedNoteIndex) else {
-                cancelAgendaRemoval()
-                return
-            }
-            agendaStore.removeNote(id: filteredAgendaNotes[agendaSelectedNoteIndex].id)
-        case .reminders:
-            guard filteredAgendaReminders.indices.contains(agendaSelectedReminderIndex) else {
-                cancelAgendaRemoval()
-                return
-            }
-            let reminderID = filteredAgendaReminders[agendaSelectedReminderIndex].id
-            agendaStore.removeReminder(id: reminderID)
-            agendaReminderScheduler.cancelReminder(id: reminderID)
+        guard filteredAgendaNotes.indices.contains(agendaSelectedNoteIndex) else {
+            cancelAgendaRemoval()
+            return
         }
+        agendaStore.removeNote(id: filteredAgendaNotes[agendaSelectedNoteIndex].id)
         syncAgendaSnapshot()
         cancelAgendaRemoval()
     }
 
     func cancelAgendaRemoval() {
         isConfirmingAgendaRemoval = false
-        pendingAgendaRemovalColumn = nil
     }
 
     private func syncAgendaSnapshot() {
         agendaNotes = agendaStore.notes
-        agendaReminders = agendaStore.reminders
         clampAgendaSelection()
     }
 
@@ -1139,29 +1082,16 @@ final class LiquidGlassLauncherModel: ObservableObject {
                 confirmAgendaRemoval()
                 return true
             }
-            if isCreatingAgendaReminder {
-                createDraftAgendaReminder()
-                return true
-            }
-            if agendaSelectionColumn == .notes {
-                guard filteredAgendaNotes.indices.contains(agendaSelectedNoteIndex) else {
-                    openAgendaNoteAction?()
-                    return true
-                }
-                openAgendaNote(filteredAgendaNotes[agendaSelectedNoteIndex])
-                return true
-            }
-            return false
-        case .createAgendaItem:
-            if agendaSelectionColumn == .notes {
+            guard filteredAgendaNotes.indices.contains(agendaSelectedNoteIndex) else {
                 openAgendaNoteAction?()
-            } else {
-                draftAgendaReminder = AgendaReminder(name: "")
-                isCreatingAgendaReminder = true
+                return true
             }
+            openAgendaNote(filteredAgendaNotes[agendaSelectedNoteIndex])
+            return true
+        case .createAgendaItem:
+            openAgendaNoteAction?()
             return true
         case .removeAgendaSelection:
-            pendingAgendaRemovalColumn = agendaSelectionColumn
             isConfirmingAgendaRemoval = true
             return true
         case .saveAgendaNote:
@@ -1172,14 +1102,11 @@ final class LiquidGlassLauncherModel: ObservableObject {
                 cancelAgendaRemoval()
                 return true
             }
-            if isCreatingAgendaReminder {
-                cancelDraftAgendaReminder()
-                return true
-            }
             if isAgendaNoteSearchVisible {
                 isAgendaNoteSearchVisible = false
                 return true
             }
+            saveOpenedAgendaNote()
             openedAgendaNote = nil
             agendaOpenNoteText = ""
             isAgendaNoteSearchVisible = false
@@ -1194,31 +1121,18 @@ final class LiquidGlassLauncherModel: ObservableObject {
 
     private func moveAgendaSelection(_ direction: AgendaNavigationDirection) {
         switch direction {
-        case .left:
-            agendaSelectionColumn = .notes
-        case .right:
-            agendaSelectionColumn = .reminders
+        case .left, .right:
+            break
         case .up:
-            switch agendaSelectionColumn {
-            case .notes:
-                agendaSelectedNoteIndex = max(agendaSelectedNoteIndex - 1, 0)
-            case .reminders:
-                agendaSelectedReminderIndex = max(agendaSelectedReminderIndex - 1, 0)
-            }
+            agendaSelectedNoteIndex = max(agendaSelectedNoteIndex - 1, 0)
         case .down:
-            switch agendaSelectionColumn {
-            case .notes:
-                agendaSelectedNoteIndex = min(agendaSelectedNoteIndex + 1, max(filteredAgendaNotes.count - 1, 0))
-            case .reminders:
-                agendaSelectedReminderIndex = min(agendaSelectedReminderIndex + 1, max(filteredAgendaReminders.count - 1, 0))
-            }
+            agendaSelectedNoteIndex = min(agendaSelectedNoteIndex + 1, max(filteredAgendaNotes.count - 1, 0))
         }
         clampAgendaSelection()
     }
 
     private func clampAgendaSelection() {
         agendaSelectedNoteIndex = min(max(agendaSelectedNoteIndex, 0), max(filteredAgendaNotes.count - 1, 0))
-        agendaSelectedReminderIndex = min(max(agendaSelectedReminderIndex, 0), max(filteredAgendaReminders.count - 1, 0))
     }
 
     private func openAgendaNote(_ note: AgendaNoteReference) {

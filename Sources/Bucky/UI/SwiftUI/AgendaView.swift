@@ -15,26 +15,16 @@ struct AgendaView: View {
             columnsPane
                 .opacity(model.openedAgendaNote == nil ? 1 : 0)
                 .allowsHitTesting(model.openedAgendaNote == nil)
-                .blur(radius: model.isCreatingAgendaReminder || model.isConfirmingAgendaRemoval ? 8 : 0)
-                .opacity(model.isCreatingAgendaReminder || model.isConfirmingAgendaRemoval ? 0.42 : 1)
+                .blur(radius: model.isConfirmingAgendaRemoval ? 8 : 0)
+                .opacity(model.isConfirmingAgendaRemoval ? 0.42 : 1)
 
             if model.openedAgendaNote != nil {
                 openedNotePane
                     .transition(.opacity.combined(with: .scale(scale: 0.985)))
             }
 
-            if model.isCreatingAgendaReminder {
-                AgendaReminderDraftOverlay(
-                    reminder: $model.draftAgendaReminder,
-                    onCancel: model.cancelDraftAgendaReminder,
-                    onCreate: model.createDraftAgendaReminder
-                )
-                .transition(.opacity.combined(with: .scale(scale: 0.985)))
-            }
-
             if model.isConfirmingAgendaRemoval {
                 AgendaRemovalConfirmationOverlay(
-                    column: model.pendingAgendaRemovalColumn ?? model.agendaSelectionColumn,
                     onCancel: model.cancelAgendaRemoval,
                     onConfirm: model.confirmAgendaRemoval
                 )
@@ -43,7 +33,6 @@ struct AgendaView: View {
         }
         .padding(12)
         .animation(.smooth(duration: 0.16), value: model.openedAgendaNote?.id)
-        .animation(.smooth(duration: 0.16), value: model.isCreatingAgendaReminder)
         .animation(.smooth(duration: 0.16), value: model.isConfirmingAgendaRemoval)
         .animation(.smooth(duration: 0.12), value: model.isAgendaNoteSearchVisible)
         .onChange(of: model.openedAgendaNote?.id) {
@@ -69,36 +58,16 @@ struct AgendaView: View {
 
     @ViewBuilder
     private var columnsPane: some View {
-        HStack(spacing: 12) {
-            AgendaColumn(title: "Notes", isActive: model.agendaSelectionColumn == .notes) {
-                ForEach(Array(model.filteredAgendaNotes.enumerated()), id: \.element.id) { index, note in
-                    AgendaRow(
-                        title: note.title,
-                        subtitle: note.subtitle,
-                        metadataLines: [],
-                        isSelected: model.agendaSelectionColumn == .notes && model.agendaSelectedNoteIndex == index
-                    )
-                    .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .onTapGesture {
-                        model.agendaSelectionColumn = .notes
-                        model.agendaSelectedNoteIndex = index
-                    }
-                }
-            }
-
-            AgendaColumn(title: "Reminders", isActive: model.agendaSelectionColumn == .reminders) {
-                ForEach(Array(model.filteredAgendaReminders.enumerated()), id: \.element.id) { index, reminder in
-                    AgendaRow(
-                        title: reminder.name,
-                        subtitle: reminder.subtitle,
-                        metadataLines: reminder.metadataLines,
-                        isSelected: model.agendaSelectionColumn == .reminders && model.agendaSelectedReminderIndex == index
-                    )
-                    .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .onTapGesture {
-                        model.agendaSelectionColumn = .reminders
-                        model.agendaSelectedReminderIndex = index
-                    }
+        AgendaColumn(title: "Notes", isActive: true) {
+            ForEach(Array(model.filteredAgendaNotes.enumerated()), id: \.element.id) { index, note in
+                AgendaRow(
+                    title: note.title,
+                    subtitle: note.subtitle,
+                    isSelected: model.agendaSelectedNoteIndex == index
+                )
+                .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .onTapGesture {
+                    model.agendaSelectedNoteIndex = index
                 }
             }
         }
@@ -284,107 +253,15 @@ private final class AgendaTextView: NSTextView {
 }
 
 @available(macOS 26.0, *)
-private struct AgendaReminderDraftOverlay: View {
-    @Binding var reminder: AgendaReminder
-    let onCancel: () -> Void
-    let onCreate: () -> Void
-    @FocusState private var isNameFocused: Bool
-    @State private var selectedDate = Date()
-    @State private var selectedTime = Date()
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("New Reminder")
-                .font(.system(size: 15, weight: .semibold))
-
-            VStack(spacing: 8) {
-                TextField("Name", text: $reminder.name)
-                    .focused($isNameFocused)
-                DatePicker("Date", selection: $selectedDate, displayedComponents: .date)
-                    .datePickerStyle(.compact)
-                    .onChange(of: selectedDate) {
-                        reminder.date = AgendaReminderDateFormatting.dateString(from: selectedDate)
-                    }
-                DatePicker("Time", selection: $selectedTime, displayedComponents: .hourAndMinute)
-                    .datePickerStyle(.compact)
-                    .onChange(of: selectedTime) {
-                        reminder.time = AgendaReminderDateFormatting.timeString(from: selectedTime)
-                    }
-                TextField("URL", text: $reminder.urlString)
-                TextEditor(text: $reminder.details)
-                    .font(.system(size: 13))
-                    .scrollContentBackground(.hidden)
-                    .frame(minHeight: 96)
-                    .background {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(Color(nsColor: .textBackgroundColor).opacity(0.28))
-                    }
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .strokeBorder(Color(nsColor: .separatorColor).opacity(0.22), lineWidth: 1)
-                    }
-            }
-            .textFieldStyle(.roundedBorder)
-
-            HStack {
-                Button("Cancel", action: onCancel)
-                    .keyboardShortcut(.cancelAction)
-                Spacer()
-                Button("Create", action: onCreate)
-                    .keyboardShortcut(.defaultAction)
-                    .buttonStyle(.borderedProminent)
-            }
-        }
-        .padding(16)
-        .frame(width: 360)
-        .background {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(.regularMaterial)
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.32), lineWidth: 1)
-        }
-        .shadow(color: .black.opacity(0.18), radius: 24, y: 12)
-        .onAppear {
-            if let date = AgendaReminderDateFormatting.date(from: reminder.date) {
-                selectedDate = date
-            }
-            if let time = AgendaReminderDateFormatting.time(from: reminder.time) {
-                selectedTime = time
-            }
-            DispatchQueue.main.async {
-                isNameFocused = true
-            }
-        }
-    }
-}
-
-@available(macOS 26.0, *)
 private struct AgendaRemovalConfirmationOverlay: View {
-    let column: AgendaSelectionColumn
     let onCancel: () -> Void
     let onConfirm: () -> Void
 
-    private var title: String {
-        column == .notes ? "Remove note from Agenda?" : "Delete reminder?"
-    }
-
-    private var detail: String {
-        column == .notes
-            ? "The file stays on disk. Bucky only forgets it from Agenda."
-            : "This removes the reminder from Bucky."
-    }
-
-    private var actionTitle: String {
-        column == .notes ? "Remove" : "Delete"
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(title)
+            Text("Remove note from Agenda?")
                 .font(.system(size: 15, weight: .semibold))
-            Text(detail)
+            Text("The file stays on disk. Bucky only forgets it from Agenda.")
                 .font(.system(size: 13))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -393,7 +270,7 @@ private struct AgendaRemovalConfirmationOverlay: View {
                 Button("Cancel", action: onCancel)
                     .keyboardShortcut(.cancelAction)
                 Spacer()
-                Button(actionTitle, action: onConfirm)
+                Button("Remove", action: onConfirm)
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
             }
@@ -409,32 +286,6 @@ private struct AgendaRemovalConfirmationOverlay: View {
                 .strokeBorder(Color(nsColor: .separatorColor).opacity(0.32), lineWidth: 1)
         }
         .shadow(color: .black.opacity(0.18), radius: 24, y: 12)
-    }
-}
-
-private enum AgendaReminderDateFormatting {
-    static func dateString(from date: Date) -> String {
-        formatter("yyyy-MM-dd").string(from: date)
-    }
-
-    static func timeString(from date: Date) -> String {
-        formatter("HH:mm").string(from: date)
-    }
-
-    static func date(from value: String) -> Date? {
-        formatter("yyyy-MM-dd").date(from: value)
-    }
-
-    static func time(from value: String) -> Date? {
-        formatter("HH:mm").date(from: value)
-    }
-
-    private static func formatter(_ dateFormat: String) -> DateFormatter {
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = dateFormat
-        return formatter
     }
 }
 
@@ -475,7 +326,6 @@ private struct AgendaColumn<Content: View>: View {
 private struct AgendaRow: View {
     let title: String
     let subtitle: String
-    let metadataLines: [String]
     let isSelected: Bool
 
     var body: some View {
@@ -488,14 +338,6 @@ private struct AgendaRow: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-            }
-            ForEach(metadataLines, id: \.self) { metadataLine in
-                if metadataLine != subtitle {
-                    Text(metadataLine)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
             }
         }
         .padding(.horizontal, 8)
