@@ -69,6 +69,11 @@ struct LiquidGlassLauncherView: View {
                 iconPreloadTask = nil
             }
         }
+        .onChange(of: model.isWindowKey) { _, isWindowKey in
+            if isWindowKey {
+                synchronizeSearchFocus()
+            }
+        }
         .onChange(of: model.filteredItemIDs) {
             preloadApplicationIcons()
         }

@@ -13,7 +13,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     @Published var isIndexing = false
     @Published var animationTiming: LauncherAnimationTiming
     @Published var isPresented = false
-    @Published var isWindowKey = true
+    @Published var isWindowKey = false
     @Published var isShowingSettings = false
     @Published var isShowingHelp = false
     @Published var agendaSelectedNoteIndex = 0

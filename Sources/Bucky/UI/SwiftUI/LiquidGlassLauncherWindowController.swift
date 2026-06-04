@@ -158,7 +158,6 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         window.alphaValue = 1
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-        model.setWindowKeyState(true)
         if shouldMaterialize {
             var transaction = Transaction()
             transaction.disablesAnimations = true
@@ -187,7 +186,6 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         window.alphaValue = 1
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-        model.setWindowKeyState(true)
         if shouldMaterialize {
             var transaction = Transaction()
             transaction.disablesAnimations = true
@@ -219,7 +217,6 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         model.showLauncherSurface()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-        model.setWindowKeyState(true)
     }
 
     private func show(mode: LauncherMode) {
@@ -234,7 +231,6 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         window.alphaValue = 1
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-        model.setWindowKeyState(true)
         if shouldMaterialize {
             var transaction = Transaction()
             transaction.disablesAnimations = true
@@ -915,7 +911,6 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         }
 
         window.makeKeyAndOrderFront(nil)
-        model.setWindowKeyState(true)
     }
 
     private func setPinned(_ isPinned: Bool) {
@@ -930,7 +925,6 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
 
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-        model.setWindowKeyState(true)
     }
 
     private func beginVisibilityTransition(_ state: WindowVisibilityState) {
