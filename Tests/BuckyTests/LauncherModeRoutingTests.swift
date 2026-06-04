@@ -335,7 +335,7 @@ final class LauncherModeRoutingTests: XCTestCase {
         let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
 
         XCTAssertTrue(source.contains("transaction.disablesAnimations = true"))
-        XCTAssertTrue(source.contains("withTransaction(transaction) {\n                model.isPresented = true\n            }\n            finishShow(transitionID: visibilityTransitionID)"))
+        XCTAssertTrue(source.contains("withTransaction(transaction) {\n                model.isPresented = true\n            }\n            animateWindowOpen(transitionID: visibilityTransitionID)"))
         XCTAssertFalse(source.contains("scheduleApplicationReindexIfNeeded"))
         XCTAssertTrue(source.contains("startApplicationIndexSourceStream()"))
         XCTAssertFalse(source.contains("withAnimation(presentationAnimation, completionCriteria: .removed) {\n                model.isPresented = true"))
@@ -350,6 +350,17 @@ final class LauncherModeRoutingTests: XCTestCase {
         XCTAssertTrue(source.contains("window.animator().alphaValue = 0"))
         XCTAssertTrue(source.contains("transaction.disablesAnimations = true\n                withTransaction(transaction) {\n                    self.model.isPresented = false\n                }"))
         XCTAssertFalse(source.contains("withAnimation(presentationAnimation, completionCriteria: .removed) {\n            model.isPresented = false"))
+    }
+
+    @available(macOS 26.0, *)
+    func testHotKeyShowFadesWholeWindowAfterNonAnimatedContentMaterialization() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
+
+        XCTAssertTrue(source.contains("window.alphaValue = shouldMaterialize ? 0 : 1"))
+        XCTAssertTrue(source.contains("withTransaction(transaction) {\n                model.isPresented = true\n            }\n            animateWindowOpen(transitionID: visibilityTransitionID)"))
+        XCTAssertTrue(source.contains("private func animateWindowOpen(transitionID: Int)"))
+        XCTAssertTrue(source.contains("window.animator().alphaValue = 1"))
+        XCTAssertTrue(source.contains("self.finishShow(transitionID: transitionID)"))
     }
 
     @available(macOS 26.0, *)

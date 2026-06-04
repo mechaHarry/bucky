@@ -228,7 +228,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             model.isPresented = false
         }
         positionWindow(animated: false)
-        window.alphaValue = 1
+        window.alphaValue = shouldMaterialize ? 0 : 1
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         if shouldMaterialize {
@@ -237,7 +237,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             withTransaction(transaction) {
                 model.isPresented = true
             }
-            finishShow(transitionID: visibilityTransitionID)
+            animateWindowOpen(transitionID: visibilityTransitionID)
         } else {
             finishShow(transitionID: visibilityTransitionID)
         }
@@ -939,6 +939,24 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         }
 
         visibilityState = .shown
+    }
+
+    private func animateWindowOpen(transitionID: Int) {
+        NSAnimationContext.runAnimationGroup { [weak self] context in
+            guard let self else { return }
+            context.duration = presentationAnimationDuration
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            window.animator().alphaValue = 1
+        } completionHandler: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self,
+                      self.visibilityTransitionID == transitionID,
+                      self.visibilityState == .showing else {
+                    return
+                }
+                self.finishShow(transitionID: transitionID)
+            }
+        }
     }
 
     private func finishHide(transitionID: Int) {
