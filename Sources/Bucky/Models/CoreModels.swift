@@ -438,20 +438,6 @@ struct DictionaryResult: Hashable {
     let term: String
     let definition: String
 }
-enum ApplicationCalculatorQuery {
-    static func expression(from query: String) -> String? {
-        guard let markerIndex = query.firstIndex(where: { !$0.isWhitespace }) else {
-            return nil
-        }
-
-        guard query[markerIndex] == "=" else {
-            return nil
-        }
-
-        let expressionStart = query.index(after: markerIndex)
-        return String(query[expressionStart...]).trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-}
 enum LauncherMode: Int, CaseIterable {
     case applications = 1
     case dictionary = 3
