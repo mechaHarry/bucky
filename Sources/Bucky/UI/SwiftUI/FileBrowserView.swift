@@ -174,34 +174,72 @@ struct FileBrowserView: View {
     }
 
     private var actionOverlay: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            FileBrowserActionSelectionSummary(
-                urls: model.activeSelectionURLs,
-                model: model
+        GeometryReader { proxy in
+            actionOverlayPane(
+                maxHeight: max(0, proxy.size.height - FileBrowserActionPaneLayoutPolicy.outerPadding * 2)
             )
+            .padding(FileBrowserActionPaneLayoutPolicy.outerPadding)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+        }
+    }
 
-            Divider()
-                .opacity(0.42)
-
-            VStack(alignment: .leading, spacing: 5) {
-                ForEach(Array(model.focusableActions.enumerated()), id: \.element) { index, action in
-                    ActionRow(
-                        action: action,
-                        isFocused: index == model.focusedActionIndex
+    private func actionOverlayPane(maxHeight: CGFloat) -> some View {
+        ScrollViewReader { actionScrollProxy in
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: 12) {
+                    FileBrowserActionSelectionSummary(
+                        urls: model.activeSelectionURLs,
+                        model: model
                     )
+
+                    Divider()
+                        .opacity(0.42)
+
+                    VStack(alignment: .leading, spacing: 5) {
+                        ForEach(Array(model.focusableActions.enumerated()), id: \.element) { index, action in
+                            ActionRow(
+                                action: action,
+                                isFocused: index == model.focusedActionIndex
+                            )
+                            .id(index)
+                        }
+                    }
                 }
+                .padding(FileBrowserActionPaneLayoutPolicy.padding)
+                .frame(width: FileBrowserActionPaneLayoutPolicy.width)
+            }
+            .scrollIndicators(.hidden)
+            .frame(width: FileBrowserActionPaneLayoutPolicy.width)
+            .frame(maxHeight: maxHeight)
+            .clipped()
+            .glassEffect(.regular.interactive(false), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(Color(nsColor: .separatorColor).opacity(0.28), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.24), radius: 24, x: 0, y: 14)
+            .onAppear {
+                scrollFocusedAction(in: actionScrollProxy, animated: false)
+            }
+            .onChange(of: model.focusedActionIndex) { _, _ in
+                scrollFocusedAction(in: actionScrollProxy, animated: true)
+            }
+            .onChange(of: model.focusState) { _, _ in
+                scrollFocusedAction(in: actionScrollProxy, animated: false)
             }
         }
-        .padding(FileBrowserActionPaneLayoutPolicy.padding)
-        .frame(width: FileBrowserActionPaneLayoutPolicy.width)
-        .clipped()
-        .glassEffect(.regular.interactive(false), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.28), lineWidth: 1)
+    }
+
+    private func scrollFocusedAction(in actionScrollProxy: ScrollViewProxy, animated: Bool) {
+        guard model.focusState == .previewActions else { return }
+
+        if animated {
+            withAnimation(.easeInOut(duration: 0.14)) {
+                actionScrollProxy.scrollTo(model.focusedActionIndex, anchor: .center)
+            }
+        } else {
+            actionScrollProxy.scrollTo(model.focusedActionIndex, anchor: .center)
         }
-        .shadow(color: .black.opacity(0.24), radius: 24, x: 0, y: 14)
-        .padding(18)
     }
 
     private var transferHint: some View {

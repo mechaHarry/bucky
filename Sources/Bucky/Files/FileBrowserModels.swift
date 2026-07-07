@@ -390,6 +390,7 @@ struct FileBrowserRowFocusIndicatorPolicy {
 struct FileBrowserActionPaneLayoutPolicy {
     static let width: CGFloat = 268
     static let padding: CGFloat = 14
+    static let outerPadding: CGFloat = 18
     static let cardStackHeight: CGFloat = 58
     static let selectionRowHeight: CGFloat = 18
     static let maximumVisibleSelectionRows = 4
