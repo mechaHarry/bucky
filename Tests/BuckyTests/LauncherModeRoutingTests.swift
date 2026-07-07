@@ -929,6 +929,96 @@ final class LauncherModeRoutingTests: XCTestCase {
 
     @MainActor
     @available(macOS 26.0, *)
+    func testAppsQuestionQueryShowsDictionaryHistory() {
+        let history = DictionaryHistoryStore(fileURL: temporaryDictionaryHistoryFileURL())
+        history.add(term: "apple")
+        history.add(term: "banana")
+        let model = makeDictionaryLauncherModel(dictionaryHistoryStore: history)
+
+        model.show(mode: .applications)
+        model.query = "?"
+        model.queryDidChange()
+
+        XCTAssertTrue(model.isApplicationDictionaryActive)
+        XCTAssertEqual(model.toolItems.map(\.kind), [.dictionaryHistory, .dictionaryHistory])
+        XCTAssertEqual(model.toolItems.map(\.title), ["banana", "apple"])
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testAppsQuestionQueryPublishesLatestDictionaryLookupAfterDelay() {
+        let model = makeDictionaryLauncherModel(
+            dictionaryHistoryStore: DictionaryHistoryStore(fileURL: temporaryDictionaryHistoryFileURL()),
+            dictionaryLookup: { query in
+                [DictionaryResult(term: query, definition: "Definition for \(query)")]
+            }
+        )
+
+        model.show(mode: .applications)
+        model.query = "? apple"
+        model.queryDidChange()
+
+        XCTAssertTrue(model.isDictionaryLookupLoading)
+        XCTAssertEqual(model.toolItems, [])
+        RunLoop.current.run(until: Date().addingTimeInterval(0.18))
+
+        XCTAssertFalse(model.isDictionaryLookupLoading)
+        XCTAssertEqual(model.toolItems.map(\.kind), [.dictionary])
+        XCTAssertEqual(model.toolItems.map(\.title), ["apple"])
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testLeavingAppsQuestionLookupCancelsLoadingAndRestoresApplicationFiltering() {
+        let model = makeDictionaryLauncherModel(
+            dictionaryHistoryStore: DictionaryHistoryStore(fileURL: temporaryDictionaryHistoryFileURL()),
+            dictionaryLookup: { _ in
+                [DictionaryResult(term: "stale", definition: "Stale")]
+            }
+        )
+        var reindexCount = 0
+        model.reindexAction = { reindexCount += 1 }
+
+        model.show(mode: .applications)
+        model.query = "? apple"
+        model.queryDidChange()
+        XCTAssertTrue(model.isDictionaryLookupLoading)
+
+        model.query = "Safari"
+        model.queryDidChange()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.18))
+
+        XCTAssertFalse(model.isApplicationDictionaryActive)
+        XCTAssertFalse(model.isDictionaryLookupLoading)
+        XCTAssertTrue(model.toolItems.isEmpty)
+        XCTAssertEqual(reindexCount, 0)
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testCancelledAppsQuestionLookupCannotPublishAfterRouteChanges() {
+        let model = makeDictionaryLauncherModel(
+            dictionaryHistoryStore: DictionaryHistoryStore(fileURL: temporaryDictionaryHistoryFileURL()),
+            dictionaryLookup: { query in
+                Thread.sleep(forTimeInterval: 0.08)
+                return [DictionaryResult(term: query, definition: "Late \(query)")]
+            }
+        )
+
+        model.show(mode: .applications)
+        model.query = "? apple"
+        model.queryDidChange()
+        model.query = "? banana"
+        model.queryDidChange()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.24))
+
+        XCTAssertFalse(model.isDictionaryLookupLoading)
+        XCTAssertEqual(model.toolItems.map(\.title), ["banana"])
+        XCTAssertFalse(model.toolItems.contains { $0.title == "apple" })
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
     func testAppsEqualsQueryHistoryCommitDoesNotStealHistorySelection() {
         let calculationHistoryStore = CalculationHistoryStore()
         calculationHistoryStore.clear()

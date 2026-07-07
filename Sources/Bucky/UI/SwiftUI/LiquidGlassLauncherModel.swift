@@ -24,6 +24,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     @Published var isConfirmingAgendaRemoval = false
     @Published private(set) var dictionaryPreview: DictionaryDefinitionPreview?
     @Published private(set) var calculatorResultFeedback: CalculatorResultFeedback?
+    @Published private(set) var isDictionaryLookupLoading = false
     @Published var isPinned = false {
         didSet { pinnedChangedAction?(isPinned) }
     }
@@ -135,11 +136,15 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     var isApplicationCalculatorActive: Bool {
-        mode == .applications && applicationCalculatorExpression != nil
+        mode == .applications && applicationQueryRoute.calculatorExpression != nil
     }
 
-    private var applicationCalculatorExpression: String? {
-        ApplicationCalculatorQuery.expression(from: query)
+    private var applicationQueryRoute: ApplicationQueryRoute {
+        ApplicationQueryRoute(query: query)
+    }
+
+    var isApplicationDictionaryActive: Bool {
+        mode == .applications && applicationQueryRoute.dictionaryTerm != nil
     }
 
     var placeholder: String {
@@ -149,10 +154,12 @@ final class LiquidGlassLauncherModel: ObservableObject {
     var resultCount: Int {
         switch mode {
         case .applications:
-            if isApplicationCalculatorActive {
+            switch applicationQueryRoute {
+            case .calculator, .dictionary:
                 return toolItems.count
+            case .applications:
+                return filteredItemIDs.count
             }
-            return filteredItemIDs.count
         case .dictionary, .agenda:
             if mode == .agenda {
                 return filteredAgendaNotes.count
@@ -174,6 +181,9 @@ final class LiquidGlassLauncherModel: ObservableObject {
         case .applications:
             if isApplicationCalculatorActive {
                 return toolItems.isEmpty ? "No calculation history" : nil
+            }
+            if isApplicationDictionaryActive {
+                return toolItems.isEmpty && !isDictionaryLookupLoading ? "No dictionary matches" : nil
             }
             if filteredItemIDs.isEmpty {
                 if isIndexing && appRowStore.isEmpty {
@@ -520,6 +530,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         dictionaryLookupGeneration += 1
         pendingDictionaryLookupTask?.cancel()
         pendingDictionaryLookupTask = nil
+        isDictionaryLookupLoading = false
     }
 
     private func cancelPendingApplicationFilter() {
@@ -547,21 +558,21 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private func applyCurrentMode(preservePreviousOnEmpty: Bool = false) {
         switch mode {
         case .applications:
-            cancelPendingDictionaryLookup()
-            if isApplicationCalculatorActive {
+            switch applicationQueryRoute {
+            case .calculator, .dictionary:
                 cancelPendingApplicationFilter()
                 applyToolsResults()
-                return
+            case .applications:
+                cancelPendingDictionaryLookup()
+                cancelPendingCalculationHistory()
+                if toolItems.contains(where: { $0.kind == .calculation || $0.kind == .calculationHistory || $0.kind == .dictionary || $0.kind == .dictionaryHistory || $0.kind == .message }) {
+                    toolItems = []
+                }
+                if appRowStore.visibleIDs.isEmpty, !appRowStore.isEmpty {
+                    rebuildVisibleItems()
+                }
+                applyApplicationFilter(preservePreviousOnEmpty: preservePreviousOnEmpty)
             }
-
-            cancelPendingCalculationHistory()
-            if toolItems.contains(where: { $0.kind == .calculation || $0.kind == .calculationHistory || $0.kind == .message }) {
-                toolItems = []
-            }
-            if appRowStore.visibleIDs.isEmpty, !appRowStore.isEmpty {
-                rebuildVisibleItems()
-            }
-            applyApplicationFilter(preservePreviousOnEmpty: preservePreviousOnEmpty)
         case .dictionary:
             applyToolsResults()
         case .agenda:
@@ -819,7 +830,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         delayNanoseconds: UInt64,
         selectLiveCalculation: Bool
     ) {
-        guard mode == .dictionary else { return }
+        guard mode == .dictionary || isApplicationDictionaryActive else { return }
 
         dictionaryLookupGeneration += 1
         let generation = dictionaryLookupGeneration
@@ -828,6 +839,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
             toolItems = []
             selectedIndex = 0
         }
+        isDictionaryLookupLoading = true
         pendingDictionaryLookupTask?.cancel()
         pendingDictionaryLookupTask = Task { [weak self] in
             do {
@@ -856,6 +868,9 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private func makeToolItems(for trimmedQuery: String, scheduleHistory: Bool) -> [ToolItem] {
         switch mode {
         case .applications:
+            if isApplicationDictionaryActive {
+                return trimmedQuery.isEmpty ? dictionaryHistoryItems() : toolItems
+            }
             guard isApplicationCalculatorActive else { return [] }
             if trimmedQuery.isEmpty {
                 return calculationHistoryItems()
@@ -937,13 +952,14 @@ final class LiquidGlassLauncherModel: ObservableObject {
         generation: Int,
         selectLiveCalculation: Bool
     ) {
-        guard mode == .dictionary,
+        guard (mode == .dictionary || isApplicationDictionaryActive),
               dictionaryLookupGeneration == generation,
-              self.query.trimmingCharacters(in: .whitespacesAndNewlines) == query else {
+              toolQueryForCurrentMode() == query else {
             return
         }
 
         pendingDictionaryLookupTask = nil
+        isDictionaryLookupLoading = false
         applyToolResultsSnapshot(
             makeDictionaryToolItems(for: query, results: results),
             selectLiveCalculation: selectLiveCalculation
@@ -1018,9 +1034,12 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     private func toolQueryForCurrentMode() -> String {
-        if mode == .applications,
-           let expression = applicationCalculatorExpression {
-            return expression
+        if mode == .applications {
+            switch applicationQueryRoute {
+            case let .calculator(expression): return expression
+            case let .dictionary(term): return term
+            case .applications: break
+            }
         }
 
         return query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1278,10 +1297,13 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private func activateSelected() {
         switch mode {
         case .applications:
-            if isApplicationCalculatorActive {
+            switch applicationQueryRoute {
+            case .calculator, .dictionary:
                 guard selectedIndex >= 0, selectedIndex < toolItems.count else { return }
                 activate(toolItems[selectedIndex])
                 return
+            case .applications:
+                break
             }
 
             guard selectedIndex >= 0, selectedIndex < filteredItemIDs.count,
