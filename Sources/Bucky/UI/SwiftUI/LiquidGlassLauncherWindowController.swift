@@ -19,6 +19,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     private var isOptionPinnedFocusActive = false
     private var visibilityState: WindowVisibilityState = .hidden
     private var visibilityTransitionID = 0
+    private var focusClaimID = 0
     private var applicationIndexSourceStream: ApplicationIndexSourceStream?
     private var presentationAnimationDuration: TimeInterval {
         0.24
@@ -46,7 +47,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
                 width: LauncherWindowFramePolicy.defaultSize.width,
                 height: LauncherWindowFramePolicy.defaultSize.height
             ),
-            styleMask: [.borderless, .resizable],
+            styleMask: [.borderless, .resizable, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
@@ -158,8 +159,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             positionWindow(animated: false)
         }
         window.alphaValue = 1
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        activateAndFocusWindow()
         if shouldMaterialize {
             var transaction = Transaction()
             transaction.disablesAnimations = true
@@ -186,8 +186,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             positionWindow(animated: false)
         }
         window.alphaValue = 1
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        activateAndFocusWindow()
         if shouldMaterialize {
             var transaction = Transaction()
             transaction.disablesAnimations = true
@@ -217,8 +216,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     private func showLauncherFromPanel() {
         stopRecordingSettingsHotKey()
         model.showLauncherSurface()
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        activateAndFocusWindow()
     }
 
     private func show(mode: LauncherMode) {
@@ -231,8 +229,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         }
         positionWindow(animated: false)
         window.alphaValue = shouldMaterialize ? 0 : 1
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        activateAndFocusWindow()
         if shouldMaterialize {
             var transaction = Transaction()
             transaction.disablesAnimations = true
@@ -251,6 +248,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             return
         }
 
+        cancelFocusClaim()
         beginVisibilityTransition(.hiding)
         closeQuickLookPreviewPanel()
         cancelSpaceHoldState(deliverEndHold: true)
@@ -383,6 +381,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
 
     private func buildWindow() {
         window.level = .floating
+        window.becomesKeyOnlyIfNeeded = false
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
         window.isOpaque = false
         window.backgroundColor = .clear
@@ -919,6 +918,41 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         window.makeKeyAndOrderFront(nil)
     }
 
+    private func activateAndFocusWindow() {
+        focusClaimID += 1
+        let claimID = focusClaimID
+        claimLauncherFocus()
+        scheduleFocusClaimRetry(claimID: claimID, retryIndex: 0)
+    }
+
+    private func claimLauncherFocus() {
+        window.orderFrontRegardless()
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    private func scheduleFocusClaimRetry(claimID: Int, retryIndex: Int) {
+        guard retryIndex < LauncherWindowFocusClaimPolicy.retryDelays.count else { return }
+
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + LauncherWindowFocusClaimPolicy.retryDelays[retryIndex]
+        ) { [weak self] in
+            guard let self,
+                  self.focusClaimID == claimID,
+                  LauncherWindowFocusClaimPolicy.shouldRetry(
+                    isWindowKey: self.window.isKeyWindow
+                  ) else {
+                return
+            }
+
+            self.claimLauncherFocus()
+            self.scheduleFocusClaimRetry(claimID: claimID, retryIndex: retryIndex + 1)
+        }
+    }
+
+    private func cancelFocusClaim() {
+        focusClaimID += 1
+    }
+
     private func setPinned(_ isPinned: Bool) {
         window.level = isPinned ? .statusBar : .floating
     }
@@ -929,8 +963,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             return
         }
 
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        activateAndFocusWindow()
     }
 
     private func beginVisibilityTransition(_ state: WindowVisibilityState) {

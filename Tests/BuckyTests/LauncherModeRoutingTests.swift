@@ -236,7 +236,7 @@ final class LauncherModeRoutingTests: XCTestCase {
         ))
     }
 
-    func testFilesModeRestoresFocusWhenAppReactivatesAfterPermissionPrompt() {
+    func testPresentedVisibleLauncherRestoresFocusWhenAppReactivatesWithoutKeyWindow() {
         XCTAssertTrue(LauncherWindowFocusRestorationPolicy.shouldRestoreAfterAppActivation(
             mode: .files,
             isPinned: false,
@@ -244,7 +244,7 @@ final class LauncherModeRoutingTests: XCTestCase {
             isVisible: true,
             isKeyWindow: false
         ))
-        XCTAssertFalse(LauncherWindowFocusRestorationPolicy.shouldRestoreAfterAppActivation(
+        XCTAssertTrue(LauncherWindowFocusRestorationPolicy.shouldRestoreAfterAppActivation(
             mode: .applications,
             isPinned: false,
             isPresented: true,
@@ -258,6 +258,32 @@ final class LauncherModeRoutingTests: XCTestCase {
             isVisible: true,
             isKeyWindow: true
         ))
+    }
+
+    func testLauncherFocusClaimsKeyWindowWithoutForegroundActivation() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
+
+        XCTAssertTrue(source.contains("private func activateAndFocusWindow()"))
+        XCTAssertTrue(source.contains("window.orderFrontRegardless()\n        window.makeKeyAndOrderFront(nil)"))
+        XCTAssertFalse(source.contains("NSRunningApplication.current.activate"))
+        XCTAssertFalse(source.contains("NSApp.activate()"))
+        XCTAssertFalse(source.contains("NSApp.activate(ignoringOtherApps: true)"))
+    }
+
+    func testLauncherFocusClaimRetriesAreBoundedAndStopAfterFocusIsOwned() {
+        XCTAssertEqual(LauncherWindowFocusClaimPolicy.retryDelays, [0.016, 0.04, 0.08])
+        XCTAssertTrue(LauncherWindowFocusClaimPolicy.shouldRetry(isWindowKey: false))
+        XCTAssertFalse(LauncherWindowFocusClaimPolicy.shouldRetry(isWindowKey: true))
+    }
+
+    func testLauncherWindowUsesKeyCapableNonactivatingPanel() throws {
+        let panelSource = try source(named: "Sources/Bucky/UI/Shared/BuckyPanelWindow.swift")
+        let controllerSource = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
+
+        XCTAssertTrue(panelSource.contains("final class BuckyPanelWindow: NSPanel"))
+        XCTAssertTrue(panelSource.contains("override var canBecomeKey: Bool { true }"))
+        XCTAssertTrue(controllerSource.contains("styleMask: [.borderless, .resizable, .nonactivatingPanel]"))
+        XCTAssertTrue(controllerSource.contains("window.becomesKeyOnlyIfNeeded = false"))
     }
 
     @available(macOS 26.0, *)

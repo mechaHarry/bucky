@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-final class BuckyPanelWindow: NSWindow {
+final class BuckyPanelWindow: NSPanel {
     var keyEquivalentHandler: ((NSEvent) -> Bool)?
     var cancelHandler: (() -> Bool)?
 

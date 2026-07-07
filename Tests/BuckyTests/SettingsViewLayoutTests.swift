@@ -122,7 +122,7 @@ final class SettingsViewLayoutTests: XCTestCase {
         let panel = try source(named: "Sources/Bucky/UI/Shared/BuckyPanelWindow.swift")
 
         XCTAssertTrue(launcher.contains("BuckyPanelWindow("))
-        XCTAssertTrue(launcher.contains("styleMask: [.borderless, .resizable]"))
+        XCTAssertTrue(launcher.contains("styleMask: [.borderless, .resizable, .nonactivatingPanel]"))
         XCTAssertTrue(launcher.contains("window.isOpaque = false"))
         XCTAssertTrue(launcher.contains("window.backgroundColor = .clear"))
         XCTAssertTrue(launcher.contains("window.hasShadow = true"))
