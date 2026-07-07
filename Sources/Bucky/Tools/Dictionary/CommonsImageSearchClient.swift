@@ -1,5 +1,27 @@
 import Foundation
 
+enum CommonsThumbnailURLPolicy {
+    static func isAllowed(_ url: URL) -> Bool {
+        guard url.scheme?.lowercased() == "https",
+              url.host?.lowercased() == "upload.wikimedia.org",
+              url.user == nil,
+              url.password == nil,
+              url.port == nil else { return false }
+        return true
+    }
+}
+
+enum CommonsImageRetryPolicy {
+    static func delayNanoseconds(for statusCode: Int, attempt: Int) -> UInt64? {
+        guard (statusCode == 429 || (500...599).contains(statusCode)) else { return nil }
+        switch attempt {
+        case 0: return 250_000_000
+        case 1: return 750_000_000
+        default: return nil
+        }
+    }
+}
+
 enum CommonsImageSearchResponseParser {
     static func imageURLs(from data: Data, limit: Int) throws -> [URL] {
         guard limit > 0 else { return [] }
@@ -14,6 +36,7 @@ enum CommonsImageSearchResponseParser {
         for page in pages {
             guard let thumbURLString = page.imageinfo?.first?.thumburl,
                   let url = URL(string: thumbURLString),
+                  CommonsThumbnailURLPolicy.isAllowed(url),
                   seen.insert(url).inserted else {
                 continue
             }
@@ -49,6 +72,7 @@ final class CommonsImageSearchClient {
     private let session: URLSession
     private let limit: Int
     private let thumbnailWidth: Int
+    private let sleep: @Sendable (UInt64) async throws -> Void
 
     init(
         session: URLSession = {
@@ -59,11 +83,15 @@ final class CommonsImageSearchClient {
             return URLSession(configuration: configuration)
         }(),
         limit: Int = 12,
-        thumbnailWidth: Int = 320
+        thumbnailWidth: Int = 320,
+        sleep: @escaping @Sendable (UInt64) async throws -> Void = { nanoseconds in
+            try await Task.sleep(nanoseconds: nanoseconds)
+        }
     ) {
         self.session = session
         self.limit = limit
         self.thumbnailWidth = thumbnailWidth
+        self.sleep = sleep
     }
 
     static func searchURL(for term: String, limit: Int, thumbnailWidth: Int) -> URL? {
@@ -95,8 +123,22 @@ final class CommonsImageSearchClient {
         do {
             var request = URLRequest(url: url)
             request.setValue("Bucky macOS dictionary preview (local launcher)", forHTTPHeaderField: "User-Agent")
-            let (data, _) = try await session.data(for: request)
-            return try CommonsImageSearchResponseParser.imageURLs(from: data, limit: limit)
+            var retryAttempt = 0
+            while true {
+                try Task.checkCancellation()
+                let (data, response) = try await session.data(for: request)
+                guard let httpResponse = response as? HTTPURLResponse else { return [] }
+                guard (200...299).contains(httpResponse.statusCode) else {
+                    guard let delay = CommonsImageRetryPolicy.delayNanoseconds(
+                        for: httpResponse.statusCode,
+                        attempt: retryAttempt
+                    ) else { return [] }
+                    retryAttempt += 1
+                    try await sleep(delay)
+                    continue
+                }
+                return try CommonsImageSearchResponseParser.imageURLs(from: data, limit: limit)
+            }
         } catch {
             return []
         }

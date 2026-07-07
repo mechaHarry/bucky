@@ -317,6 +317,20 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
                 "imageinfo": [
                   { "thumburl": "https://upload.wikimedia.org/wikipedia/commons/thumb/two.jpg/320px-two.jpg" }
                 ]
+              },
+              "13": {
+                "pageid": 13,
+                "title": "File:Unsafe.jpg",
+                "imageinfo": [
+                  { "thumburl": "http://upload.wikimedia.org/wikipedia/commons/thumb/unsafe.jpg/320px-unsafe.jpg" }
+                ]
+              },
+              "14": {
+                "pageid": 14,
+                "title": "File:Foreign.jpg",
+                "imageinfo": [
+                  { "thumburl": "https://example.com/foreign.jpg" }
+                ]
               }
             }
           }
