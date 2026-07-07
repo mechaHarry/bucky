@@ -76,6 +76,26 @@ final class LauncherResultListPolicyTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(LauncherResultListVisualStyle.rowRimLineWidth(isSelected: true), 1.20)
     }
 
+    func testAppsResultRowWrapsSharedResultRowWithNativeShellDefaults() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/LauncherResultListView.swift")
+
+        XCTAssertTrue(source.contains("struct LauncherAppsResultRow<Leading: View, Details: View, Metadata: View, Action: View>"))
+        XCTAssertTrue(source.contains("LauncherResultRow(") )
+        XCTAssertTrue(source.contains("selectionTint: selectionTint"))
+        XCTAssertTrue(source.contains("selectionNamespace: selectionNamespace"))
+        XCTAssertTrue(source.contains("verticalPadding: 10"))
+    }
+
+    func testAppsResultSkeletonRowUsesAccessibleNativePlaceholdersAndAnimation() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/LauncherResultListView.swift")
+
+        XCTAssertTrue(source.contains("struct LauncherAppsResultSkeletonRow"))
+        XCTAssertTrue(source.contains(".frame(width: 38, height: 38)"))
+        XCTAssertTrue(source.contains(".accessibilityHidden(true)"))
+        XCTAssertTrue(source.contains(".easeInOut"))
+        XCTAssertTrue(source.contains("opacity"))
+    }
+
     func testApplicationRowsShowRightAlignedCategoryLabel() throws {
         let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
 

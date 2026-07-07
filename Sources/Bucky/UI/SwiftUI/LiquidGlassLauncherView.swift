@@ -262,6 +262,12 @@ struct LiquidGlassLauncherView: View {
                         model.prepareFileBrowserMode()
                     }
             }
+        } else if model.isDictionaryLookupLoading {
+            resultScrollView(reconstructionID: "dictionary-loading", usesEagerRows: true) {
+                ForEach(0..<4, id: \.self) { _ in
+                    LauncherAppsResultSkeletonRow()
+                }
+            }
         } else if let emptyMessage = model.emptyMessage {
             Text(emptyMessage)
                 .font(.system(size: 17, weight: .medium))
@@ -354,39 +360,36 @@ struct LiquidGlassLauncherView: View {
         let rowID = ResultRowID.application(id)
         let isSelected = index == model.selectedIndex
 
-        return LauncherResultRow(
+        return LauncherAppsResultRow(
             isSelected: isSelected,
             selectionTint: LauncherModeTintPolicy.selectionColor(for: model.mode),
-            selectionNamespace: selectionGlassNamespace
-        ) {
-            HStack(spacing: 14) {
-                HStack(spacing: 14) {
-                    ApplicationIconView(url: item.url)
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(item.title)
-                            .font(.system(size: 18, weight: .semibold))
-                            .lineLimit(1)
-                        Text(item.subtitle)
-                            .font(.system(size: 12, weight: .regular))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-
-                    Spacer(minLength: 12)
-
-                    Text(item.category.title)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.tertiary)
+            selectionNamespace: selectionGlassNamespace,
+            onActivate: {
+                model.selectedIndex = index
+                _ = model.handle(command: .open)
+            },
+            leading: {
+                ApplicationIconView(url: item.url)
+            },
+            details: {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.title)
+                        .font(.system(size: 18, weight: .semibold))
                         .lineLimit(1)
-                        .accessibilityLabel("Result type: \(item.category.title)")
+                    Text(item.subtitle)
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    model.selectedIndex = index
-                    _ = model.handle(command: .open)
-                }
-
+            },
+            metadata: {
+                Text(item.category.title)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .accessibilityLabel("Result type: \(item.category.title)")
+            },
+            action: {
                 Button {
                     model.exclude(item)
                 } label: {
@@ -403,7 +406,7 @@ struct LiquidGlassLauncherView: View {
                 .help("Hide from results")
                 .launcherActionButtonRim()
             }
-        }
+        )
         .id(rowID)
     }
 
@@ -412,37 +415,35 @@ struct LiquidGlassLauncherView: View {
         let isSelected = index == model.selectedIndex
         let actionConfiguration = toolActionConfiguration(for: item)
 
-        return LauncherResultRow(
+        return LauncherAppsResultRow(
             isSelected: isSelected,
             selectionTint: LauncherModeTintPolicy.selectionColor(for: model.mode),
             selectionNamespace: selectionGlassNamespace,
-            verticalPadding: 11
-        ) {
-            HStack(spacing: 14) {
-                HStack(spacing: 14) {
-                    Image(systemName: toolSymbol(for: item.kind))
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(toolColor(for: item.kind))
-                        .frame(width: 38, height: 38)
-
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(item.title)
-                            .font(.system(size: item.kind == .calculation ? 26 : 18, weight: .semibold, design: item.kind == .calculation ? .rounded : .default))
-                            .lineLimit(1)
-                        Text(item.subtitle)
-                            .font(.system(size: 13))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
-
-                    Spacer(minLength: 12)
+            onActivate: {
+                model.selectedIndex = index
+                _ = model.handle(command: .open)
+            },
+            leading: {
+                Image(systemName: toolSymbol(for: item.kind))
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(toolColor(for: item.kind))
+                    .frame(width: 38, height: 38)
+            },
+            details: {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(item.title)
+                        .font(.system(size: item.kind == .calculation ? 26 : 18, weight: .semibold, design: item.kind == .calculation ? .rounded : .default))
+                        .lineLimit(1)
+                    Text(item.subtitle)
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
                 }
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    model.selectedIndex = index
-                    _ = model.handle(command: .open)
-                }
-
+            },
+            metadata: {
+                EmptyView()
+            },
+            action: {
                 if let actionConfiguration {
                     Button {
                         model.selectedIndex = index
@@ -462,7 +463,7 @@ struct LiquidGlassLauncherView: View {
                     .launcherActionButtonRim()
                 }
             }
-        }
+        )
         .id(rowID)
     }
 

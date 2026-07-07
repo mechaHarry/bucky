@@ -103,6 +103,81 @@ struct LauncherResultRow<Content: View>: View {
 }
 
 @available(macOS 26.0, *)
+struct LauncherAppsResultRow<Leading: View, Details: View, Metadata: View, Action: View>: View {
+    let isSelected: Bool
+    let selectionTint: Color
+    let selectionNamespace: Namespace.ID
+    let onActivate: () -> Void
+    @ViewBuilder let leading: () -> Leading
+    @ViewBuilder let details: () -> Details
+    @ViewBuilder let metadata: () -> Metadata
+    @ViewBuilder let action: () -> Action
+
+    var body: some View {
+        LauncherResultRow(
+            isSelected: isSelected,
+            selectionTint: selectionTint,
+            selectionNamespace: selectionNamespace,
+            verticalPadding: 10
+        ) {
+            HStack(spacing: 14) {
+                HStack(spacing: 14) {
+                    leading()
+
+                    details()
+
+                    Spacer(minLength: 12)
+
+                    metadata()
+                }
+                .contentShape(Rectangle())
+                .onTapGesture(perform: onActivate)
+
+                action()
+            }
+        }
+    }
+}
+
+@available(macOS 26.0, *)
+struct LauncherAppsResultSkeletonRow: View {
+    @Namespace private var selectionNamespace
+    @State private var isPulseVisible = false
+
+    var body: some View {
+        LauncherResultRow(
+            isSelected: false,
+            selectionNamespace: selectionNamespace
+        ) {
+            HStack(spacing: 14) {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(.secondary.opacity(0.18))
+                    .frame(width: 38, height: 38)
+
+                VStack(alignment: .leading, spacing: 7) {
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(.secondary.opacity(0.18))
+                        .frame(width: 156, height: 15)
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(.secondary.opacity(0.13))
+                        .frame(width: 220, height: 11)
+                }
+
+                Spacer(minLength: 12)
+
+                Circle()
+                    .fill(.secondary.opacity(0.16))
+                    .frame(width: 26, height: 26)
+            }
+            .opacity(isPulseVisible ? 0.48 : 0.90)
+            .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: isPulseVisible)
+            .onAppear { isPulseVisible = true }
+            .accessibilityHidden(true)
+        }
+    }
+}
+
+@available(macOS 26.0, *)
 private struct LauncherResultRowBackground: View {
     let isSelected: Bool
     let isMarked: Bool

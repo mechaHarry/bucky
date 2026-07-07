@@ -85,6 +85,27 @@ final class LiquidGlassLauncherFilterTests: XCTestCase {
         XCTAssertFalse(launcher.contains("ForEach(Array(model.filteredItems.enumerated()), id: \\.element.url)"))
     }
 
+    func testApplicationsAndToolsUseSharedAppsResultRowAdapters() throws {
+        let launcher = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
+
+        XCTAssertTrue(launcher.contains("LauncherAppsResultRow("))
+        XCTAssertTrue(launcher.contains("private func applicationRow"))
+        XCTAssertTrue(launcher.contains("private func toolRow"))
+        XCTAssertTrue(launcher.contains("ResultRowID.application(id)"))
+        XCTAssertTrue(launcher.contains("ResultRowID.tool(item)"))
+        XCTAssertFalse(launcher.contains("verticalPadding: 11"))
+        XCTAssertFalse(launcher.contains("ToolItem(item)"))
+    }
+
+    func testDictionaryLoadingRendersSharedSkeletonRowsBeforeStaleResults() throws {
+        let launcher = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
+
+        XCTAssertTrue(launcher.contains("model.isDictionaryLookupLoading"))
+        XCTAssertTrue(launcher.contains("LauncherAppsResultSkeletonRow"))
+        XCTAssertTrue(launcher.contains("ForEach(0..<4"))
+        XCTAssertTrue(launcher.contains("else if let emptyMessage = model.emptyMessage"))
+    }
+
     func testApplicationIndexSnapshotMemoizationIsWiredOffMainThread() throws {
         let model = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherModel.swift")
 
