@@ -32,7 +32,7 @@ struct StubFileSystemClient: FileSystemClientProtocol {
         return nil
     }
 
-    func entries(in directory: URL, sort: FileBrowserSort) throws -> [FileBrowserEntry] {
+    func entries(in directory: URL, sort: FileBrowserSort, foldersFirst: Bool) throws -> [FileBrowserEntry] {
         entriesByDirectory.matching(directory) ?? []
     }
 }
@@ -63,7 +63,7 @@ final class InMemoryFileBrowserStore: FileBrowserPersisting {
 final class RecordingFileSystemClient: FileSystemClientProtocol {
     private let home: URL
     private let entriesByDirectory: [URL: [FileBrowserEntry]]
-    private(set) var entryRequests: [(directory: URL, sort: FileBrowserSort)] = []
+    private(set) var entryRequests: [(directory: URL, sort: FileBrowserSort, foldersFirst: Bool)] = []
 
     init(home: URL, entriesByDirectory: [URL: [FileBrowserEntry]]) {
         self.home = home
@@ -89,8 +89,8 @@ final class RecordingFileSystemClient: FileSystemClientProtocol {
         return nil
     }
 
-    func entries(in directory: URL, sort: FileBrowserSort) throws -> [FileBrowserEntry] {
-        entryRequests.append((directory, sort))
+    func entries(in directory: URL, sort: FileBrowserSort, foldersFirst: Bool) throws -> [FileBrowserEntry] {
+        entryRequests.append((directory, sort, foldersFirst))
         return entriesByDirectory.matching(directory) ?? []
     }
 }
@@ -99,7 +99,7 @@ final class ThrowingFileSystemClient: FileSystemClientProtocol {
     private let home: URL
     private let entriesByDirectory: [URL: [FileBrowserEntry]]
     private let throwingDirectories: Set<URL>
-    private(set) var entryRequests: [(directory: URL, sort: FileBrowserSort)] = []
+    private(set) var entryRequests: [(directory: URL, sort: FileBrowserSort, foldersFirst: Bool)] = []
 
     init(home: URL, entriesByDirectory: [URL: [FileBrowserEntry]], throwingDirectories: Set<URL>) {
         self.home = home
@@ -126,8 +126,8 @@ final class ThrowingFileSystemClient: FileSystemClientProtocol {
         return nil
     }
 
-    func entries(in directory: URL, sort: FileBrowserSort) throws -> [FileBrowserEntry] {
-        entryRequests.append((directory, sort))
+    func entries(in directory: URL, sort: FileBrowserSort, foldersFirst: Bool) throws -> [FileBrowserEntry] {
+        entryRequests.append((directory, sort, foldersFirst))
         if throwingDirectories.containsPath(matching: directory) {
             throw TestFileBrowserServiceError.failed
         }
@@ -137,15 +137,16 @@ final class ThrowingFileSystemClient: FileSystemClientProtocol {
 
 @MainActor
 final class ManualDirectoryStream: FileBrowserDirectoryStreaming {
-    private(set) var requests: [(directory: URL, sort: FileBrowserSort)] = []
+    private(set) var requests: [(directory: URL, sort: FileBrowserSort, foldersFirst: Bool)] = []
     private var completions: [(Result<[FileBrowserEntry], Error>) -> Void] = []
 
     func loadEntries(
         in directory: URL,
         sort: FileBrowserSort,
+        foldersFirst: Bool,
         completion: @escaping (Result<[FileBrowserEntry], Error>) -> Void
     ) {
-        requests.append((directory, sort))
+        requests.append((directory, sort, foldersFirst))
         completions.append(completion)
     }
 
@@ -165,10 +166,11 @@ struct ImmediateDirectoryStream: FileBrowserDirectoryStreaming {
     func loadEntries(
         in directory: URL,
         sort: FileBrowserSort,
+        foldersFirst: Bool,
         completion: @escaping (Result<[FileBrowserEntry], Error>) -> Void
     ) {
         do {
-            completion(.success(try fileSystem?.entries(in: directory, sort: sort) ?? []))
+            completion(.success(try fileSystem?.entries(in: directory, sort: sort, foldersFirst: foldersFirst) ?? []))
         } catch {
             completion(.failure(error))
         }

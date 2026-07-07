@@ -83,7 +83,7 @@ final class FileBrowserModelTests: XCTestCase {
         XCTAssertEqual(model.directorySnapshots, [
             FileBrowserDirectorySnapshot(directory: home, entries: [])
         ])
-        XCTAssertEqual(stream.requests.map(requestDescription), ["\(home.path)|name"])
+        XCTAssertEqual(stream.requests.map(requestDescription), ["\(home.path)|name|false"])
 
         stream.completeRequest(at: 0, with: .success(entries(["home.txt"], in: home)))
 
@@ -192,8 +192,8 @@ final class FileBrowserModelTests: XCTestCase {
         XCTAssertEqual(model.currentDirectory, home)
         XCTAssertTrue(model.isLoadingEntries)
         XCTAssertEqual(stream.requests.map(requestDescription), [
-            "\(missing.path)|name",
-            "\(home.path)|name"
+            "\(missing.path)|name|false",
+            "\(home.path)|name|false"
         ])
 
         stream.completeRequest(at: 1, with: .success(entries(["home.txt"], in: home)))
@@ -1270,6 +1270,34 @@ final class FileBrowserModelTests: XCTestCase {
         XCTAssertEqual(model.sort, .size)
         XCTAssertEqual(store.state.sort, .size)
         XCTAssertEqual(client.entryRequests.filter { $0.directory == home }.map(\.sort), [.name, .size])
+        XCTAssertEqual(client.entryRequests.filter { $0.directory == home }.map(\.foldersFirst), [false, false])
+    }
+
+    func testToggleFoldersFirstReloadsEntriesAndPersistsSelection() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let client = RecordingFileSystemClient(home: home, entriesByDirectory: [
+            home: entries(["Folder/", "file.txt"], in: home)
+        ])
+        let store = InMemoryFileBrowserStore(state: FileBrowserPersistedState(
+            pinnedDirectories: [],
+            lastDirectory: home,
+            sort: .dateCreated,
+            foldersFirst: false,
+            traversalChain: []
+        ))
+        let model = FileBrowserModel(
+            fileSystem: client,
+            store: store,
+            directoryStream: ImmediateDirectoryStream(fileSystem: client)
+        )
+
+        model.setFoldersFirst(true)
+
+        XCTAssertTrue(model.foldersFirst)
+        XCTAssertTrue(store.state.foldersFirst)
+        XCTAssertEqual(model.sort, .dateCreated)
+        XCTAssertEqual(client.entryRequests.filter { $0.directory == home }.map(\.sort), [.dateCreated, .dateCreated])
+        XCTAssertEqual(client.entryRequests.filter { $0.directory == home }.map(\.foldersFirst), [false, true])
     }
 
     func testSortReloadKeepsLastLookedFileWhenEntryOrderChanges() {
@@ -1498,7 +1526,7 @@ final class FileBrowserModelTests: XCTestCase {
         model.handle(.open)
     }
 
-    private func requestDescription(_ request: (directory: URL, sort: FileBrowserSort)) -> String {
-        "\(request.directory.path)|\(request.sort.rawValue)"
+    private func requestDescription(_ request: (directory: URL, sort: FileBrowserSort, foldersFirst: Bool)) -> String {
+        "\(request.directory.path)|\(request.sort.rawValue)|\(request.foldersFirst)"
     }
 }

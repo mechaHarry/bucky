@@ -101,6 +101,9 @@ struct ModeSwitcherView: View {
 
                     sortMenu
                         .layoutPriority(1)
+
+                    foldersFirstToggle
+                        .layoutPriority(1)
                 }
                 .padding(.leading, ModeSwitcherLayoutPolicy.filesPillLeadingPadding)
                 .padding(.trailing, ModeSwitcherLayoutPolicy.filesPillTrailingPadding)
@@ -145,9 +148,25 @@ struct ModeSwitcherView: View {
         }
         .pickerStyle(.menu)
         .controlSize(.small)
-        .frame(width: 128)
+        .frame(width: ModeSwitcherLayoutPolicy.filesSortMenuWidth)
         .fixedSize(horizontal: true, vertical: false)
         .help("Sort files")
+    }
+
+    private var foldersFirstToggle: some View {
+        Toggle(isOn: Binding(
+            get: { model.activeFileBrowserModel?.foldersFirst ?? false },
+            set: { model.activeFileBrowserModel?.setFoldersFirst($0) }
+        )) {
+            Image(systemName: "folder.fill")
+                .font(.system(size: 13, weight: .semibold))
+        }
+        .toggleStyle(.button)
+        .controlSize(.small)
+        .frame(width: ModeSwitcherLayoutPolicy.filesFoldersFirstToggleWidth)
+        .fixedSize(horizontal: true, vertical: false)
+        .accessibilityLabel("Folders first")
+        .help("Folders first")
     }
 
     private func symbol(for mode: LauncherMode) -> String {
@@ -208,12 +227,14 @@ struct ModeSwitcherLayoutPolicy {
     static let filesPathIconWidth: CGFloat = 22
     static let filesPathTextHeight: CGFloat = 22
     static let filesSortMenuWidth: CGFloat = 128
+    static let filesFoldersFirstToggleWidth: CGFloat = 34
 
     static func filesPathButtonWidth(in pillWidth: CGFloat) -> CGFloat {
         let fixedWidth = filesPillLeadingPadding
             + filesPillTrailingPadding
-            + filesContentSpacing
+            + filesContentSpacing * 2
             + filesSortMenuWidth
+            + filesFoldersFirstToggleWidth
         return max(0, pillWidth - fixedWidth)
     }
 

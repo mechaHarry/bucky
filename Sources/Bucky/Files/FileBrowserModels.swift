@@ -55,6 +55,7 @@ struct FileBrowserPersistedState: Codable, Equatable {
     var pinnedDirectories: [URL]
     var lastDirectory: URL?
     var sort: FileBrowserSort
+    var foldersFirst: Bool
     var traversalChain: [URL]
     var rememberedSelections: [FileBrowserRememberedSelection]
     var directoryBookmarks: [FileBrowserDirectoryBookmark]
@@ -63,6 +64,7 @@ struct FileBrowserPersistedState: Codable, Equatable {
         pinnedDirectories: [],
         lastDirectory: nil,
         sort: .name,
+        foldersFirst: false,
         traversalChain: [],
         rememberedSelections: [],
         directoryBookmarks: []
@@ -72,6 +74,7 @@ struct FileBrowserPersistedState: Codable, Equatable {
         pinnedDirectories: [URL],
         lastDirectory: URL?,
         sort: FileBrowserSort,
+        foldersFirst: Bool = false,
         traversalChain: [URL],
         rememberedSelections: [FileBrowserRememberedSelection] = [],
         directoryBookmarks: [FileBrowserDirectoryBookmark] = []
@@ -79,6 +82,7 @@ struct FileBrowserPersistedState: Codable, Equatable {
         self.pinnedDirectories = pinnedDirectories
         self.lastDirectory = lastDirectory
         self.sort = sort
+        self.foldersFirst = foldersFirst
         self.traversalChain = traversalChain
         self.rememberedSelections = rememberedSelections
         self.directoryBookmarks = directoryBookmarks
@@ -88,6 +92,7 @@ struct FileBrowserPersistedState: Codable, Equatable {
         case pinnedDirectories
         case lastDirectory
         case sort
+        case foldersFirst
         case traversalChain
         case rememberedSelections
         case directoryBookmarks
@@ -98,6 +103,7 @@ struct FileBrowserPersistedState: Codable, Equatable {
         pinnedDirectories = try container.decodeIfPresent([URL].self, forKey: .pinnedDirectories) ?? []
         lastDirectory = try container.decodeIfPresent(URL.self, forKey: .lastDirectory)
         sort = try container.decodeIfPresent(FileBrowserSort.self, forKey: .sort) ?? .name
+        foldersFirst = try container.decodeIfPresent(Bool.self, forKey: .foldersFirst) ?? false
         traversalChain = try container.decodeIfPresent([URL].self, forKey: .traversalChain) ?? []
         rememberedSelections = try container.decodeIfPresent(
             [FileBrowserRememberedSelection].self,
@@ -147,7 +153,7 @@ protocol FileSystemClientProtocol {
     func parentURL(for url: URL) -> URL?
     func isDirectory(_ url: URL) -> Bool
     func resolvedDirectoryURL(for url: URL) -> URL?
-    func entries(in directory: URL, sort: FileBrowserSort) throws -> [FileBrowserEntry]
+    func entries(in directory: URL, sort: FileBrowserSort, foldersFirst: Bool) throws -> [FileBrowserEntry]
 }
 
 extension FileSystemClient: FileSystemClientProtocol {}

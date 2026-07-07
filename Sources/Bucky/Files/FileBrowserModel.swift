@@ -14,6 +14,7 @@ final class FileBrowserModel: ObservableObject {
     @Published private(set) var navigationTransition: FileBrowserNavigationTransition?
     @Published private(set) var selectionScrollEvent: FileBrowserSelectionScrollEvent?
     @Published private(set) var sort: FileBrowserSort
+    @Published private(set) var foldersFirst: Bool
     @Published private(set) var pinnedDirectories: [URL] = []
     @Published private(set) var focusedPinnedIndex = 0
     @Published private(set) var focusedActionIndex = 0
@@ -104,6 +105,7 @@ final class FileBrowserModel: ObservableObject {
         self.directoryObserver = directoryObserver
         self.fileServices = fileServices
         self.sort = store.state.sort
+        self.foldersFirst = store.state.foldersFirst
         self.pinnedDirectories = store.state.pinnedDirectories
         self.recentTraversalChain = store.state.traversalChain
         self.rememberedSelectionByDirectory = store.state.rememberedSelections.reduce(into: [:]) { selections, item in
@@ -256,6 +258,13 @@ final class FileBrowserModel: ObservableObject {
         guard sort != nextSort else { return }
         let preferredSelection = selectedEntry?.url ?? rememberedSelection(in: currentDirectory)
         sort = nextSort
+        reloadEntries(selecting: preferredSelection)
+    }
+
+    func setFoldersFirst(_ isEnabled: Bool) {
+        guard foldersFirst != isEnabled else { return }
+        let preferredSelection = selectedEntry?.url ?? rememberedSelection(in: currentDirectory)
+        foldersFirst = isEnabled
         reloadEntries(selecting: preferredSelection)
     }
 
@@ -478,7 +487,7 @@ final class FileBrowserModel: ObservableObject {
         entries = []
         directorySnapshots = [FileBrowserDirectorySnapshot(directory: requestedDirectory, entries: [])]
 
-        directoryStream.loadEntries(in: requestedDirectory, sort: sort) { [weak self] result in
+        directoryStream.loadEntries(in: requestedDirectory, sort: sort, foldersFirst: foldersFirst) { [weak self] result in
             guard let self, generation == self.directoryLoadGeneration else { return }
 
             switch result {
@@ -554,7 +563,7 @@ final class FileBrowserModel: ObservableObject {
         pendingSnapshotRequests.insert(key)
         let generation = directoryLoadGeneration
         var hasReturned = false
-        directoryStream.loadEntries(in: directory, sort: sort) { [weak self] result in
+        directoryStream.loadEntries(in: directory, sort: sort, foldersFirst: foldersFirst) { [weak self] result in
             guard let self, generation == self.directoryLoadGeneration else { return }
             let loaded = (try? result.get()) ?? []
             self.snapshotEntryCache[key] = loaded
@@ -568,7 +577,7 @@ final class FileBrowserModel: ObservableObject {
     }
 
     private func cacheKey(for directory: URL) -> DirectorySnapshotCacheKey {
-        DirectorySnapshotCacheKey(directory: directory.standardizedFileURL, sort: sort)
+        DirectorySnapshotCacheKey(directory: directory.standardizedFileURL, sort: sort, foldersFirst: foldersFirst)
     }
 
     private func moveSelection(by delta: Int) {
@@ -945,6 +954,7 @@ final class FileBrowserModel: ObservableObject {
             pinnedDirectories: pinnedDirectories,
             lastDirectory: currentDirectory,
             sort: sort,
+            foldersFirst: foldersFirst,
             traversalChain: recentTraversalChain,
             rememberedSelections: rememberedSelectionByDirectory
                 .map { FileBrowserRememberedSelection(directory: $0.key, selection: $0.value) }
@@ -977,4 +987,5 @@ extension FileBrowserModel {
 private struct DirectorySnapshotCacheKey: Hashable {
     let directory: URL
     let sort: FileBrowserSort
+    let foldersFirst: Bool
 }
