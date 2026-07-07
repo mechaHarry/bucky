@@ -22,7 +22,7 @@ enum LauncherModeTintPolicy {
         case .calculator:
             return LauncherModeTint(activeHex: 0xFFD300, panelHex: 0xB08A00, iconHex: 0x6B5200, darkModeIconHex: 0xFFE98A)
         case .dictionary:
-            return tint(for: .dictionary)
+            return LauncherModeTint(activeHex: 0xE429F2, panelHex: 0xBF00FF, iconHex: 0x6E1977, darkModeIconHex: 0xF5B8FF)
         }
     }
 
@@ -30,8 +30,6 @@ enum LauncherModeTintPolicy {
         switch mode {
         case .applications:
             return LauncherModeTint(activeHex: 0x266EF6, panelHex: 0x08578A, iconHex: 0x0B3D91, darkModeIconHex: 0x9CC7FF)
-        case .dictionary:
-            return LauncherModeTint(activeHex: 0xE429F2, panelHex: 0xBF00FF, iconHex: 0x6E1977, darkModeIconHex: 0xF5B8FF)
         case .files:
             return LauncherModeTint(activeHex: 0xFF0130, panelHex: 0xC60404, iconHex: 0x7A0018, darkModeIconHex: 0xFFA6B8)
         case .agenda:

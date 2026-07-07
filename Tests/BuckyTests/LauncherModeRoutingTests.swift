@@ -26,16 +26,15 @@ final class LauncherModeRoutingTests: XCTestCase {
         let view = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
 
         XCTAssertTrue(controller.contains("model.isApplicationDictionaryActive"))
-        XCTAssertTrue(controller.contains("model.mode == .files || model.mode == .dictionary || model.isApplicationDictionaryActive"))
+        XCTAssertTrue(controller.contains("model.mode == .files || model.isApplicationDictionaryActive"))
         XCTAssertTrue(model.contains("dictionaryRouteIsActive"))
         XCTAssertTrue(model.contains("pendingDictionaryPreviewTask"))
         XCTAssertTrue(view.contains("model.isApplicationDictionaryActive"))
-        XCTAssertTrue(view.contains("LauncherModeTintPolicy.panelColor(for: .dictionary)"))
+        XCTAssertTrue(view.contains("LauncherModeTintPolicy.panelColor(for: .dictionary(term:"))
     }
     func testLauncherModesAreOrderedForCommandShortcuts() {
         XCTAssertEqual(LauncherMode.ordered, [
             .applications,
-            .dictionary,
             .files,
             .agenda
         ])
@@ -44,7 +43,7 @@ final class LauncherModeRoutingTests: XCTestCase {
     func testCommandShortcutNumbersResolveModes() {
         XCTAssertEqual(LauncherMode(commandNumber: 1), .applications)
         XCTAssertNil(LauncherMode(commandNumber: 2))
-        XCTAssertEqual(LauncherMode(commandNumber: 3), .dictionary)
+        XCTAssertNil(LauncherMode(commandNumber: 3))
         XCTAssertEqual(LauncherMode(commandNumber: 4), .files)
         XCTAssertEqual(LauncherMode(commandNumber: 5), .agenda)
         XCTAssertNil(LauncherMode(commandNumber: 6))
@@ -52,8 +51,7 @@ final class LauncherModeRoutingTests: XCTestCase {
 
     func testModeCycleWrapsThroughOrderedModes() {
         XCTAssertEqual(LauncherMode.applications.previousMode, .agenda)
-        XCTAssertEqual(LauncherMode.applications.nextMode, .dictionary)
-        XCTAssertEqual(LauncherMode.dictionary.nextMode, .files)
+        XCTAssertEqual(LauncherMode.applications.nextMode, .files)
         XCTAssertEqual(LauncherMode.files.nextMode, .agenda)
         XCTAssertEqual(LauncherMode.agenda.nextMode, .applications)
         XCTAssertEqual(LauncherMode.agenda.previousMode, .files)
@@ -61,14 +59,12 @@ final class LauncherModeRoutingTests: XCTestCase {
 
     func testModePlaceholdersAreSeparated() {
         XCTAssertEqual(LauncherMode.applications.placeholder, "Search Apps Here")
-        XCTAssertEqual(LauncherMode.dictionary.placeholder, "Search Dictionary Here")
         XCTAssertEqual(LauncherMode.files.placeholder, "Browse Files")
         XCTAssertEqual(LauncherMode.agenda.placeholder, "Agenda Scratchpad")
     }
 
     func testTextInputFocusModesExcludeFiles() {
         XCTAssertTrue(LauncherMode.applications.acceptsTextInput)
-        XCTAssertTrue(LauncherMode.dictionary.acceptsTextInput)
         XCTAssertFalse(LauncherMode.files.acceptsTextInput)
         XCTAssertTrue(LauncherMode.agenda.acceptsTextInput)
     }
@@ -131,7 +127,7 @@ final class LauncherModeRoutingTests: XCTestCase {
             eventType: .keyDown
         ))
         XCTAssertTrue(LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
-            mode: .dictionary,
+            mode: .applications,
             fileFocusState: nil,
             charactersIgnoringModifiers: "a",
             modifierFlags: .command,
@@ -367,7 +363,7 @@ final class LauncherModeRoutingTests: XCTestCase {
         XCTAssertTrue(source.contains("if event.keyCode == UInt16(kVK_Space), self.usesSpaceHoldPreview"))
         XCTAssertTrue(source.contains("return self.handleSpacePreviewEvent(event)"))
         XCTAssertTrue(source.contains("private var usesSpaceHoldPreview: Bool"))
-        XCTAssertTrue(source.contains("model.mode == .files || model.mode == .dictionary || model.isApplicationDictionaryActive"))
+        XCTAssertTrue(source.contains("model.mode == .files || model.isApplicationDictionaryActive"))
     }
 
     func testDictionaryPreviewOverlayUsesModeTintAndRetainsStateForCloseAnimation() throws {
@@ -375,7 +371,7 @@ final class LauncherModeRoutingTests: XCTestCase {
 
         XCTAssertTrue(source.contains("@State private var renderedDictionaryPreview: DictionaryDefinitionPreview?"))
         XCTAssertTrue(source.contains("@State private var isDictionaryPreviewVisible = false"))
-        XCTAssertTrue(source.contains("DictionaryDefinitionPreviewOverlay(preview: dictionaryPreview, tint: LauncherModeTintPolicy.panelColor(for: .dictionary))"))
+        XCTAssertTrue(source.contains("DictionaryDefinitionPreviewOverlay(preview: dictionaryPreview, tint: LauncherModeTintPolicy.panelColor(for: .dictionary(term:"))
         XCTAssertTrue(source.contains(".opacity(isDictionaryPreviewVisible ? 1 : 0)"))
         XCTAssertTrue(source.contains(".scaleEffect(isDictionaryPreviewVisible ? 1 : 0.985)"))
         XCTAssertTrue(source.contains("DispatchQueue.main.asyncAfter"))
@@ -527,7 +523,9 @@ final class LauncherModeRoutingTests: XCTestCase {
         var reindexCount = 0
         model.reindexAction = { reindexCount += 1 }
 
-        model.show(mode: .dictionary)
+        model.show(mode: .applications)
+        model.query = "?"
+        model.queryDidChange()
         _ = model.handle(command: .switchMode(.applications))
 
         XCTAssertEqual(model.mode, .applications)
@@ -648,7 +646,7 @@ final class LauncherModeRoutingTests: XCTestCase {
         model.show(mode: .applications)
         XCTAssertEqual(activationCount, 1)
 
-        _ = model.handle(command: .switchMode(.dictionary))
+        _ = model.handle(command: .switchMode(.applications))
         XCTAssertEqual(activationCount, 1)
 
         _ = model.handle(command: .switchMode(.applications))
@@ -679,12 +677,12 @@ final class LauncherModeRoutingTests: XCTestCase {
 
         model.show(mode: .applications)
         model.query = "ray"
-        _ = model.handle(command: .switchMode(.dictionary))
+        _ = model.handle(command: .switchMode(.agenda))
         model.query = "hello"
         _ = model.handle(command: .switchMode(.applications))
 
         XCTAssertEqual(model.query, "ray")
-        _ = model.handle(command: .switchMode(.dictionary))
+        _ = model.handle(command: .switchMode(.agenda))
         XCTAssertEqual(model.query, "hello")
     }
 
@@ -711,7 +709,7 @@ final class LauncherModeRoutingTests: XCTestCase {
         XCTAssertEqual(model.mode, .applications)
 
         _ = model.handle(command: .nextMode)
-        XCTAssertEqual(model.mode, .dictionary)
+        XCTAssertEqual(model.mode, .files)
     }
 
     @MainActor
@@ -721,10 +719,12 @@ final class LauncherModeRoutingTests: XCTestCase {
             dictionaryHistoryStore: DictionaryHistoryStore(fileURL: temporaryDictionaryHistoryFileURL())
         )
 
-        model.show(mode: .dictionary)
+        model.show(mode: .applications)
+        model.query = "?"
+        model.queryDidChange()
 
         XCTAssertEqual(model.toolItems, [])
-        XCTAssertNil(model.emptyMessage)
+        XCTAssertEqual(model.emptyMessage, "No dictionary matches")
     }
 
     @MainActor
@@ -735,7 +735,9 @@ final class LauncherModeRoutingTests: XCTestCase {
         dictionaryHistoryStore.add(term: "banana")
         let model = makeDictionaryLauncherModel(dictionaryHistoryStore: dictionaryHistoryStore)
 
-        model.show(mode: .dictionary)
+        model.show(mode: .applications)
+        model.query = "?"
+        model.queryDidChange()
 
         XCTAssertEqual(model.toolItems.map(\.kind), [.dictionaryHistory, .dictionaryHistory])
         XCTAssertEqual(model.toolItems.map(\.title), ["banana", "apple"])
@@ -751,7 +753,9 @@ final class LauncherModeRoutingTests: XCTestCase {
         dictionaryHistoryStore.add(term: "banana")
         let model = makeDictionaryLauncherModel(dictionaryHistoryStore: dictionaryHistoryStore)
 
-        model.show(mode: .dictionary)
+        model.show(mode: .applications)
+        model.query = "?"
+        model.queryDidChange()
         guard let banana = model.toolItems.first(where: { $0.title == "banana" }) else {
             return XCTFail("Expected banana dictionary history row")
         }
@@ -771,7 +775,9 @@ final class LauncherModeRoutingTests: XCTestCase {
         dictionaryHistoryStore.add(term: "banana")
         let model = makeDictionaryLauncherModel(dictionaryHistoryStore: dictionaryHistoryStore)
 
-        model.show(mode: .dictionary)
+        model.show(mode: .applications)
+        model.query = "?"
+        model.queryDidChange()
         model.isPinned = true
         model.selectedIndex = 1
         model.selectionScrollRequest = nil
@@ -793,14 +799,16 @@ final class LauncherModeRoutingTests: XCTestCase {
             dictionaryLookup: { query in lookup.results(for: query) }
         )
 
-        model.show(mode: .dictionary)
-        model.query = "app"
+        model.show(mode: .applications)
+        model.query = "?"
+        model.queryDidChange()
+        model.query = "?app"
         model.queryDidChange()
 
         XCTAssertEqual(lookup.queries, [])
         XCTAssertEqual(model.toolItems, [])
 
-        model.query = "apple"
+        model.query = "?apple"
         model.queryDidChange()
         RunLoop.current.run(until: Date().addingTimeInterval(0.18))
 
@@ -830,8 +838,10 @@ final class LauncherModeRoutingTests: XCTestCase {
             }
         )
 
-        model.show(mode: .dictionary)
-        model.query = "apple"
+        model.show(mode: .applications)
+        model.query = "?"
+        model.queryDidChange()
+        model.query = "?apple"
         model.queryDidChange()
         RunLoop.current.run(until: Date().addingTimeInterval(0.18))
 
@@ -859,7 +869,9 @@ final class LauncherModeRoutingTests: XCTestCase {
             dictionaryLookup: { query in lookup.results(for: query) }
         )
 
-        model.show(mode: .dictionary)
+        model.show(mode: .applications)
+        model.query = "?"
+        model.queryDidChange()
         XCTAssertEqual(model.toolItems.first?.kind, .dictionaryHistory)
         XCTAssertNil(model.toolItems.first?.previewText)
 
@@ -885,7 +897,9 @@ final class LauncherModeRoutingTests: XCTestCase {
             return [DictionaryResult(term: query, definition: "stale")]
         })
 
-        model.show(mode: .dictionary)
+        model.show(mode: .applications)
+        model.query = "?"
+        model.queryDidChange()
         XCTAssertTrue(model.handle(command: .beginSpaceHold))
         XCTAssertEqual(model.dictionaryPreviewLoadingTerm, "apple")
         model.query = "?banana"
@@ -907,7 +921,9 @@ final class LauncherModeRoutingTests: XCTestCase {
             return [DictionaryResult(term: query, definition: "Definition for \(query)")]
         })
 
-        model.show(mode: .dictionary)
+        model.show(mode: .applications)
+        model.query = "?"
+        model.queryDidChange()
         XCTAssertTrue(model.handle(command: .beginSpaceHold))
         XCTAssertEqual(model.dictionaryPreviewLoadingTerm, "banana")
         XCTAssertTrue(model.handle(command: .down))
@@ -931,7 +947,9 @@ final class LauncherModeRoutingTests: XCTestCase {
             return [DictionaryResult(term: query, definition: "Definition for \(query)")]
         })
 
-        model.show(mode: .dictionary)
+        model.show(mode: .applications)
+        model.query = "?"
+        model.queryDidChange()
         XCTAssertTrue(model.handle(command: .beginSpaceHold))
         RunLoop.current.run(until: Date().addingTimeInterval(0.08))
         lookupStartedOffMain.set(false)
@@ -951,11 +969,15 @@ final class LauncherModeRoutingTests: XCTestCase {
             return [DictionaryResult(term: query, definition: "late result")]
         })
 
-        model.show(mode: .dictionary)
+        model.show(mode: .applications)
+        model.query = "?"
+        model.queryDidChange()
         XCTAssertTrue(model.handle(command: .beginSpaceHold))
         XCTAssertEqual(model.dictionaryPreviewLoadingTerm, "apple")
         model.cancelDictionaryPreview()
-        model.show(mode: .dictionary)
+        model.show(mode: .applications)
+        model.query = "?"
+        model.queryDidChange()
         RunLoop.current.run(until: Date().addingTimeInterval(0.2))
 
         XCTAssertNil(model.dictionaryPreview)
@@ -980,7 +1002,9 @@ final class LauncherModeRoutingTests: XCTestCase {
             }
         )
 
-        model.show(mode: .dictionary)
+        model.show(mode: .applications)
+        model.query = "?"
+        model.queryDidChange()
 
         XCTAssertEqual(model.toolItems.map(\.title), ["banana", "apple"])
         XCTAssertTrue(model.handle(command: .beginSpaceHold))
@@ -1009,12 +1033,14 @@ final class LauncherModeRoutingTests: XCTestCase {
             dictionaryHistoryStore: DictionaryHistoryStore(fileURL: temporaryDictionaryHistoryFileURL())
         )
 
-        model.show(mode: .dictionary)
-        model.query = "ice"
+        model.show(mode: .applications)
+        model.query = "?"
+        model.queryDidChange()
+        model.query = "?ice"
         model.queryDidChange()
 
         XCTAssertTrue(model.handle(command: .space))
-        XCTAssertEqual(model.query, "ice ")
+        XCTAssertEqual(model.query, "?ice ")
     }
 
     @MainActor

@@ -35,10 +35,3 @@ enum ApplicationQueryRoute: Equatable {
         return term
     }
 }
-
-@available(*, deprecated, message: "Use ApplicationQueryRoute instead")
-enum ApplicationCalculatorQuery {
-    static func expression(from query: String) -> String? {
-        ApplicationQueryRoute(query: query).calculatorExpression
-    }
-}

@@ -53,7 +53,7 @@ struct ModeSwitcherView: View {
     @ViewBuilder
     private func activePill(for mode: LauncherMode) -> some View {
         switch mode {
-        case .applications, .dictionary, .agenda:
+        case .applications, .agenda:
             TextInputModePill(
                 model: model,
                 mode: mode,
@@ -173,8 +173,6 @@ struct ModeSwitcherView: View {
         switch mode {
         case .applications:
             return "square.grid.2x2"
-        case .dictionary:
-            return "text.book.closed"
         case .files:
             return "folder"
         case .agenda:
@@ -190,8 +188,6 @@ struct ModeSwitcherView: View {
         switch mode {
         case .applications:
             return "Command+1"
-        case .dictionary:
-            return "Command+3"
         case .files:
             return "Command+4"
         case .agenda:

@@ -216,6 +216,13 @@ final class SettingsViewLayoutTests: XCTestCase {
         XCTAssertFalse(source.contains("HelpShortcut(title: \"Preview\", keys: \"Space\""))
     }
 
+    func testAppsHelpDescribesOrdinaryFilteringAndDictionaryHistory() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/SettingsView.swift")
+
+        XCTAssertTrue(source.contains("Ordinary text filters indexed applications; a bare ? restores Dictionary history."))
+        XCTAssertFalse(source.contains("Bare Apps queries restore app history"))
+    }
+
     func testAgendaViewUsesNotesListAndFullNoteEditor() throws {
         let agendaSource = try source(named: "Sources/Bucky/UI/SwiftUI/AgendaView.swift")
         let launcher = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")

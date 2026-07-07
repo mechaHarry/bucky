@@ -1114,23 +1114,19 @@ private enum HelpShortcutCatalog {
             return HelpPageContent(
                 shortcuts: [
                     openMode,
-                    HelpShortcut(title: "Reindex apps", keys: "Command+R", detail: "Refresh the application and custom action index.")
+                    HelpShortcut(title: "Reindex apps", keys: "Command+R", detail: "Refresh the application and custom action index."),
+                    HelpShortcut(title: "Open definition", keys: "Return", detail: "Open the selected dictionary term in Dictionary."),
+                    HelpShortcut(title: "Preview definition", keys: "Hold Space", detail: "Hold Space to preview the selected dictionary term."),
+                    HelpShortcut(title: "Dictionary query", keys: "? word", detail: "Start a dictionary lookup from Apps."),
+                    HelpShortcut(title: "Calculator query", keys: "= expression", detail: "Start a calculation from Apps.")
                 ],
                 explanations: [
                     HelpExplanation(title: "Calculate", detail: "Start the Apps search with = to show calculator results and calculation history."),
                     HelpExplanation(title: "Copy result", detail: "Press Return on the selected calculation result to copy it."),
                     HelpExplanation(title: "Clear history", detail: "Use the clear-history affordance to remove calculation history."),
-                    HelpExplanation(title: "Hide result", detail: "Use the row hide affordance to remove a launch item from app search results.")
-                ]
-            )
-        case .dictionary:
-            return HelpPageContent(
-                shortcuts: [
-                    openMode
-                ],
-                explanations: [
-                    HelpExplanation(title: "Open definition", detail: "Press Return on a selected term to open it in Dictionary."),
-                    HelpExplanation(title: "Remove history row", detail: "Use the row remove affordance to delete a saved dictionary lookup.")
+                    HelpExplanation(title: "Hide result", detail: "Use the row hide affordance to remove a launch item from app search results."),
+                    HelpExplanation(title: "History", detail: "Ordinary text filters indexed applications; a bare ? restores Dictionary history."),
+                    HelpExplanation(title: "Remove dictionary history", detail: "Use the row remove affordance to delete a saved dictionary lookup.")
                 ]
             )
         case .files:

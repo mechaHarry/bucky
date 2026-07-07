@@ -27,19 +27,6 @@ final class ToolResultsSnapshotPolicyTests: XCTestCase {
         )
     }
 
-    func testDictionaryQueriesUseDeferredSnapshotUpdate() {
-        XCTAssertEqual(
-            ToolResultsSnapshotPolicy.update(for: .dictionary, query: "hello"),
-            .deferred(delayNanoseconds: ToolResultsSnapshotPolicy.dictionaryLookupDelayNanoseconds)
-        )
-    }
-
-    func testBlankDictionaryQueriesUpdateImmediately() {
-        XCTAssertEqual(
-            ToolResultsSnapshotPolicy.update(for: .dictionary, query: "   "),
-            .immediate
-        )
-    }
 
     func testApplicationQueriesUseDeferredSnapshotUpdate() {
         XCTAssertEqual(
@@ -65,10 +52,6 @@ final class ToolResultsSnapshotPolicyTests: XCTestCase {
             )
         ]
 
-        XCTAssertEqual(
-            ToolResultsSnapshotPolicy.animation(for: .dictionary, items: items),
-            .subtle
-        )
         XCTAssertEqual(
             ToolResultsSnapshotPolicy.animation(for: .applications, items: items),
             .subtle

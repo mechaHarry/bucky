@@ -28,16 +28,11 @@ enum ToolResultsSnapshotPolicy {
             }
         }
 
-        if mode == .dictionary,
-           !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return .deferred(delayNanoseconds: dictionaryLookupDelayNanoseconds)
-        }
-
         return .immediate
     }
 
     static func animation(for mode: LauncherMode, items: [ToolItem]) -> Animation {
-        guard (mode == .dictionary || mode == .applications),
+        guard mode == .applications,
               items.contains(where: { $0.kind == .dictionary }) else {
             return .none
         }

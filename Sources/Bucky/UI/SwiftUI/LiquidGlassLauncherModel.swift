@@ -54,7 +54,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private var indexedItems: [LaunchItem] = []
     private var filterCache = ApplicationFilterCache()
     private var applicationQuery = ""
-    private var dictionaryQuery = ""
     private var agendaQuery = ""
     private var needsReindexAfterCurrent = false
     private var pendingCalculationHistoryTimer: Timer?
@@ -148,7 +147,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     var dictionaryRouteIsActive: Bool {
-        mode == .dictionary || isApplicationDictionaryActive
+        isApplicationDictionaryActive
     }
 
     var isApplicationDictionaryActive: Bool {
@@ -168,11 +167,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
             case .applications:
                 return filteredItemIDs.count
             }
-        case .dictionary, .agenda:
-            if mode == .agenda {
-                return filteredAgendaNotes.count
-            }
-            return toolItems.count
+        case .agenda:
+            return filteredAgendaNotes.count
         case .files:
             return MainActor.assumeIsolated {
                 fileBrowserModel.entries.count
@@ -198,10 +194,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
                     return "Loading apps"
                 }
                 return inputIsBlank ? "No launchable items found" : "No matches"
-            }
-        case .dictionary:
-            if toolItems.isEmpty, !inputIsBlank {
-                return "No dictionary matches"
             }
         case .files:
             if MainActor.assumeIsolated({ fileBrowserModel.entries.isEmpty }) {
@@ -230,9 +222,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
         dictionaryPreviewLoadingTerm = nil
         calculatorResultFeedback = nil
         applicationQuery = ""
-        dictionaryQuery = ""
         self.mode = mode
-        query = storedQuery(for: mode)
+        query = mode == .applications ? applicationQuery : (mode == .agenda ? agendaQuery : "")
         selectedIndex = 0
         isPinned = false
         applyCurrentMode()
@@ -590,8 +581,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
                 }
                 applyApplicationFilter(preservePreviousOnEmpty: preservePreviousOnEmpty)
             }
-        case .dictionary:
-            applyToolsResults()
         case .agenda:
             cancelPendingCalculationHistory()
             cancelPendingDictionaryLookup()
@@ -929,12 +918,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
                     )
                 ] + calculationHistoryItems()
             }
-        case .dictionary:
-            guard !trimmedQuery.isEmpty else {
-                return dictionaryHistoryItems()
-            }
-
-            return toolItems
         case .files, .agenda:
             return []
         }
@@ -1082,25 +1065,10 @@ final class LiquidGlassLauncherModel: ObservableObject {
         switch mode {
         case .applications:
             applicationQuery = query
-        case .dictionary:
-            dictionaryQuery = query
         case .files:
             break
         case .agenda:
             agendaQuery = query
-        }
-    }
-
-    private func storedQuery(for mode: LauncherMode) -> String {
-        switch mode {
-        case .applications:
-            return applicationQuery
-        case .dictionary:
-            return dictionaryQuery
-        case .files:
-            return ""
-        case .agenda:
-            return agendaQuery
         }
     }
 
@@ -1116,7 +1084,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         calculatorResultFeedback = nil
         storeCurrentQuery()
         mode = nextMode
-        query = storedQuery(for: nextMode)
+        query = nextMode == .applications ? applicationQuery : (nextMode == .agenda ? agendaQuery : "")
         selectedIndex = 0
         publishLightweightModeSnapshot(for: nextMode)
         scheduleModeSnapshot(for: nextMode)
@@ -1127,7 +1095,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         switch mode {
         case .applications:
             break
-        case .dictionary, .files, .agenda:
+        case .files, .agenda:
             toolItems = []
         }
     }
@@ -1331,9 +1299,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
                 hideAction?()
             }
             launch(item)
-        case .dictionary:
-            guard selectedIndex >= 0, selectedIndex < toolItems.count else { return }
-            activate(toolItems[selectedIndex])
         case .files:
             MainActor.assumeIsolated {
                 fileBrowserModel.handle(.open)
@@ -1393,7 +1358,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
             return
         }
 
-        if mode == .dictionary, inputIsBlank {
+        if case let .dictionary(term) = applicationQueryRoute, term.isEmpty {
             applyToolsResults(scheduleHistory: false)
             if activatedDictionaryHistory {
                 selectedIndex = 0

@@ -86,7 +86,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             self?.setPinned(isPinned)
         }
         model.modeWillSwitchAction = { [weak self] oldMode, nextMode in
-            if oldMode == .files || oldMode == .dictionary {
+            if oldMode == .files {
                 self?.cancelSpaceHoldState(deliverEndHold: true)
             }
             if oldMode == .files, nextMode != .files {
@@ -704,7 +704,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     }
 
     private var usesSpaceHoldPreview: Bool {
-        model.mode == .files || model.mode == .dictionary || model.isApplicationDictionaryActive
+        model.mode == .files || model.isApplicationDictionaryActive
     }
 
     private func handleSpacePreviewEvent(_ event: NSEvent) -> NSEvent? {

@@ -208,10 +208,10 @@ struct LiquidGlassLauncherView: View {
             }
 
             if model.isApplicationDictionaryActive, let loadingTerm = model.dictionaryPreviewLoadingTerm {
-                DictionaryPreviewSkeleton(term: loadingTerm, tint: LauncherModeTintPolicy.panelColor(for: .dictionary))
+                DictionaryPreviewSkeleton(term: loadingTerm, tint: LauncherModeTintPolicy.panelColor(for: .dictionary(term: loadingTerm)))
                     .transition(.opacity)
             } else if let dictionaryPreview = renderedDictionaryPreview {
-                DictionaryDefinitionPreviewOverlay(preview: dictionaryPreview, tint: LauncherModeTintPolicy.panelColor(for: .dictionary))
+                DictionaryDefinitionPreviewOverlay(preview: dictionaryPreview, tint: LauncherModeTintPolicy.panelColor(for: .dictionary(term: dictionaryPreview.term)))
                     .opacity(isDictionaryPreviewVisible ? 1 : 0)
                     .scaleEffect(isDictionaryPreviewVisible ? 1 : 0.985)
                     .allowsHitTesting(isDictionaryPreviewVisible)
@@ -311,17 +311,6 @@ struct LiquidGlassLauncherView: View {
                             }
                         }
                     }
-                case .dictionary:
-                    resultScrollView(reconstructionID: toolResultsSnapshotIdentity) {
-                        ForEach(Array(model.toolItems.enumerated()), id: \.element) { index, item in
-                            toolRow(item: item, index: index)
-                                .transition(toolResultTransition)
-                        }
-                    }
-                    .animation(
-                        toolSnapshotAnimation(for: model.toolItems),
-                        value: toolResultsSnapshotIdentity
-                    )
                 case .files:
                     if let fileBrowserModel = model.activeFileBrowserModel {
                         FileBrowserView(
@@ -526,9 +515,6 @@ struct LiquidGlassLauncherView: View {
 
             guard index >= 0, index < model.filteredItemIDs.count else { return nil }
             return .application(model.filteredItemIDs[index])
-        case .dictionary:
-            guard index >= 0, index < model.toolItems.count else { return nil }
-            return .tool(model.toolItems[index])
         case .files:
             guard index >= 0, index < model.fileBrowserModel.entries.count else { return nil }
             return .file(model.fileBrowserModel.entries[index].url)
