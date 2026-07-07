@@ -21,9 +21,6 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     private var visibilityTransitionID = 0
     private var focusClaimID = 0
     private var applicationIndexSourceStream: ApplicationIndexSourceStream?
-    private var presentationAnimationDuration: TimeInterval {
-        0.24
-    }
 
     init(
         settingsStore: SettingsStore,
@@ -259,8 +256,8 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         let transitionID = visibilityTransitionID
         NSAnimationContext.runAnimationGroup { [weak self] context in
             guard let self else { return }
-            context.duration = presentationAnimationDuration
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            context.duration = LauncherWindowPresentationAnimationPolicy.duration(for: model.animationTiming)
+            context.timingFunction = LauncherWindowPresentationAnimationPolicy.timingFunction(for: model.animationTiming)
             window.animator().alphaValue = 0
         } completionHandler: { [weak self] in
             Task { @MainActor [weak self] in
@@ -983,8 +980,8 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     private func animateWindowOpen(transitionID: Int) {
         NSAnimationContext.runAnimationGroup { [weak self] context in
             guard let self else { return }
-            context.duration = presentationAnimationDuration
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            context.duration = LauncherWindowPresentationAnimationPolicy.duration(for: model.animationTiming)
+            context.timingFunction = LauncherWindowPresentationAnimationPolicy.timingFunction(for: model.animationTiming)
             window.animator().alphaValue = 1
         } completionHandler: { [weak self] in
             Task { @MainActor [weak self] in
@@ -1019,6 +1016,26 @@ private enum WindowVisibilityState {
     case showing
     case shown
     case hiding
+}
+
+private enum LauncherWindowPresentationAnimationPolicy {
+    static func duration(for timing: LauncherAnimationTiming) -> TimeInterval {
+        switch timing {
+        case .smooth:
+            return 0.24
+        case .snappy:
+            return 0.12
+        }
+    }
+
+    static func timingFunction(for timing: LauncherAnimationTiming) -> CAMediaTimingFunction {
+        switch timing {
+        case .smooth:
+            return CAMediaTimingFunction(name: .easeInEaseOut)
+        case .snappy:
+            return CAMediaTimingFunction(name: .easeOut)
+        }
+    }
 }
 
 enum LauncherSpaceKeyDecision: Equatable {
