@@ -14,6 +14,11 @@ enum ToolResultsSnapshotPolicy {
 
     static func update(for mode: LauncherMode, query: String) -> Update {
         if mode == .applications,
+           ApplicationCalculatorQuery.expression(from: query) != nil {
+            return .immediate
+        }
+
+        if mode == .applications,
            !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return .deferred(delayNanoseconds: applicationFilterDelayNanoseconds)
         }

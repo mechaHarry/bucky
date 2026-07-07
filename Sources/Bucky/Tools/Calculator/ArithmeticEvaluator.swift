@@ -66,7 +66,7 @@ enum ArithmeticEvaluator {
         if abs(value - rounded) < 0.0000000001,
            rounded >= Double(Int64.min),
            rounded <= Double(Int64.max) {
-            return String(Int64(rounded))
+            return resultFormatter.string(from: NSNumber(value: Int64(rounded))) ?? String(Int64(rounded))
         }
 
         return resultFormatter.string(from: NSNumber(value: value)) ?? String(format: "%.10g", value)
@@ -75,9 +75,10 @@ enum ArithmeticEvaluator {
     private static let resultFormatter: NumberFormatter = {
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
+        formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.minimumFractionDigits = 0
         formatter.maximumFractionDigits = 10
-        formatter.usesGroupingSeparator = false
+        formatter.usesGroupingSeparator = true
         return formatter
     }()
 }

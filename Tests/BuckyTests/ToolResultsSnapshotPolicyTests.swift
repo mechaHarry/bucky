@@ -2,16 +2,13 @@ import XCTest
 @testable import Bucky
 
 final class ToolResultsSnapshotPolicyTests: XCTestCase {
-    func testBlankCalculatorQueryUpdatesImmediately() {
+    func testApplicationCalculatorQueriesUpdateImmediately() {
         XCTAssertEqual(
-            ToolResultsSnapshotPolicy.update(for: .calculator, query: "   "),
+            ToolResultsSnapshotPolicy.update(for: .applications, query: "=2 + 2"),
             .immediate
         )
-    }
-
-    func testCalculatorQueriesUpdateImmediately() {
         XCTAssertEqual(
-            ToolResultsSnapshotPolicy.update(for: .calculator, query: "2 + 2"),
+            ToolResultsSnapshotPolicy.update(for: .applications, query: "   =2 + 2"),
             .immediate
         )
     }
@@ -72,10 +69,6 @@ final class ToolResultsSnapshotPolicyTests: XCTestCase {
 
         XCTAssertEqual(
             ToolResultsSnapshotPolicy.animation(for: .applications, items: calculationItems),
-            .none
-        )
-        XCTAssertEqual(
-            ToolResultsSnapshotPolicy.animation(for: .calculator, items: calculationItems),
             .none
         )
     }

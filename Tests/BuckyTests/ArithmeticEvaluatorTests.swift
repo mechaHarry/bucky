@@ -7,6 +7,8 @@ final class ArithmeticEvaluatorTests: XCTestCase {
         XCTAssertEqual(ArithmeticEvaluator.normalizedExpression("2 + 2=="), "2 + 2")
         XCTAssertEqual(ArithmeticEvaluator.evaluate("2 + 2 ="), "4")
         XCTAssertEqual(ArithmeticEvaluator.evaluate("1,200 / 3 ="), "400")
+        XCTAssertEqual(ArithmeticEvaluator.evaluate("109109100 + 1"), "109,109,101")
+        XCTAssertEqual(ArithmeticEvaluator.evaluate("1 / 4"), "0.25")
     }
 
     func testEmbeddedEqualsRemainsInvalid() {

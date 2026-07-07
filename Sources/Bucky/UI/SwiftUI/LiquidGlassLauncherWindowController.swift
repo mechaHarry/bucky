@@ -88,8 +88,10 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             self?.setPinned(isPinned)
         }
         model.modeWillSwitchAction = { [weak self] oldMode, nextMode in
-            if oldMode == .files, nextMode != .files {
+            if oldMode == .files || oldMode == .dictionary {
                 self?.cancelSpaceHoldState(deliverEndHold: true)
+            }
+            if oldMode == .files, nextMode != .files {
                 self?.cancelOptionPinnedFocus()
             }
         }
@@ -471,8 +473,8 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
                 return event
             }
 
-            if event.keyCode == UInt16(kVK_Space), self.model.mode == .files {
-                return self.handleFileSpaceEvent(event)
+            if event.keyCode == UInt16(kVK_Space), self.usesSpaceHoldPreview {
+                return self.handleSpacePreviewEvent(event)
             }
 
             guard event.type == .keyDown else {
@@ -704,7 +706,11 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         }
     }
 
-    private func handleFileSpaceEvent(_ event: NSEvent) -> NSEvent? {
+    private var usesSpaceHoldPreview: Bool {
+        model.mode == .files || model.mode == .dictionary
+    }
+
+    private func handleSpacePreviewEvent(_ event: NSEvent) -> NSEvent? {
         switch event.type {
         case .keyDown:
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)

@@ -22,6 +22,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
     @Published var agendaOpenNoteText = ""
     @Published var isAgendaNoteSearchVisible = false
     @Published var isConfirmingAgendaRemoval = false
+    @Published private(set) var dictionaryPreview: DictionaryDefinitionPreview?
+    @Published private(set) var calculatorResultFeedback: CalculatorResultFeedback?
     @Published var isPinned = false {
         didSet { pinnedChangedAction?(isPinned) }
     }
@@ -43,13 +45,13 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private let agendaStore: AgendaStore
     private let dictionaryLookup: @Sendable (String) -> [DictionaryResult]
     private let dictionaryOpenHandler: (String) -> Void
+    private let pasteboardCopyHandler: (String) -> Void
     private let fileBrowserModelFactory: () -> FileBrowserModel
     private let applicationIndexSnapshotCache: ApplicationIndexSnapshotCache
     private var appRowStore = ApplicationRowStore()
     private var indexedItems: [LaunchItem] = []
     private var filterCache = ApplicationFilterCache()
     private var applicationQuery = ""
-    private var calculatorQuery = ""
     private var dictionaryQuery = ""
     private var agendaQuery = ""
     private var needsReindexAfterCurrent = false
@@ -64,6 +66,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private var modeSnapshotGeneration = 0
     private var warmCacheTask: Task<Void, Never>?
     private var selectionScrollRequestID = 0
+    private var calculatorResultFeedbackID = 0
 
     init(
         settingsStore: SettingsStore,
@@ -73,6 +76,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         dictionaryHistoryStore: DictionaryHistoryStore = DictionaryHistoryStore(),
         dictionaryLookup: @escaping @Sendable (String) -> [DictionaryResult] = { DictionaryLookup.results(for: $0) },
         dictionaryOpenHandler: @escaping (String) -> Void = LiquidGlassLauncherModel.openDictionaryTerm,
+        pasteboardCopyHandler: @escaping (String) -> Void = LiquidGlassLauncherModel.copyStringToPasteboard,
         agendaStore: AgendaStore = AgendaStore(),
         fileBrowserModel: FileBrowserModel? = nil,
         fileBrowserModelFactory: (() -> FileBrowserModel)? = nil,
@@ -85,6 +89,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         self.dictionaryHistoryStore = dictionaryHistoryStore
         self.dictionaryLookup = dictionaryLookup
         self.dictionaryOpenHandler = dictionaryOpenHandler
+        self.pasteboardCopyHandler = pasteboardCopyHandler
         self.agendaStore = agendaStore
         self.applicationIndexSnapshotCache = applicationIndexSnapshotCache
         self.activatedFileBrowserModel = fileBrowserModel
@@ -129,6 +134,14 @@ final class LiquidGlassLauncherModel: ObservableObject {
         AgendaFilter.filterNotes(agendaNotes, query: query)
     }
 
+    var isApplicationCalculatorActive: Bool {
+        mode == .applications && applicationCalculatorExpression != nil
+    }
+
+    private var applicationCalculatorExpression: String? {
+        ApplicationCalculatorQuery.expression(from: query)
+    }
+
     var placeholder: String {
         mode.placeholder
     }
@@ -136,8 +149,11 @@ final class LiquidGlassLauncherModel: ObservableObject {
     var resultCount: Int {
         switch mode {
         case .applications:
+            if isApplicationCalculatorActive {
+                return toolItems.count
+            }
             return filteredItemIDs.count
-        case .calculator, .dictionary, .agenda:
+        case .dictionary, .agenda:
             if mode == .agenda {
                 return filteredAgendaNotes.count
             }
@@ -150,21 +166,20 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     var canClearHistory: Bool {
-        mode == .calculator && !calculationHistoryStore.calculations.isEmpty
+        isApplicationCalculatorActive && !calculationHistoryStore.calculations.isEmpty
     }
 
     var emptyMessage: String? {
         switch mode {
         case .applications:
+            if isApplicationCalculatorActive {
+                return toolItems.isEmpty ? "No calculation history" : nil
+            }
             if filteredItemIDs.isEmpty {
                 if isIndexing && appRowStore.isEmpty {
                     return "Loading apps"
                 }
                 return inputIsBlank ? "No launchable items found" : "No matches"
-            }
-        case .calculator:
-            if toolItems.isEmpty {
-                return inputIsBlank ? "No calculation history" : "No tool results"
             }
         case .dictionary:
             if toolItems.isEmpty, !inputIsBlank {
@@ -193,8 +208,9 @@ final class LiquidGlassLauncherModel: ObservableObject {
     func show(mode: LauncherMode) {
         isShowingSettings = false
         isShowingHelp = false
+        dictionaryPreview = nil
+        calculatorResultFeedback = nil
         applicationQuery = ""
-        calculatorQuery = ""
         dictionaryQuery = ""
         self.mode = mode
         query = storedQuery(for: mode)
@@ -243,6 +259,10 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     func queryDidChange() {
+        dictionaryPreview = nil
+        if mode == .applications {
+            calculatorResultFeedback = nil
+        }
         storeCurrentQuery()
         applyCurrentMode(preservePreviousOnEmpty: true)
     }
@@ -289,6 +309,10 @@ final class LiquidGlassLauncherModel: ObservableObject {
             }
             activateSelected()
         case .close:
+            if mode == .dictionary, dictionaryPreview != nil {
+                dictionaryPreview = nil
+                return true
+            }
             if mode == .agenda,
                (openedAgendaNote != nil || isConfirmingAgendaRemoval) {
                 return handleAgendaCommand(command)
@@ -322,7 +346,33 @@ final class LiquidGlassLauncherModel: ObservableObject {
         case .agendaMoveSelection:
             guard mode == .agenda else { return false }
             return handleAgendaCommand(command)
-        case .left, .right, .prepareSpaceInteraction, .space, .shiftSpace, .beginSpaceHold, .endSpaceHold,
+        case .prepareSpaceInteraction:
+            if mode == .dictionary {
+                return true
+            }
+            guard mode == .files else { return false }
+            return handleFileBrowserCommand(command)
+        case .space:
+            if mode == .dictionary {
+                insertTextInput(" ")
+                return true
+            }
+            guard mode == .files else { return false }
+            return handleFileBrowserCommand(command)
+        case .beginSpaceHold:
+            if mode == .dictionary {
+                return beginDictionaryPreview()
+            }
+            guard mode == .files else { return false }
+            return handleFileBrowserCommand(command)
+        case .endSpaceHold:
+            if mode == .dictionary {
+                dictionaryPreview = nil
+                return true
+            }
+            guard mode == .files else { return false }
+            return handleFileBrowserCommand(command)
+        case .left, .right, .shiftSpace,
                 .alphaNumeric, .shiftAlphaNumeric, .beginPinnedFocus, .endPinnedFocus, .historyBack, .historyForward:
             guard mode == .files else { return false }
             return handleFileBrowserCommand(command)
@@ -497,13 +547,22 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private func applyCurrentMode(preservePreviousOnEmpty: Bool = false) {
         switch mode {
         case .applications:
-            cancelPendingCalculationHistory()
             cancelPendingDictionaryLookup()
+            if isApplicationCalculatorActive {
+                cancelPendingApplicationFilter()
+                applyToolsResults()
+                return
+            }
+
+            cancelPendingCalculationHistory()
+            if toolItems.contains(where: { $0.kind == .calculation || $0.kind == .calculationHistory || $0.kind == .message }) {
+                toolItems = []
+            }
             if appRowStore.visibleIDs.isEmpty, !appRowStore.isEmpty {
                 rebuildVisibleItems()
             }
             applyApplicationFilter(preservePreviousOnEmpty: preservePreviousOnEmpty)
-        case .calculator, .dictionary:
+        case .dictionary:
             applyToolsResults()
         case .agenda:
             cancelPendingCalculationHistory()
@@ -736,7 +795,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     private func applyToolsResults(scheduleHistory: Bool = true) {
-        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedQuery = toolQueryForCurrentMode()
         cancelPendingCalculationHistory()
 
         switch ToolResultsSnapshotPolicy.update(for: mode, query: query) {
@@ -796,9 +855,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
 
     private func makeToolItems(for trimmedQuery: String, scheduleHistory: Bool) -> [ToolItem] {
         switch mode {
-        case .applications, .files, .agenda:
-            return []
-        case .calculator:
+        case .applications:
+            guard isApplicationCalculatorActive else { return [] }
             if trimmedQuery.isEmpty {
                 return calculationHistoryItems()
             }
@@ -845,6 +903,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
             }
 
             return toolItems
+        case .files, .agenda:
+            return []
         }
     }
 
@@ -865,7 +925,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
                 title: result.term,
                 subtitle: singleLine(result.definition),
                 copyText: nil,
-                kind: .dictionary
+                kind: .dictionary,
+                previewText: result.definition
             )
         }
     }
@@ -891,7 +952,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
 
     private func applyToolResultsSnapshot(_ nextItems: [ToolItem], selectLiveCalculation: Bool) {
         toolItems = nextItems
-        if selectLiveCalculation, mode == .calculator, toolItems.first?.kind == .calculation {
+        if selectLiveCalculation, isApplicationCalculatorActive, toolItems.first?.kind == .calculation {
             selectedIndex = 0
             requestSelectionScroll(anchor: .top)
             return
@@ -912,7 +973,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
                 title: "\(entry.expression) = \(entry.result)",
                 subtitle: "Calculated \(Self.calculationHistoryDateFormatter.string(from: entry.date))",
                 copyText: entry.result,
-                kind: .calculationHistory
+                kind: .calculationHistory,
+                inputText: entry.expression
             )
         }
     }
@@ -950,12 +1012,22 @@ final class LiquidGlassLauncherModel: ObservableObject {
         cancelPendingCalculationHistory()
         calculationHistoryStore.add(expression: expression, result: result)
 
-        if refreshResults, mode == .calculator {
+        if refreshResults, isApplicationCalculatorActive {
             applyToolsResults(scheduleHistory: false)
         }
     }
 
+    private func toolQueryForCurrentMode() -> String {
+        if mode == .applications,
+           let expression = applicationCalculatorExpression {
+            return expression
+        }
+
+        return query.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     private func clearInputOrHide() {
+        dictionaryPreview = nil
         if inputIsBlank {
             if isPinned {
                 isPinned = false
@@ -974,8 +1046,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
         switch mode {
         case .applications:
             applicationQuery = query
-        case .calculator:
-            calculatorQuery = query
         case .dictionary:
             dictionaryQuery = query
         case .files:
@@ -989,8 +1059,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
         switch mode {
         case .applications:
             return applicationQuery
-        case .calculator:
-            return calculatorQuery
         case .dictionary:
             return dictionaryQuery
         case .files:
@@ -1006,6 +1074,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
         }
         cancelPendingDictionaryLookup()
         cancelPendingApplicationFilter()
+        dictionaryPreview = nil
+        calculatorResultFeedback = nil
         storeCurrentQuery()
         mode = nextMode
         query = storedQuery(for: nextMode)
@@ -1019,7 +1089,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         switch mode {
         case .applications:
             break
-        case .calculator, .dictionary, .files, .agenda:
+        case .dictionary, .files, .agenda:
             toolItems = []
         }
     }
@@ -1177,12 +1247,14 @@ final class LiquidGlassLauncherModel: ObservableObject {
         let nextIndex = max(0, min(resultCount - 1, selectedIndex + delta))
         selectedIndex = nextIndex
         requestSelectionScroll(anchor: .nearest)
+        refreshDictionaryPreviewForCurrentSelection()
     }
 
     private func moveSelection(to index: Int, anchor: SelectionScrollAnchor) {
         guard resultCount > 0 else { return }
         selectedIndex = max(0, min(resultCount - 1, index))
         requestSelectionScroll(anchor: anchor)
+        refreshDictionaryPreviewForCurrentSelection()
     }
 
     private func clampSelection() {
@@ -1206,13 +1278,19 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private func activateSelected() {
         switch mode {
         case .applications:
+            if isApplicationCalculatorActive {
+                guard selectedIndex >= 0, selectedIndex < toolItems.count else { return }
+                activate(toolItems[selectedIndex])
+                return
+            }
+
             guard selectedIndex >= 0, selectedIndex < filteredItemIDs.count,
                   let item = appRowStore.item(for: filteredItemIDs[selectedIndex]) else { return }
             if !isPinned {
                 hideAction?()
             }
             launch(item)
-        case .calculator, .dictionary:
+        case .dictionary:
             guard selectedIndex >= 0, selectedIndex < toolItems.count else { return }
             activate(toolItems[selectedIndex])
         case .files:
@@ -1262,10 +1340,11 @@ final class LiquidGlassLauncherModel: ObservableObject {
 
         switch item.kind {
         case .calculation:
-            commitPendingCalculationHistory(refreshResults: false)
-            copyToPasteboard(item.copyText)
+            activateLiveCalculation(item)
+            return
         case .calculationHistory:
-            copyToPasteboard(item.copyText)
+            restoreCalculationHistoryExpression(item)
+            return
         case .dictionary, .dictionaryHistory:
             dictionaryHistoryStore.add(term: item.title)
             openDictionary(term: item.title)
@@ -1286,8 +1365,80 @@ final class LiquidGlassLauncherModel: ObservableObject {
         }
     }
 
+    private func restoreCalculationHistoryExpression(_ item: ToolItem) {
+        guard let inputText = item.inputText else { return }
+        calculatorResultFeedback = nil
+        query = "=\(inputText)"
+        storeCurrentQuery()
+        applyToolsResults(scheduleHistory: false)
+        selectedIndex = 0
+        requestSelectionScroll(anchor: .top)
+    }
+
+    private func activateLiveCalculation(_ item: ToolItem) {
+        guard let result = item.copyText else { return }
+        commitPendingCalculationHistory(refreshResults: false)
+        copyToPasteboard(result)
+        calculatorResultFeedbackID += 1
+        calculatorResultFeedback = CalculatorResultFeedback(id: calculatorResultFeedbackID, result: result)
+        selectedIndex = 0
+        requestSelectionScroll(anchor: .top)
+    }
+
+    private func beginDictionaryPreview() -> Bool {
+        guard mode == .dictionary,
+              toolItems.indices.contains(selectedIndex) else {
+            return false
+        }
+
+        let item = toolItems[selectedIndex]
+        guard let preview = dictionaryPreview(for: item) else {
+            return false
+        }
+
+        dictionaryPreview = preview
+        return true
+    }
+
+    private func refreshDictionaryPreviewForCurrentSelection() {
+        guard mode == .dictionary,
+              dictionaryPreview != nil,
+              toolItems.indices.contains(selectedIndex) else {
+            return
+        }
+        dictionaryPreview = dictionaryPreview(for: toolItems[selectedIndex])
+    }
+
+    private func dictionaryPreview(for item: ToolItem) -> DictionaryDefinitionPreview? {
+        switch item.kind {
+        case .dictionary, .dictionaryHistory:
+            if let previewText = item.previewText,
+               !previewText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return DictionaryDefinitionPreview(term: item.title, definition: previewText)
+            }
+
+            guard item.kind == .dictionaryHistory else {
+                return nil
+            }
+
+            let results = dictionaryLookup(item.title)
+            let normalizedTitle = normalized(item.title)
+            guard let result = results.first(where: { normalized($0.term) == normalizedTitle }) ?? results.first,
+                  !result.definition.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                return nil
+            }
+            return DictionaryDefinitionPreview(term: result.term, definition: result.definition)
+        case .calculation, .calculationHistory, .message:
+            return nil
+        }
+    }
+
     private func copyToPasteboard(_ value: String?) {
         guard let value else { return }
+        pasteboardCopyHandler(value)
+    }
+
+    private static func copyStringToPasteboard(_ value: String) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(value, forType: .string)

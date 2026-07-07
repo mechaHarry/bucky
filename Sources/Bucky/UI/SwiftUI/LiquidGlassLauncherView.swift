@@ -11,6 +11,8 @@ struct LiquidGlassLauncherView: View {
     @State private var iconPreloadTask: Task<Void, Never>?
     @State private var scrollTargetID: ResultRowID?
     @State private var scrollTargetAnchor: UnitPoint?
+    @State private var renderedDictionaryPreview: DictionaryDefinitionPreview?
+    @State private var isDictionaryPreviewVisible = false
 
     private var resultUpdateAnimation: Animation {
         model.animationTiming.animation(duration: 0.08)
@@ -28,6 +30,10 @@ struct LiquidGlassLauncherView: View {
         model.animationTiming.animation(duration: 0.16)
     }
 
+    private var dictionaryPreviewAnimation: Animation {
+        model.animationTiming.animation(duration: 0.16)
+    }
+
     private var settingsModeTransition: AnyTransition {
         .opacity.combined(with: .scale(scale: 0.985))
     }
@@ -41,6 +47,7 @@ struct LiquidGlassLauncherView: View {
         }
         .onAppear {
             synchronizeSearchFocus()
+            synchronizeDictionaryPreview(animated: false)
             preloadApplicationIcons()
         }
         .onChange(of: model.mode) {
@@ -62,9 +69,11 @@ struct LiquidGlassLauncherView: View {
         .onChange(of: model.isPresented) { _, isPresented in
             if isPresented {
                 synchronizeSearchFocus()
+                synchronizeDictionaryPreview(animated: false)
                 preloadApplicationIcons()
             } else {
                 isSearchFocused = false
+                clearRenderedDictionaryPreview()
                 iconPreloadTask?.cancel()
                 iconPreloadTask = nil
             }
@@ -79,6 +88,9 @@ struct LiquidGlassLauncherView: View {
         }
         .onChange(of: model.openedAgendaNote?.id) {
             synchronizeSearchFocus()
+        }
+        .onChange(of: model.dictionaryPreview) { _, _ in
+            synchronizeDictionaryPreview(animated: true)
         }
         .animation(resultUpdateAnimation, value: model.mode)
         .animation(settingsModeAnimation, value: model.isShowingSettings)
@@ -139,6 +151,41 @@ struct LiquidGlassLauncherView: View {
         }
     }
 
+    private func synchronizeDictionaryPreview(animated: Bool) {
+        if let dictionaryPreview = model.dictionaryPreview {
+            renderedDictionaryPreview = dictionaryPreview
+            if animated {
+                withAnimation(dictionaryPreviewAnimation) {
+                    isDictionaryPreviewVisible = true
+                }
+            } else {
+                isDictionaryPreviewVisible = true
+            }
+            return
+        }
+
+        if animated {
+            withAnimation(dictionaryPreviewAnimation) {
+                isDictionaryPreviewVisible = false
+            }
+            let closingPreview = renderedDictionaryPreview
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                guard model.dictionaryPreview == nil,
+                      renderedDictionaryPreview == closingPreview else {
+                    return
+                }
+                renderedDictionaryPreview = nil
+            }
+        } else {
+            clearRenderedDictionaryPreview()
+        }
+    }
+
+    private func clearRenderedDictionaryPreview() {
+        renderedDictionaryPreview = nil
+        isDictionaryPreviewVisible = false
+    }
+
     private var header: some View {
         ModeSwitcherView(model: model, isSearchFocused: $isSearchFocused)
             .padding(.top, ModeSwitcherLayoutPolicy.launcherHeaderTopInset)
@@ -158,6 +205,13 @@ struct LiquidGlassLauncherView: View {
                 results
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .clipShape(resultsPaneShape)
+            }
+
+            if let dictionaryPreview = renderedDictionaryPreview {
+                DictionaryDefinitionPreviewOverlay(preview: dictionaryPreview, tint: LauncherModeTintPolicy.panelColor(for: .dictionary))
+                    .opacity(isDictionaryPreviewVisible ? 1 : 0)
+                    .scaleEffect(isDictionaryPreviewVisible ? 1 : 0.985)
+                    .allowsHitTesting(isDictionaryPreviewVisible)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -218,14 +272,27 @@ struct LiquidGlassLauncherView: View {
             Group {
                 switch model.mode {
                 case .applications:
-                    resultScrollView(reconstructionID: applicationsReconstructionIdentity) {
-                        ForEach(Array(model.filteredItemIDs.enumerated()), id: \.element) { index, id in
-                            if let item = model.item(for: id) {
-                                applicationRow(item: item, id: id, index: index)
+                    if model.isApplicationCalculatorActive {
+                        resultScrollView(reconstructionID: toolResultsSnapshotIdentity) {
+                            ForEach(Array(model.toolItems.enumerated()), id: \.element) { index, item in
+                                toolRow(item: item, index: index)
+                                    .transition(toolResultTransition)
+                            }
+                        }
+                        .animation(
+                            toolSnapshotAnimation(for: model.toolItems),
+                            value: toolResultsSnapshotIdentity
+                        )
+                    } else {
+                        resultScrollView(reconstructionID: applicationsReconstructionIdentity) {
+                            ForEach(Array(model.filteredItemIDs.enumerated()), id: \.element) { index, id in
+                                if let item = model.item(for: id) {
+                                    applicationRow(item: item, id: id, index: index)
+                                }
                             }
                         }
                     }
-                case .calculator, .dictionary:
+                case .dictionary:
                     resultScrollView(reconstructionID: toolResultsSnapshotIdentity) {
                         ForEach(Array(model.toolItems.enumerated()), id: \.element) { index, item in
                             toolRow(item: item, index: index)
@@ -438,9 +505,14 @@ struct LiquidGlassLauncherView: View {
     private func resultRowID(for index: Int) -> ResultRowID? {
         switch model.mode {
         case .applications:
+            if model.isApplicationCalculatorActive {
+                guard index >= 0, index < model.toolItems.count else { return nil }
+                return .tool(model.toolItems[index])
+            }
+
             guard index >= 0, index < model.filteredItemIDs.count else { return nil }
             return .application(model.filteredItemIDs[index])
-        case .calculator, .dictionary:
+        case .dictionary:
             guard index >= 0, index < model.toolItems.count else { return nil }
             return .tool(model.toolItems[index])
         case .files:
@@ -461,7 +533,7 @@ struct LiquidGlassLauncherView: View {
 
     private var toolResultsSnapshotIdentity: String {
         model.toolItems.map { item in
-            "\(item.kind)|\(item.title)|\(item.subtitle)|\(item.copyText ?? "")"
+            "\(item.kind)|\(item.title)|\(item.subtitle)|\(item.copyText ?? "")|\(item.inputText ?? "")|\(item.previewText ?? "")"
         }
         .joined(separator: "\u{1F}")
     }
@@ -503,9 +575,12 @@ struct LiquidGlassLauncherView: View {
 
     private func toolActionConfiguration(for item: ToolItem) -> RowActionConfiguration? {
         switch item.kind {
-        case .calculation, .calculationHistory:
+        case .calculation:
             guard item.copyText != nil else { return nil }
             return RowActionConfiguration(symbol: "doc.on.doc", help: "Copy result", action: .open)
+        case .calculationHistory:
+            guard item.inputText != nil else { return nil }
+            return RowActionConfiguration(symbol: "pencil", help: "Edit calculation", action: .open)
         case .dictionary:
             return RowActionConfiguration(symbol: "book", help: "Open in Dictionary", action: .open)
         case .dictionaryHistory:
@@ -539,6 +614,270 @@ struct LiquidGlassLauncherView: View {
                     await Task.yield()
                 }
             }
+        }
+    }
+}
+
+@available(macOS 26.0, *)
+private struct DictionaryDefinitionPreviewOverlay: View {
+    let preview: DictionaryDefinitionPreview
+    let tint: Color
+
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: 22, style: .continuous)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Image(systemName: "text.book.closed")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(tint)
+                    .frame(width: 30, height: 30)
+
+                Text(preview.term)
+                    .font(.system(size: 22, weight: .semibold))
+                    .lineLimit(1)
+
+                Spacer(minLength: 12)
+            }
+
+            Divider()
+
+            ScrollView {
+                DictionaryFormattedDefinitionView(
+                    previewTerm: preview.term,
+                    sections: DictionaryDefinitionFormatter.sections(from: preview.definition, term: preview.term),
+                    tint: tint
+                )
+            }
+            .scrollIndicators(.visible)
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background {
+            shape
+                .fill(Color(nsColor: .windowBackgroundColor).opacity(0.34))
+                .glassEffect(.regular.tint(tint.opacity(0.10)).interactive(false), in: shape)
+        }
+        .overlay {
+            shape
+                .strokeBorder(LauncherVisualStyle.resultsPaneRim.opacity(0.26), lineWidth: 1)
+        }
+        .padding(LauncherVisualStyle.resultsPaneContentInset * 2)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+@available(macOS 26.0, *)
+private enum DictionaryPreviewLayout {
+    static let imageFlowHeight: CGFloat = 156
+}
+
+@available(macOS 26.0, *)
+private struct DictionaryImageFlowSection: View {
+    let term: String
+    let imageSearchURL: URL?
+    let tint: Color
+    @State private var imageURLs: [URL] = []
+    @State private var isLoadingImages = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Label("Wikimedia Commons", systemImage: "photo.on.rectangle.angled")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(tint)
+
+                Spacer(minLength: 8)
+
+                if let imageSearchURL {
+                    Button {
+                        NSWorkspace.shared.open(imageSearchURL)
+                    } label: {
+                        Image(systemName: "arrow.up.right.square")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help("Open Wikimedia Commons images for \(term)")
+                }
+            }
+
+            ZStack {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(tint.opacity(0.08))
+
+                if !imageURLs.isEmpty {
+                    DictionaryImageCarousel(imageURLs: imageURLs, tint: tint)
+                } else if isLoadingImages {
+                    DictionaryImageCarouselSkeleton(tint: tint)
+                } else {
+                    Text("No image results")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(height: DictionaryPreviewLayout.imageFlowHeight)
+        }
+        .task(id: term) {
+            isLoadingImages = true
+            imageURLs = await CommonsImageSearchClient.shared.imageURLs(for: term)
+            isLoadingImages = false
+        }
+    }
+}
+
+@available(macOS 26.0, *)
+private struct DictionaryImageCarousel: View {
+    let imageURLs: [URL]
+    let tint: Color
+
+    var body: some View {
+        ScrollView(.horizontal) {
+            LazyHStack(spacing: 10) {
+                ForEach(imageURLs, id: \.self) { url in
+                    DictionaryRemoteImageView(url: url)
+                        .frame(width: 118, height: DictionaryPreviewLayout.imageFlowHeight - 24)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(tint.opacity(0.16), lineWidth: 1)
+                        }
+                }
+            }
+            .padding(.horizontal, 12)
+        }
+        .scrollIndicators(.hidden)
+    }
+}
+
+@available(macOS 26.0, *)
+private struct DictionaryRemoteImageView: View {
+    let url: URL
+
+    var body: some View {
+        AsyncImage(url: url) { phase in
+            switch phase {
+            case .empty:
+                Color.secondary.opacity(0.14)
+            case .success(let image):
+                image
+                    .resizable()
+                    .scaledToFill()
+            case .failure:
+                Image(systemName: "photo")
+                    .font(.system(size: 24, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.secondary.opacity(0.10))
+            @unknown default:
+                Color.secondary.opacity(0.10)
+            }
+        }
+    }
+}
+
+@available(macOS 26.0, *)
+private struct DictionaryImageCarouselSkeleton: View {
+    let tint: Color
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ForEach(0..<5, id: \.self) { _ in
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(tint.opacity(0.12))
+                    .frame(width: 118, height: DictionaryPreviewLayout.imageFlowHeight - 24)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12)
+    }
+}
+
+@available(macOS 26.0, *)
+private struct DictionaryFormattedDefinitionView: View {
+    let previewTerm: String
+    let sections: [DictionaryDefinitionSection]
+    let tint: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            ForEach(sections) { section in
+                DictionaryDefinitionVariantCard(
+                    section: section,
+                    imageTerm: section.imageSearchTerm(for: previewTerm),
+                    imageSearchURL: DictionaryDefinitionPreview.commonsImageSearchURL(for: section.imageSearchTerm(for: previewTerm)),
+                    tint: tint
+                )
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .padding(.trailing, 6)
+    }
+}
+
+@available(macOS 26.0, *)
+private struct DictionaryDefinitionVariantCard: View {
+    let section: DictionaryDefinitionSection
+    let imageTerm: String
+    let imageSearchURL: URL?
+    let tint: Color
+
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(section.title)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.primary)
+                .textSelection(.enabled)
+
+            Divider().opacity(0.42)
+
+            VStack(alignment: .leading, spacing: 7) {
+                ForEach(section.items) { item in
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(item.marker ?? (item.kind == .subdefinition ? "•" : ""))
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 22, alignment: .trailing)
+
+                        definitionItemText(item)
+                    }
+                }
+            }
+
+            DictionaryImageFlowSection(term: imageTerm, imageSearchURL: imageSearchURL, tint: tint)
+        }
+        .padding(14)
+        .background {
+            shape
+                .fill(tint.opacity(0.055))
+                .glassEffect(.regular.tint(tint.opacity(0.07)).interactive(false), in: shape)
+        }
+        .overlay {
+            shape
+                .strokeBorder(tint.opacity(0.18), lineWidth: 1)
+        }
+    }
+
+    @ViewBuilder
+    private func definitionItemText(_ item: DictionaryDefinitionSection.Item) -> some View {
+        if item.kind == .example {
+            Text(item.text)
+                .font(.system(size: 14, weight: .regular))
+                .italic()
+                .foregroundStyle(.secondary)
+                .lineSpacing(3)
+                .textSelection(.enabled)
+        } else {
+            Text(item.text)
+                .font(.system(size: 14, weight: .regular))
+                .foregroundStyle(.primary)
+                .lineSpacing(3)
+                .textSelection(.enabled)
         }
     }
 }

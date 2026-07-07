@@ -1,12 +1,11 @@
-import XCTest
 import Carbon
+import XCTest
 @testable import Bucky
 
 final class LauncherModeRoutingTests: XCTestCase {
     func testLauncherModesAreOrderedForCommandShortcuts() {
         XCTAssertEqual(LauncherMode.ordered, [
             .applications,
-            .calculator,
             .dictionary,
             .files,
             .agenda
@@ -15,7 +14,7 @@ final class LauncherModeRoutingTests: XCTestCase {
 
     func testCommandShortcutNumbersResolveModes() {
         XCTAssertEqual(LauncherMode(commandNumber: 1), .applications)
-        XCTAssertEqual(LauncherMode(commandNumber: 2), .calculator)
+        XCTAssertNil(LauncherMode(commandNumber: 2))
         XCTAssertEqual(LauncherMode(commandNumber: 3), .dictionary)
         XCTAssertEqual(LauncherMode(commandNumber: 4), .files)
         XCTAssertEqual(LauncherMode(commandNumber: 5), .agenda)
@@ -24,8 +23,7 @@ final class LauncherModeRoutingTests: XCTestCase {
 
     func testModeCycleWrapsThroughOrderedModes() {
         XCTAssertEqual(LauncherMode.applications.previousMode, .agenda)
-        XCTAssertEqual(LauncherMode.applications.nextMode, .calculator)
-        XCTAssertEqual(LauncherMode.calculator.nextMode, .dictionary)
+        XCTAssertEqual(LauncherMode.applications.nextMode, .dictionary)
         XCTAssertEqual(LauncherMode.dictionary.nextMode, .files)
         XCTAssertEqual(LauncherMode.files.nextMode, .agenda)
         XCTAssertEqual(LauncherMode.agenda.nextMode, .applications)
@@ -34,7 +32,6 @@ final class LauncherModeRoutingTests: XCTestCase {
 
     func testModePlaceholdersAreSeparated() {
         XCTAssertEqual(LauncherMode.applications.placeholder, "Search Apps Here")
-        XCTAssertEqual(LauncherMode.calculator.placeholder, "Perform Calculations Here")
         XCTAssertEqual(LauncherMode.dictionary.placeholder, "Search Dictionary Here")
         XCTAssertEqual(LauncherMode.files.placeholder, "Browse Files")
         XCTAssertEqual(LauncherMode.agenda.placeholder, "Agenda Scratchpad")
@@ -42,7 +39,6 @@ final class LauncherModeRoutingTests: XCTestCase {
 
     func testTextInputFocusModesExcludeFiles() {
         XCTAssertTrue(LauncherMode.applications.acceptsTextInput)
-        XCTAssertTrue(LauncherMode.calculator.acceptsTextInput)
         XCTAssertTrue(LauncherMode.dictionary.acceptsTextInput)
         XCTAssertFalse(LauncherMode.files.acceptsTextInput)
         XCTAssertTrue(LauncherMode.agenda.acceptsTextInput)
@@ -99,7 +95,7 @@ final class LauncherModeRoutingTests: XCTestCase {
 
     func testTextInputModesPassThroughNativeEditingCommands() {
         XCTAssertTrue(LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
-            mode: .calculator,
+            mode: .applications,
             fileFocusState: nil,
             charactersIgnoringModifiers: "v",
             modifierFlags: .command,
@@ -123,7 +119,7 @@ final class LauncherModeRoutingTests: XCTestCase {
 
     func testTextInputModesPassThroughNativeEditingCommandsOnKeyUp() {
         XCTAssertTrue(LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
-            mode: .calculator,
+            mode: .applications,
             fileFocusState: nil,
             charactersIgnoringModifiers: "x",
             modifierFlags: .command,
@@ -133,14 +129,14 @@ final class LauncherModeRoutingTests: XCTestCase {
 
     func testModifiedNativeEditingCommandsDoNotPassThrough() {
         XCTAssertFalse(LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
-            mode: .calculator,
+            mode: .applications,
             fileFocusState: nil,
             charactersIgnoringModifiers: "v",
             modifierFlags: [.command, .shift],
             eventType: .keyDown
         ))
         XCTAssertFalse(LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
-            mode: .calculator,
+            mode: .applications,
             fileFocusState: nil,
             charactersIgnoringModifiers: "v",
             modifierFlags: [.command, .option],
@@ -150,7 +146,7 @@ final class LauncherModeRoutingTests: XCTestCase {
 
     func testLauncherCommandsDoNotPassThroughAsTextEditingCommands() {
         XCTAssertFalse(LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
-            mode: .calculator,
+            mode: .applications,
             fileFocusState: nil,
             charactersIgnoringModifiers: "2",
             modifierFlags: .command,
@@ -310,6 +306,30 @@ final class LauncherModeRoutingTests: XCTestCase {
         XCTAssertTrue(LauncherWindowRepositionPolicy.shouldReposition(after: .nextMode))
     }
 
+    func testDictionaryModeUsesHoldSpacePreviewRouter() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
+
+        XCTAssertTrue(source.contains("if event.keyCode == UInt16(kVK_Space), self.usesSpaceHoldPreview"))
+        XCTAssertTrue(source.contains("return self.handleSpacePreviewEvent(event)"))
+        XCTAssertTrue(source.contains("private var usesSpaceHoldPreview: Bool"))
+        XCTAssertTrue(source.contains("model.mode == .files || model.mode == .dictionary"))
+    }
+
+    func testDictionaryPreviewOverlayUsesModeTintAndRetainsStateForCloseAnimation() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
+
+        XCTAssertTrue(source.contains("@State private var renderedDictionaryPreview: DictionaryDefinitionPreview?"))
+        XCTAssertTrue(source.contains("@State private var isDictionaryPreviewVisible = false"))
+        XCTAssertTrue(source.contains("DictionaryDefinitionPreviewOverlay(preview: dictionaryPreview, tint: LauncherModeTintPolicy.panelColor(for: .dictionary))"))
+        XCTAssertTrue(source.contains(".opacity(isDictionaryPreviewVisible ? 1 : 0)"))
+        XCTAssertTrue(source.contains(".scaleEffect(isDictionaryPreviewVisible ? 1 : 0.985)"))
+        XCTAssertTrue(source.contains("DispatchQueue.main.asyncAfter"))
+        XCTAssertTrue(source.contains("let tint: Color"))
+        XCTAssertTrue(source.contains(".foregroundStyle(tint)"))
+        XCTAssertTrue(source.contains(".glassEffect(.regular.tint(tint.opacity("))
+        XCTAssertFalse(source.contains(".glassEffect(.regular.tint(Color.mint"))
+    }
+
     func testCommandArrowRoutingCyclesModesWhenLauncherIsActive() throws {
         let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
 
@@ -438,7 +458,7 @@ final class LauncherModeRoutingTests: XCTestCase {
         var reindexCount = 0
         model.reindexAction = { reindexCount += 1 }
 
-        model.show(mode: .calculator)
+        model.show(mode: .dictionary)
         _ = model.handle(command: .switchMode(.applications))
 
         XCTAssertEqual(model.mode, .applications)
@@ -558,8 +578,6 @@ final class LauncherModeRoutingTests: XCTestCase {
 
         model.show(mode: .applications)
         XCTAssertEqual(activationCount, 1)
-        _ = model.handle(command: .switchMode(.calculator))
-        XCTAssertEqual(activationCount, 1)
 
         _ = model.handle(command: .switchMode(.dictionary))
         XCTAssertEqual(activationCount, 1)
@@ -592,15 +610,11 @@ final class LauncherModeRoutingTests: XCTestCase {
 
         model.show(mode: .applications)
         model.query = "ray"
-        _ = model.handle(command: .switchMode(.calculator))
-        model.query = "2+2"
         _ = model.handle(command: .switchMode(.dictionary))
         model.query = "hello"
         _ = model.handle(command: .switchMode(.applications))
 
         XCTAssertEqual(model.query, "ray")
-        _ = model.handle(command: .switchMode(.calculator))
-        XCTAssertEqual(model.query, "2+2")
         _ = model.handle(command: .switchMode(.dictionary))
         XCTAssertEqual(model.query, "hello")
     }
@@ -628,7 +642,7 @@ final class LauncherModeRoutingTests: XCTestCase {
         XCTAssertEqual(model.mode, .applications)
 
         _ = model.handle(command: .nextMode)
-        XCTAssertEqual(model.mode, .calculator)
+        XCTAssertEqual(model.mode, .dictionary)
     }
 
     @MainActor
@@ -728,7 +742,122 @@ final class LauncherModeRoutingTests: XCTestCase {
 
     @MainActor
     @available(macOS 26.0, *)
-    func testCalculatorLiveResultSelectsAndScrollsToTopRowWhileTyping() {
+    func testDictionarySpaceHoldShowsAndClearsFullDefinitionPreview() {
+        let fullDefinition = """
+        apple | noun
+        The round fruit of a tree of the rose family.
+
+        Example: She sliced an apple for breakfast.
+        """
+        let model = makeDictionaryLauncherModel(
+            dictionaryHistoryStore: DictionaryHistoryStore(fileURL: temporaryDictionaryHistoryFileURL()),
+            dictionaryLookup: { query in
+                [
+                    DictionaryResult(
+                        term: query,
+                        definition: fullDefinition
+                    )
+                ]
+            }
+        )
+
+        model.show(mode: .dictionary)
+        model.query = "apple"
+        model.queryDidChange()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.18))
+
+        XCTAssertNil(model.dictionaryPreview)
+        XCTAssertTrue(model.handle(command: .beginSpaceHold))
+        XCTAssertEqual(model.dictionaryPreview?.term, "apple")
+        XCTAssertEqual(model.dictionaryPreview?.definition, fullDefinition)
+        XCTAssertEqual(
+            model.dictionaryPreview?.imageSearchURL?.absoluteString,
+            "https://commons.wikimedia.org/w/index.php?search=file:apple&title=Special:MediaSearch&type=image"
+        )
+
+        XCTAssertTrue(model.handle(command: .endSpaceHold))
+        XCTAssertNil(model.dictionaryPreview)
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testDictionaryHistorySpaceHoldLazilyLooksUpAndShowsDefinitionPreview() {
+        let dictionaryHistoryStore = DictionaryHistoryStore(fileURL: temporaryDictionaryHistoryFileURL())
+        dictionaryHistoryStore.add(term: "apple")
+        let lookup = RecordingDictionaryLookup()
+        let model = makeDictionaryLauncherModel(
+            dictionaryHistoryStore: dictionaryHistoryStore,
+            dictionaryLookup: { query in lookup.results(for: query) }
+        )
+
+        model.show(mode: .dictionary)
+        XCTAssertEqual(model.toolItems.first?.kind, .dictionaryHistory)
+        XCTAssertNil(model.toolItems.first?.previewText)
+
+        XCTAssertTrue(model.handle(command: .beginSpaceHold))
+
+        XCTAssertEqual(lookup.queries, ["apple"])
+        XCTAssertEqual(
+            model.dictionaryPreview,
+            DictionaryDefinitionPreview(term: "apple", definition: "Definition for apple")
+        )
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testDictionarySpaceHoldRefreshesPreviewWhenSelectionMovesThroughHistory() {
+        let dictionaryHistoryStore = DictionaryHistoryStore(fileURL: temporaryDictionaryHistoryFileURL())
+        dictionaryHistoryStore.add(term: "apple")
+        dictionaryHistoryStore.add(term: "banana")
+        let model = makeDictionaryLauncherModel(
+            dictionaryHistoryStore: dictionaryHistoryStore,
+            dictionaryLookup: { query in
+                [
+                    DictionaryResult(
+                        term: query,
+                        definition: "Definition for \(query)"
+                    )
+                ]
+            }
+        )
+
+        model.show(mode: .dictionary)
+
+        XCTAssertEqual(model.toolItems.map(\.title), ["banana", "apple"])
+        XCTAssertTrue(model.handle(command: .beginSpaceHold))
+        XCTAssertEqual(model.dictionaryPreview?.term, "banana")
+
+        XCTAssertTrue(model.handle(command: .down))
+
+        XCTAssertEqual(model.selectedIndex, 1)
+        XCTAssertEqual(model.dictionaryPreview?.term, "apple")
+        XCTAssertEqual(model.dictionaryPreview?.definition, "Definition for apple")
+
+        XCTAssertTrue(model.handle(command: .up))
+
+        XCTAssertEqual(model.selectedIndex, 0)
+        XCTAssertEqual(model.dictionaryPreview?.term, "banana")
+        XCTAssertEqual(model.dictionaryPreview?.definition, "Definition for banana")
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testDictionarySpaceTapRemainsTextInputWhenHoldRouterIsActive() {
+        let model = makeDictionaryLauncherModel(
+            dictionaryHistoryStore: DictionaryHistoryStore(fileURL: temporaryDictionaryHistoryFileURL())
+        )
+
+        model.show(mode: .dictionary)
+        model.query = "ice"
+        model.queryDidChange()
+
+        XCTAssertTrue(model.handle(command: .space))
+        XCTAssertEqual(model.query, "ice ")
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testAppsEqualsQueryShowsCalculatorResultAndSelectsTopRowWhileTyping() {
         let model = LiquidGlassLauncherModel(
             settingsStore: SettingsStore(),
             inclusionStore: InclusionStore(),
@@ -741,14 +870,16 @@ final class LauncherModeRoutingTests: XCTestCase {
             )
         )
 
-        model.show(mode: .calculator)
-        model.query = "1 + 1"
+        model.show(mode: .applications)
+        model.query = "=1 + 1"
         model.queryDidChange()
         model.selectedIndex = 1
 
-        model.query = "2 + 2 ="
+        model.query = "=2 + 2 ="
         model.queryDidChange()
 
+        XCTAssertEqual(model.mode, .applications)
+        XCTAssertTrue(model.isApplicationCalculatorActive)
         XCTAssertEqual(model.toolItems.first?.kind, .calculation)
         XCTAssertEqual(model.toolItems.first?.title, "4")
         XCTAssertEqual(model.selectedIndex, 0)
@@ -758,7 +889,7 @@ final class LauncherModeRoutingTests: XCTestCase {
 
     @MainActor
     @available(macOS 26.0, *)
-    func testCalculatorHistoryCommitDoesNotStealHistorySelection() {
+    func testAppsEqualsQueryHistoryCommitDoesNotStealHistorySelection() {
         let calculationHistoryStore = CalculationHistoryStore()
         calculationHistoryStore.clear()
         defer { calculationHistoryStore.clear() }
@@ -775,8 +906,8 @@ final class LauncherModeRoutingTests: XCTestCase {
             )
         )
 
-        model.show(mode: .calculator)
-        model.query = "2 + 2"
+        model.show(mode: .applications)
+        model.query = "=2 + 2"
         model.queryDidChange()
         model.selectedIndex = 1
         model.selectionScrollRequest = nil
@@ -787,6 +918,132 @@ final class LauncherModeRoutingTests: XCTestCase {
         XCTAssertEqual(model.toolItems.first?.title, "4")
         XCTAssertEqual(model.selectedIndex, 1)
         XCTAssertNil(model.selectionScrollRequest)
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testAppsEqualsQueryHistoryActivationRestoresOriginalExpressionForEditing() {
+        let calculationHistoryStore = CalculationHistoryStore()
+        calculationHistoryStore.clear()
+        defer { calculationHistoryStore.clear() }
+        calculationHistoryStore.add(expression: "3 + 3", result: "6")
+        let model = LiquidGlassLauncherModel(
+            settingsStore: SettingsStore(),
+            inclusionStore: InclusionStore(),
+            exclusionStore: ExclusionStore(),
+            calculationHistoryStore: calculationHistoryStore,
+            fileBrowserModel: FileBrowserModel(
+                fileSystem: StubFileSystemClient(home: URL(fileURLWithPath: "/Users/test"), entriesByDirectory: [:]),
+                store: InMemoryFileBrowserStore(state: .defaultValue),
+                directoryStream: ImmediateDirectoryStream()
+            )
+        )
+        var didHide = false
+        model.hideAction = { didHide = true }
+
+        model.show(mode: .applications)
+        model.query = "="
+        model.queryDidChange()
+        XCTAssertEqual(model.toolItems.first?.kind, .calculationHistory)
+        XCTAssertEqual(model.toolItems.first?.inputText, "3 + 3")
+
+        XCTAssertTrue(model.handle(command: .open))
+
+        XCTAssertEqual(model.query, "=3 + 3")
+        XCTAssertFalse(didHide)
+        XCTAssertEqual(model.toolItems.first?.kind, .calculation)
+        XCTAssertEqual(model.toolItems.first?.title, "6")
+        XCTAssertEqual(model.selectedIndex, 0)
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testAppsEqualsQueryLiveResultActivationCopiesAndStaysOpenWithResultFeedback() {
+        let calculationHistoryStore = CalculationHistoryStore()
+        calculationHistoryStore.clear()
+        defer { calculationHistoryStore.clear() }
+        var copiedValues: [String] = []
+        let model = LiquidGlassLauncherModel(
+            settingsStore: SettingsStore(),
+            inclusionStore: InclusionStore(),
+            exclusionStore: ExclusionStore(),
+            calculationHistoryStore: calculationHistoryStore,
+            pasteboardCopyHandler: { copiedValues.append($0) },
+            fileBrowserModel: FileBrowserModel(
+                fileSystem: StubFileSystemClient(home: URL(fileURLWithPath: "/Users/test"), entriesByDirectory: [:]),
+                store: InMemoryFileBrowserStore(state: .defaultValue),
+                directoryStream: ImmediateDirectoryStream()
+            )
+        )
+        var didHide = false
+        model.hideAction = { didHide = true }
+
+        model.show(mode: .applications)
+        model.query = "=109109100 + 1"
+        model.queryDidChange()
+
+        XCTAssertEqual(model.toolItems.first?.kind, .calculation)
+        XCTAssertEqual(model.toolItems.first?.title, "109,109,101")
+
+        XCTAssertTrue(model.handle(command: .open))
+
+        XCTAssertEqual(copiedValues, ["109,109,101"])
+        XCTAssertFalse(didHide)
+        XCTAssertEqual(model.calculatorResultFeedback?.result, "109,109,101")
+        XCTAssertEqual(calculationHistoryStore.calculations.first?.expression, "109109100 + 1")
+        XCTAssertEqual(calculationHistoryStore.calculations.first?.result, "109,109,101")
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testAppsEqualsQueryCalculatorResultFeedbackClearsWhenQueryChanges() {
+        let model = LiquidGlassLauncherModel(
+            settingsStore: SettingsStore(),
+            inclusionStore: InclusionStore(),
+            exclusionStore: ExclusionStore(),
+            calculationHistoryStore: CalculationHistoryStore(),
+            pasteboardCopyHandler: { _ in },
+            fileBrowserModel: FileBrowserModel(
+                fileSystem: StubFileSystemClient(home: URL(fileURLWithPath: "/Users/test"), entriesByDirectory: [:]),
+                store: InMemoryFileBrowserStore(state: .defaultValue),
+                directoryStream: ImmediateDirectoryStream()
+            )
+        )
+
+        model.show(mode: .applications)
+        model.query = "=2 + 2"
+        model.queryDidChange()
+        _ = model.handle(command: .open)
+        XCTAssertEqual(model.calculatorResultFeedback?.result, "4")
+
+        model.query = "=2 + 3"
+        model.queryDidChange()
+
+        XCTAssertNil(model.calculatorResultFeedback)
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testAppsEqualsQueryCanStartAfterLeadingFiller() {
+        let model = LiquidGlassLauncherModel(
+            settingsStore: SettingsStore(),
+            inclusionStore: InclusionStore(),
+            exclusionStore: ExclusionStore(),
+            calculationHistoryStore: CalculationHistoryStore(),
+            fileBrowserModel: FileBrowserModel(
+                fileSystem: StubFileSystemClient(home: URL(fileURLWithPath: "/Users/test"), entriesByDirectory: [:]),
+                store: InMemoryFileBrowserStore(state: .defaultValue),
+                directoryStream: ImmediateDirectoryStream()
+            )
+        )
+
+        model.show(mode: .applications)
+        model.query = "   =1,200 / 3"
+        model.queryDidChange()
+
+        XCTAssertTrue(model.isApplicationCalculatorActive)
+        XCTAssertEqual(model.toolItems.first?.kind, .calculation)
+        XCTAssertEqual(model.toolItems.first?.title, "400")
     }
 
     @MainActor
@@ -895,7 +1152,7 @@ final class LauncherModeRoutingTests: XCTestCase {
             mode: .metadataFallback
         )))
 
-        _ = model.handle(command: .switchMode(.calculator))
+        _ = model.handle(command: .switchMode(.applications))
 
         XCTAssertEqual(model.fileBrowserModel.focusState, .browse)
     }

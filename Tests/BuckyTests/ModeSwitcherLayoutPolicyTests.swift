@@ -53,6 +53,10 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
             ModeSwitcherLayoutPolicy.activeTextPillInputTrailingInset(isShowingProgress: false),
             ModeSwitcherLayoutPolicy.activeTextPillHorizontalInset
         )
+        XCTAssertGreaterThan(
+            ModeSwitcherLayoutPolicy.activeTextPillInputTrailingInset(isShowingProgress: false, isShowingCalculatorResult: true),
+            ModeSwitcherLayoutPolicy.activeTextPillInputTrailingInset(isShowingProgress: false)
+        )
         XCTAssertGreaterThan(ModeSwitcherLayoutPolicy.activeTextPillVerticalInset, 0)
         XCTAssertLessThan(ModeSwitcherLayoutPolicy.activeTextPillControlHeight, ModeSwitcherLayoutPolicy.activePillHeight)
     }
@@ -60,17 +64,14 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
     func testTextInputModesUseSharedTextPillLayout() {
         XCTAssertEqual(LauncherMode.ordered.filter(\.acceptsTextInput), [
             .applications,
-            .calculator,
             .dictionary,
             .agenda
         ])
         XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: .applications))
-        XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: .calculator))
         XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: .dictionary))
         XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: .files))
         XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: .agenda))
         XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: .applications))
-        XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: .calculator))
         XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: .dictionary))
         XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: .files))
         XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: .agenda))
@@ -98,7 +99,9 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
 
         XCTAssertTrue(source.contains(".padding(.leading, ModeSwitcherLayoutPolicy.activeTextPillIconLeadingInset)"))
         XCTAssertTrue(source.contains(".padding(.leading, ModeSwitcherLayoutPolicy.activeTextPillInputLeadingInset)"))
-        XCTAssertTrue(source.contains("ModeSwitcherLayoutPolicy.activeTextPillInputTrailingInset(isShowingProgress:"))
+        XCTAssertTrue(source.contains("ModeSwitcherLayoutPolicy.activeTextPillInputTrailingInset("))
+        XCTAssertTrue(source.contains("isShowingProgress: isShowingProgress"))
+        XCTAssertTrue(source.contains("isShowingCalculatorResult: isShowingCalculatorResult"))
         XCTAssertFalse(source.contains("HStack(spacing: ModeSwitcherLayoutPolicy.activeTextPillSpacing)"))
         XCTAssertFalse(source.contains("activeTextPillInputVerticalOffset"))
         XCTAssertFalse(source.contains("activeTextPillIconVerticalOffset"))
@@ -180,6 +183,163 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
         XCTAssertFalse(source.contains("NSTextField"))
         XCTAssertFalse(source.contains("CenteredLauncherNSTextField"))
         XCTAssertFalse(source.contains("NSTextFieldDelegate"))
+    }
+
+    func testCalculatorResultFeedbackRendersRightSideLayerAndGlow() throws {
+        let source = try modeSwitcherSource()
+
+        XCTAssertTrue(source.contains("@State private var calculatorGlowProgress: CGFloat = 0"))
+        XCTAssertTrue(source.contains("let calculatorResultFeedback = model.isApplicationCalculatorActive ? model.calculatorResultFeedback : nil"))
+        XCTAssertTrue(source.contains("CalculatorResultFeedbackLayer(feedback: calculatorResultFeedback, tint: modeTint)"))
+        XCTAssertTrue(source.contains("CalculatorResultGlowBorder(tint: modeTint, progress: calculatorGlowProgress)"))
+        XCTAssertTrue(source.contains("Text(\"= \\(feedback.result)\""))
+        XCTAssertTrue(source.contains(".monospacedDigit()"))
+        XCTAssertTrue(source.contains("Rectangle()\n                        .frame(width: max(0, proxy.size.width * progress))"))
+        XCTAssertTrue(source.contains("isShowingCalculatorResult: calculatorResultFeedback != nil"))
+    }
+
+    func testCalculatorStoneIsRemovedFromModeSwitcher() throws {
+        let source = try modeSwitcherSource()
+
+        XCTAssertTrue(source.contains("ForEach(LauncherMode.ordered, id: \\.self)"))
+        XCTAssertFalse(source.contains("case .calculator"))
+        XCTAssertFalse(source.contains("123.rectangle.fill"))
+        XCTAssertFalse(source.contains("Command+2"))
+    }
+
+    func testDictionaryPreviewUsesReadableSectionsAndCommonsImageFlow() throws {
+        let source = try launcherViewSource()
+
+        XCTAssertTrue(source.contains("DictionaryDefinitionVariantCard("))
+        XCTAssertTrue(source.contains("imageTerm: section.imageSearchTerm(for: previewTerm)"))
+        XCTAssertTrue(source.contains("imageSearchURL: DictionaryDefinitionPreview.commonsImageSearchURL(for: section.imageSearchTerm(for: previewTerm))"))
+        XCTAssertTrue(source.contains("DictionaryImageFlowSection(term: imageTerm, imageSearchURL: imageSearchURL, tint: tint)"))
+        XCTAssertTrue(source.contains("DictionaryImageCarousel(imageURLs: imageURLs, tint: tint)"))
+        XCTAssertTrue(source.contains("DictionaryRemoteImageView(url: url)"))
+        XCTAssertTrue(source.contains("CommonsImageSearchClient.shared.imageURLs(for: term)"))
+        XCTAssertTrue(source.contains("DictionaryFormattedDefinitionView(\n                    previewTerm: preview.term"))
+        XCTAssertTrue(source.contains(".italic()"))
+        XCTAssertTrue(source.contains("ForEach(section.items)"))
+        XCTAssertTrue(source.contains("Divider().opacity(0.42)"))
+        XCTAssertTrue(source.contains("Label(\"Wikimedia Commons\", systemImage: \"photo.on.rectangle.angled\")"))
+        XCTAssertTrue(source.contains(".frame(height: DictionaryPreviewLayout.imageFlowHeight)"))
+        XCTAssertFalse(source.contains("GoogleImageSearchClient"))
+        XCTAssertFalse(source.contains("GoogleImageSearchHTMLParser"))
+        XCTAssertFalse(source.contains("WKWebView"))
+        XCTAssertFalse(source.contains("DictionaryImageSearchWebPreview"))
+    }
+
+    func testDictionaryDefinitionFormatterSplitsHeadingsDefinitionsAndExamples() {
+        let sections = DictionaryDefinitionFormatter.sections(
+            from: "apple | noun The round fruit of a tree of the rose family. Example: She sliced an apple for breakfast. \"An apple a day.\"",
+            term: "apple"
+        )
+
+        XCTAssertEqual(sections.count, 1)
+        XCTAssertEqual(sections[0].title, "noun")
+        XCTAssertEqual(
+            sections[0].items,
+            [
+                DictionaryDefinitionSection.Item(kind: .definition, text: "The round fruit of a tree of the rose family."),
+                DictionaryDefinitionSection.Item(kind: .example, text: "She sliced an apple for breakfast."),
+                DictionaryDefinitionSection.Item(kind: .example, text: "An apple a day.")
+            ]
+        )
+    }
+
+    func testDictionaryDefinitionFormatterSplitsCompactDictionaryOutputIntoReadableSections() {
+        let sections = DictionaryDefinitionFormatter.sections(
+            from: """
+            thrash | THraSH | verb [with object] 1 beat (a person or animal) repeatedly and violently with a stick or whip: she thrashed him across the head and shoulders. • hit (something) hard and repeatedly: the wind screeched and the mast thrashed the deck. 2 [no object] move in a violent and convulsive way: he lay on the ground thrashing around in pain | [with object] : she thrashed her arms, attempting to swim. noun 1 [usually in singular] a violent or noisy movement, typically involving hitting something repeatedly: the thrash of the waves. PHRASAL VERBS thrash out (thrash something out, thrash out something) discuss something frankly and thoroughly, especially to reach a decision: it is essential that conflicting views are heard and thrashed out. ORIGIN Old English, variant of thresh (an early sense).
+            """,
+            term: "thrash"
+        )
+
+        XCTAssertEqual(sections.map(\.title), ["verb [with object]", "noun", "PHRASAL VERBS", "ORIGIN"])
+        XCTAssertEqual(sections[0].items[0].marker, "1")
+        XCTAssertEqual(sections[0].items[0].text, "beat (a person or animal) repeatedly and violently with a stick or whip:")
+        XCTAssertEqual(sections[0].items[1].kind, .example)
+        XCTAssertEqual(sections[0].items[1].text, "she thrashed him across the head and shoulders.")
+        XCTAssertEqual(sections[0].items[2].kind, .subdefinition)
+        XCTAssertEqual(sections[0].items[2].text, "hit (something) hard and repeatedly:")
+        XCTAssertEqual(sections[2].items[0].kind, .definition)
+        XCTAssertTrue(sections[2].items[0].text.hasPrefix("thrash out"))
+        XCTAssertEqual(sections[3].items[0].kind, .note)
+    }
+
+    func testDictionaryDefinitionSectionsCreateVariantSpecificImageTerms() {
+        let sections = DictionaryDefinitionFormatter.sections(
+            from: "thrash | verb 1 beat repeatedly. noun 1 a violent movement. ORIGIN Old English.",
+            term: "thrash"
+        )
+
+        XCTAssertEqual(sections.map { $0.imageSearchTerm(for: "thrash") }, [
+            "thrash verb",
+            "thrash noun",
+            "thrash origin"
+        ])
+        XCTAssertEqual(
+            DictionaryDefinitionPreview.commonsImageSearchURL(for: "thrash noun")?.absoluteString,
+            "https://commons.wikimedia.org/w/index.php?search=file:thrash%20noun&title=Special:MediaSearch&type=image"
+        )
+    }
+
+    func testCommonsImageSearchResponseExtractsDedupedThumbnailURLs() throws {
+        let data = """
+        {
+          "query": {
+            "pages": {
+              "10": {
+                "pageid": 10,
+                "title": "File:One.jpg",
+                "imageinfo": [
+                  { "thumburl": "https://upload.wikimedia.org/wikipedia/commons/thumb/one.jpg/320px-one.jpg" }
+                ]
+              },
+              "11": {
+                "pageid": 11,
+                "title": "File:Duplicate.jpg",
+                "imageinfo": [
+                  { "thumburl": "https://upload.wikimedia.org/wikipedia/commons/thumb/one.jpg/320px-one.jpg" }
+                ]
+              },
+              "12": {
+                "pageid": 12,
+                "title": "File:Two.jpg",
+                "imageinfo": [
+                  { "thumburl": "https://upload.wikimedia.org/wikipedia/commons/thumb/two.jpg/320px-two.jpg" }
+                ]
+              }
+            }
+          }
+        }
+        """.data(using: .utf8)!
+
+        XCTAssertEqual(
+            try CommonsImageSearchResponseParser.imageURLs(from: data, limit: 4).map(\.absoluteString),
+            [
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/one.jpg/320px-one.jpg",
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/two.jpg/320px-two.jpg"
+            ]
+        )
+    }
+
+    func testCommonsImageSearchRequestUsesNoKeyCommonsAPI() throws {
+        let url = try XCTUnwrap(CommonsImageSearchClient.searchURL(for: "thrash", limit: 12, thumbnailWidth: 320))
+        let components = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
+        let queryItems = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).compactMap { item in
+            item.value.map { (item.name, $0) }
+        })
+
+        XCTAssertEqual(components.scheme, "https")
+        XCTAssertEqual(components.host, "commons.wikimedia.org")
+        XCTAssertEqual(queryItems["action"], "query")
+        XCTAssertEqual(queryItems["generator"], "search")
+        XCTAssertEqual(queryItems["gsrnamespace"], "6")
+        XCTAssertEqual(queryItems["prop"], "imageinfo")
+        XCTAssertEqual(queryItems["iiprop"], "url")
+        XCTAssertEqual(queryItems["iiurlwidth"], "320")
+        XCTAssertNil(queryItems["api_key"])
     }
 
     func testLauncherSearchFocusRetriesWhenWindowBecomesKey() throws {

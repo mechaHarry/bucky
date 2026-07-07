@@ -53,7 +53,7 @@ struct ModeSwitcherView: View {
     @ViewBuilder
     private func activePill(for mode: LauncherMode) -> some View {
         switch mode {
-        case .applications, .calculator, .dictionary, .agenda:
+        case .applications, .dictionary, .agenda:
             TextInputModePill(
                 model: model,
                 mode: mode,
@@ -173,8 +173,6 @@ struct ModeSwitcherView: View {
         switch mode {
         case .applications:
             return "square.grid.2x2"
-        case .calculator:
-            return "123.rectangle.fill"
         case .dictionary:
             return "text.book.closed"
         case .files:
@@ -192,8 +190,6 @@ struct ModeSwitcherView: View {
         switch mode {
         case .applications:
             return "Command+1"
-        case .calculator:
-            return "Command+2"
         case .dictionary:
             return "Command+3"
         case .files:
@@ -220,6 +216,7 @@ struct ModeSwitcherLayoutPolicy {
     static var activeTextPillInputHeight: CGFloat { activeTextPillControlHeight }
     static var activeTextPillTextFieldHeight: CGFloat { activeTextPillControlHeight }
     static var activeTextPillProgressWidth: CGFloat { activeTextPillControlHeight }
+    static let activeTextPillCalculatorResultWidth: CGFloat = 190
     static let filesPillLeadingPadding: CGFloat = 16
     static let filesPillTrailingPadding: CGFloat = 12
     static let filesContentSpacing: CGFloat = 12
@@ -248,9 +245,13 @@ struct ModeSwitcherLayoutPolicy {
         return max(0, filesPathButtonWidth(in: pillWidth) - fixedWidth)
     }
 
-    static func activeTextPillInputTrailingInset(isShowingProgress: Bool) -> CGFloat {
+    static func activeTextPillInputTrailingInset(
+        isShowingProgress: Bool,
+        isShowingCalculatorResult: Bool = false
+    ) -> CGFloat {
         activeTextPillHorizontalInset
             + (isShowingProgress ? activeTextPillProgressWidth + activePillHeight / 4 : 0)
+            + (isShowingCalculatorResult ? activeTextPillCalculatorResultWidth + activePillHeight / 4 : 0)
     }
 }
 
@@ -271,22 +272,31 @@ private struct TextInputModePill: View {
     let symbol: String
     @FocusState.Binding var isSearchFocused: Bool
     @Environment(\.colorScheme) private var colorScheme
+    @State private var calculatorGlowProgress: CGFloat = 0
 
     var body: some View {
-        TextInputPillForegroundLayer(
-            symbol: symbol,
-            placeholder: mode.placeholder,
-            tint: LauncherModeTintPolicy.iconColor(for: mode, colorScheme: colorScheme),
-            isShowingProgress: model.isIndexing && mode == .applications,
-            text: $model.query,
-            isSearchFocused: $isSearchFocused,
-            onQueryChange: {
-                model.queryDidChange()
-            },
-            onSubmit: {
-                _ = model.handle(command: .open)
-            }
-        )
+        let modeTint = LauncherModeTintPolicy.activeColor(for: mode)
+        let calculatorResultFeedback = model.isApplicationCalculatorActive ? model.calculatorResultFeedback : nil
+
+        ZStack {
+            TextInputPillForegroundLayer(
+                symbol: symbol,
+                placeholder: mode.placeholder,
+                tint: LauncherModeTintPolicy.iconColor(for: mode, colorScheme: colorScheme),
+                isShowingProgress: model.isIndexing && mode == .applications,
+                isShowingCalculatorResult: calculatorResultFeedback != nil,
+                text: $model.query,
+                isSearchFocused: $isSearchFocused,
+                onQueryChange: {
+                    model.queryDidChange()
+                },
+                onSubmit: {
+                    _ = model.handle(command: .open)
+                }
+            )
+
+            CalculatorResultFeedbackLayer(feedback: calculatorResultFeedback, tint: modeTint)
+        }
         .frame(
             maxWidth: .infinity,
             minHeight: ModeSwitcherLayoutPolicy.activePillHeight,
@@ -297,11 +307,34 @@ private struct TextInputModePill: View {
             ModeControlBackground(
                 shape: Capsule(),
                 fill: Color(nsColor: .windowBackgroundColor),
-                tint: LauncherModeTintPolicy.activeColor(for: mode),
+                tint: modeTint,
                 isActive: true
             )
         }
+        .overlay {
+            if calculatorResultFeedback != nil {
+                CalculatorResultGlowBorder(tint: modeTint, progress: calculatorGlowProgress)
+            }
+        }
         .contentShape(Capsule())
+        .onAppear {
+            calculatorGlowProgress = calculatorResultFeedback == nil ? 0 : 1
+        }
+        .onChange(of: calculatorResultFeedback?.id) { _, feedbackID in
+            animateCalculatorGlow(for: feedbackID)
+        }
+    }
+
+    private func animateCalculatorGlow(for feedbackID: Int?) {
+        guard feedbackID != nil else {
+            calculatorGlowProgress = 0
+            return
+        }
+
+        calculatorGlowProgress = 0
+        withAnimation(model.animationTiming.animation(duration: 0.42)) {
+            calculatorGlowProgress = 1
+        }
     }
 }
 
@@ -346,6 +379,7 @@ private struct TextInputPillForegroundLayer: View {
     let placeholder: String
     let tint: Color
     let isShowingProgress: Bool
+    let isShowingCalculatorResult: Bool
     @Binding var text: String
     @FocusState.Binding var isSearchFocused: Bool
     let onQueryChange: () -> Void
@@ -369,7 +403,10 @@ private struct TextInputPillForegroundLayer: View {
             .padding(.leading, ModeSwitcherLayoutPolicy.activeTextPillInputLeadingInset)
             .padding(
                 .trailing,
-                ModeSwitcherLayoutPolicy.activeTextPillInputTrailingInset(isShowingProgress: isShowingProgress)
+                ModeSwitcherLayoutPolicy.activeTextPillInputTrailingInset(
+                    isShowingProgress: isShowingProgress,
+                    isShowingCalculatorResult: isShowingCalculatorResult
+                )
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
 
@@ -385,6 +422,66 @@ private struct TextInputPillForegroundLayer: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
             }
         }
+    }
+}
+
+@available(macOS 26.0, *)
+private struct CalculatorResultFeedbackLayer: View {
+    let feedback: CalculatorResultFeedback?
+    let tint: Color
+
+    var body: some View {
+        HStack {
+            Spacer(minLength: 0)
+
+            if let feedback {
+                Text("= \(feedback.result)")
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(tint)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                    .contentTransition(.numericText())
+                    .frame(
+                        maxWidth: ModeSwitcherLayoutPolicy.activeTextPillCalculatorResultWidth,
+                        alignment: .trailing
+                    )
+                    .transition(.opacity.combined(with: .move(edge: .trailing)))
+            }
+        }
+        .padding(.trailing, ModeSwitcherLayoutPolicy.activeTextPillHorizontalInset)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+        .allowsHitTesting(false)
+    }
+}
+
+@available(macOS 26.0, *)
+private struct CalculatorResultGlowBorder: View {
+    let tint: Color
+    let progress: CGFloat
+
+    var body: some View {
+        GeometryReader { proxy in
+            Capsule()
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [
+                            tint.opacity(0.95),
+                            tint.opacity(0.70),
+                            tint.opacity(0.18)
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    ),
+                    lineWidth: 2.5
+                )
+                .shadow(color: tint.opacity(0.42), radius: 7)
+                .mask(alignment: .leading) {
+                    Rectangle()
+                        .frame(width: max(0, proxy.size.width * progress))
+                }
+        }
+        .allowsHitTesting(false)
     }
 }
 

@@ -1117,17 +1117,10 @@ private enum HelpShortcutCatalog {
                     HelpShortcut(title: "Reindex apps", keys: "Command+R", detail: "Refresh the application and custom action index.")
                 ],
                 explanations: [
-                    HelpExplanation(title: "Hide result", detail: "Use the row hide affordance to remove a launch item from app search results.")
-                ]
-            )
-        case .calculator:
-            return HelpPageContent(
-                shortcuts: [
-                    openMode
-                ],
-                explanations: [
+                    HelpExplanation(title: "Calculate", detail: "Start the Apps search with = to show calculator results and calculation history."),
                     HelpExplanation(title: "Copy result", detail: "Press Return on the selected calculation result to copy it."),
-                    HelpExplanation(title: "Clear history", detail: "Use the clear-history affordance to remove calculation history.")
+                    HelpExplanation(title: "Clear history", detail: "Use the clear-history affordance to remove calculation history."),
+                    HelpExplanation(title: "Hide result", detail: "Use the row hide affordance to remove a launch item from app search results.")
                 ]
             )
         case .dictionary:
