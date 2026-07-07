@@ -2,13 +2,27 @@ import XCTest
 @testable import Bucky
 
 final class ToolResultsSnapshotPolicyTests: XCTestCase {
-    func testApplicationCalculatorQueriesUpdateImmediately() {
+    func testCalculatorRouteInApplicationsUpdatesImmediately() {
         XCTAssertEqual(
             ToolResultsSnapshotPolicy.update(for: .applications, query: "=2 + 2"),
             .immediate
         )
         XCTAssertEqual(
             ToolResultsSnapshotPolicy.update(for: .applications, query: "   =2 + 2"),
+            .immediate
+        )
+    }
+
+    func testDictionaryRouteInApplicationsUsesDeferredSnapshotUpdate() {
+        XCTAssertEqual(
+            ToolResultsSnapshotPolicy.update(for: .applications, query: "?hello"),
+            .deferred(delayNanoseconds: ToolResultsSnapshotPolicy.dictionaryLookupDelayNanoseconds)
+        )
+    }
+
+    func testEmptyDictionaryRouteInApplicationsUpdatesImmediately() {
+        XCTAssertEqual(
+            ToolResultsSnapshotPolicy.update(for: .applications, query: "?"),
             .immediate
         )
     }
@@ -53,6 +67,10 @@ final class ToolResultsSnapshotPolicyTests: XCTestCase {
 
         XCTAssertEqual(
             ToolResultsSnapshotPolicy.animation(for: .dictionary, items: items),
+            .subtle
+        )
+        XCTAssertEqual(
+            ToolResultsSnapshotPolicy.animation(for: .applications, items: items),
             .subtle
         )
     }

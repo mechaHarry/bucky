@@ -13,14 +13,19 @@ enum ToolResultsSnapshotPolicy {
     static let applicationFilterDelayNanoseconds: UInt64 = 40_000_000
 
     static func update(for mode: LauncherMode, query: String) -> Update {
-        if mode == .applications,
-           ApplicationCalculatorQuery.expression(from: query) != nil {
-            return .immediate
-        }
-
-        if mode == .applications,
-           !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return .deferred(delayNanoseconds: applicationFilterDelayNanoseconds)
+        if mode == .applications {
+            switch ApplicationQueryRoute(query: query) {
+            case .calculator:
+                return .immediate
+            case let .dictionary(term):
+                return term.isEmpty
+                    ? .immediate
+                    : .deferred(delayNanoseconds: dictionaryLookupDelayNanoseconds)
+            case let .applications(applicationQuery):
+                return applicationQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? .immediate
+                    : .deferred(delayNanoseconds: applicationFilterDelayNanoseconds)
+            }
         }
 
         if mode == .dictionary,
@@ -32,7 +37,7 @@ enum ToolResultsSnapshotPolicy {
     }
 
     static func animation(for mode: LauncherMode, items: [ToolItem]) -> Animation {
-        guard mode == .dictionary,
+        guard (mode == .dictionary || mode == .applications),
               items.contains(where: { $0.kind == .dictionary }) else {
             return .none
         }
