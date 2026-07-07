@@ -23,6 +23,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     @Published var isAgendaNoteSearchVisible = false
     @Published var isConfirmingAgendaRemoval = false
     @Published private(set) var dictionaryPreview: DictionaryDefinitionPreview?
+    @Published private(set) var dictionaryPreviewLoadingTerm: String?
     @Published private(set) var calculatorResultFeedback: CalculatorResultFeedback?
     @Published private(set) var isDictionaryLookupLoading = false
     @Published var isPinned = false {
@@ -62,6 +63,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private var pendingApplicationFilterTask: Task<Void, Never>?
     private var applicationFilterGeneration = 0
     private var pendingDictionaryLookupTask: Task<Void, Never>?
+    private var pendingDictionaryPreviewTask: Task<Void, Never>?
+    private var dictionaryPreviewGeneration = 0
     private var dictionaryLookupGeneration = 0
     private var pendingModeSnapshotTask: Task<Void, Never>?
     private var modeSnapshotGeneration = 0
@@ -107,6 +110,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     deinit {
         pendingApplicationFilterTask?.cancel()
         pendingDictionaryLookupTask?.cancel()
+        pendingDictionaryPreviewTask?.cancel()
         pendingModeSnapshotTask?.cancel()
         warmCacheTask?.cancel()
     }
@@ -139,8 +143,12 @@ final class LiquidGlassLauncherModel: ObservableObject {
         mode == .applications && applicationQueryRoute.calculatorExpression != nil
     }
 
-    private var applicationQueryRoute: ApplicationQueryRoute {
+    var applicationQueryRoute: ApplicationQueryRoute {
         ApplicationQueryRoute(query: query)
+    }
+
+    var dictionaryRouteIsActive: Bool {
+        mode == .dictionary || isApplicationDictionaryActive
     }
 
     var isApplicationDictionaryActive: Bool {
@@ -219,6 +227,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         isShowingSettings = false
         isShowingHelp = false
         dictionaryPreview = nil
+        dictionaryPreviewLoadingTerm = nil
         calculatorResultFeedback = nil
         applicationQuery = ""
         dictionaryQuery = ""
@@ -269,12 +278,20 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     func queryDidChange() {
-        dictionaryPreview = nil
+        cancelDictionaryPreview()
         if mode == .applications {
             calculatorResultFeedback = nil
         }
         storeCurrentQuery()
         applyCurrentMode(preservePreviousOnEmpty: true)
+    }
+
+    func cancelDictionaryPreview() {
+        pendingDictionaryPreviewTask?.cancel()
+        pendingDictionaryPreviewTask = nil
+        dictionaryPreviewGeneration += 1
+        dictionaryPreview = nil
+        dictionaryPreviewLoadingTerm = nil
     }
 
     func insertTextInput(_ character: Character) {
@@ -319,8 +336,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
             }
             activateSelected()
         case .close:
-            if mode == .dictionary, dictionaryPreview != nil {
-                dictionaryPreview = nil
+            if dictionaryRouteIsActive, dictionaryPreview != nil {
+                cancelDictionaryPreview()
                 return true
             }
             if mode == .agenda,
@@ -357,27 +374,27 @@ final class LiquidGlassLauncherModel: ObservableObject {
             guard mode == .agenda else { return false }
             return handleAgendaCommand(command)
         case .prepareSpaceInteraction:
-            if mode == .dictionary {
+            if dictionaryRouteIsActive {
                 return true
             }
             guard mode == .files else { return false }
             return handleFileBrowserCommand(command)
         case .space:
-            if mode == .dictionary {
+            if dictionaryRouteIsActive {
                 insertTextInput(" ")
                 return true
             }
             guard mode == .files else { return false }
             return handleFileBrowserCommand(command)
         case .beginSpaceHold:
-            if mode == .dictionary {
+            if dictionaryRouteIsActive {
                 return beginDictionaryPreview()
             }
             guard mode == .files else { return false }
             return handleFileBrowserCommand(command)
         case .endSpaceHold:
-            if mode == .dictionary {
-                dictionaryPreview = nil
+            if dictionaryRouteIsActive {
+                cancelDictionaryPreview()
                 return true
             }
             guard mode == .files else { return false }
@@ -830,7 +847,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         delayNanoseconds: UInt64,
         selectLiveCalculation: Bool
     ) {
-        guard mode == .dictionary || isApplicationDictionaryActive else { return }
+        guard dictionaryRouteIsActive else { return }
 
         dictionaryLookupGeneration += 1
         let generation = dictionaryLookupGeneration
@@ -952,7 +969,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         generation: Int,
         selectLiveCalculation: Bool
     ) {
-        guard (mode == .dictionary || isApplicationDictionaryActive),
+        guard dictionaryRouteIsActive,
               dictionaryLookupGeneration == generation,
               toolQueryForCurrentMode() == query else {
             return
@@ -1046,7 +1063,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     private func clearInputOrHide() {
-        dictionaryPreview = nil
+        cancelDictionaryPreview()
         if inputIsBlank {
             if isPinned {
                 isPinned = false
@@ -1092,8 +1109,10 @@ final class LiquidGlassLauncherModel: ObservableObject {
             modeWillSwitchAction?(mode, nextMode)
         }
         cancelPendingDictionaryLookup()
+        pendingDictionaryPreviewTask?.cancel()
+        pendingDictionaryPreviewTask = nil
         cancelPendingApplicationFilter()
-        dictionaryPreview = nil
+        cancelDictionaryPreview()
         calculatorResultFeedback = nil
         storeCurrentQuery()
         mode = nextMode
@@ -1408,27 +1427,67 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     private func beginDictionaryPreview() -> Bool {
-        guard mode == .dictionary,
+        guard dictionaryRouteIsActive,
               toolItems.indices.contains(selectedIndex) else {
             return false
         }
 
         let item = toolItems[selectedIndex]
+        dictionaryPreviewGeneration += 1
+        let generation = dictionaryPreviewGeneration
+        pendingDictionaryPreviewTask?.cancel()
         guard let preview = dictionaryPreview(for: item) else {
-            return false
+            guard item.kind == .dictionaryHistory else { return false }
+            return startDictionaryPreviewLookup(for: item, generation: generation)
         }
 
         dictionaryPreview = preview
+        dictionaryPreviewLoadingTerm = nil
         return true
     }
 
     private func refreshDictionaryPreviewForCurrentSelection() {
-        guard mode == .dictionary,
-              dictionaryPreview != nil,
+        guard dictionaryRouteIsActive,
+              dictionaryPreview != nil || dictionaryPreviewLoadingTerm != nil,
               toolItems.indices.contains(selectedIndex) else {
             return
         }
-        dictionaryPreview = dictionaryPreview(for: toolItems[selectedIndex])
+        pendingDictionaryPreviewTask?.cancel()
+        dictionaryPreviewLoadingTerm = nil
+        dictionaryPreviewGeneration += 1
+        let item = toolItems[selectedIndex]
+        let hasPreviewText = item.previewText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        if item.kind == .dictionaryHistory && !hasPreviewText {
+            _ = startDictionaryPreviewLookup(for: item, generation: dictionaryPreviewGeneration)
+        } else if let preview = dictionaryPreview(for: item) {
+            dictionaryPreview = preview
+        } else {
+            dictionaryPreview = nil
+        }
+    }
+
+    private func startDictionaryPreviewLookup(for item: ToolItem, generation: Int) -> Bool {
+        dictionaryPreview = nil
+        dictionaryPreviewLoadingTerm = item.title
+        let lookup = dictionaryLookup
+        pendingDictionaryPreviewTask = Task { [weak self] in
+            let results = await Task.detached(priority: .userInitiated) {
+                lookup(item.title)
+            }.value
+            guard !Task.isCancelled else { return }
+            await MainActor.run { [weak self] in
+                guard let self,
+                      self.dictionaryRouteIsActive,
+                      self.dictionaryPreviewGeneration == generation,
+                      self.toolItems.indices.contains(self.selectedIndex),
+                      self.toolItems[self.selectedIndex].title == item.title else { return }
+                let previewItem = ToolItem(title: item.title, subtitle: item.subtitle, copyText: nil, kind: .dictionary, previewText: results.first?.definition)
+                self.dictionaryPreview = self.dictionaryPreview(for: previewItem)
+                self.dictionaryPreviewLoadingTerm = nil
+                self.pendingDictionaryPreviewTask = nil
+            }
+        }
+        return true
     }
 
     private func dictionaryPreview(for item: ToolItem) -> DictionaryDefinitionPreview? {
@@ -1443,13 +1502,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
                 return nil
             }
 
-            let results = dictionaryLookup(item.title)
-            let normalizedTitle = normalized(item.title)
-            guard let result = results.first(where: { normalized($0.term) == normalizedTitle }) ?? results.first,
-                  !result.definition.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                return nil
-            }
-            return DictionaryDefinitionPreview(term: result.term, definition: result.definition)
+            return nil
         case .calculation, .calculationHistory, .message:
             return nil
         }

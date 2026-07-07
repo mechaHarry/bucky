@@ -252,6 +252,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         cancelOptionPinnedFocus()
         stopRecordingSettingsHotKey()
         model.cancelPendingCalculationHistory()
+        model.cancelDictionaryPreview()
 
         let transitionID = visibilityTransitionID
         NSAnimationContext.runAnimationGroup { [weak self] context in
@@ -703,7 +704,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     }
 
     private var usesSpaceHoldPreview: Bool {
-        model.mode == .files || model.mode == .dictionary
+        model.mode == .files || model.mode == .dictionary || model.isApplicationDictionaryActive
     }
 
     private func handleSpacePreviewEvent(_ event: NSEvent) -> NSEvent? {

@@ -2,6 +2,17 @@ import XCTest
 @testable import Bucky
 
 final class ModeSwitcherLayoutPolicyTests: XCTestCase {
+    func testAppsPillUsesQueryRouteIdentityAndOnlyShowsRouteProgress() throws {
+        let source = try modeSwitcherSource()
+
+        XCTAssertTrue(source.contains("model.applicationQueryRoute"))
+        XCTAssertTrue(source.contains("square.grid.2x2"))
+        XCTAssertTrue(source.contains("function"))
+        XCTAssertTrue(source.contains("text.book.closed"))
+        XCTAssertTrue(source.contains("model.isIndexing && isOrdinaryAppsRoute(route)"))
+        XCTAssertTrue(source.contains("model.isDictionaryLookupLoading && isDictionaryRoute(route)"))
+        XCTAssertTrue(source.contains("calculatorResultFeedback = model.isApplicationCalculatorActive ?"))
+    }
     func testFilesPathWidthIsIndependentOfPathLength() {
         let shortPathWidth = ModeSwitcherLayoutPolicy.filesPathTextWidth(
             in: 520,
@@ -202,7 +213,7 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
         let source = try modeSwitcherSource()
 
         XCTAssertTrue(source.contains("ForEach(LauncherMode.ordered, id: \\.self)"))
-        XCTAssertFalse(source.contains("case .calculator"))
+        XCTAssertFalse(source.contains("case .calculator:"))
         XCTAssertFalse(source.contains("123.rectangle.fill"))
         XCTAssertFalse(source.contains("Command+2"))
     }

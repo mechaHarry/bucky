@@ -43,6 +43,14 @@ final class LauncherModeTintPolicyTests: XCTestCase {
         XCTAssertEqual(LauncherModeTintPolicy.tint(for: .agenda).panelHex, 0x35B535)
     }
 
+    func testAppsTintPreservesRouteSpecificNativeIdentity() {
+        XCTAssertEqual(LauncherModeTintPolicy.appsTint(for: .applications(query: "")).activeHex, 0x266EF6)
+        XCTAssertEqual(LauncherModeTintPolicy.appsTint(for: .calculator(expression: "1+1")).activeHex, 0xFFD300)
+        XCTAssertEqual(LauncherModeTintPolicy.appsTint(for: .dictionary(term: "apple")).activeHex, 0xE429F2)
+        XCTAssertEqual(LauncherModeTintPolicy.appsTint(for: .dictionary(term: "apple")).panelHex, 0xBF00FF)
+        XCTAssertEqual(LauncherModeTintPolicy.appsTint(for: .dictionary(term: "apple")).iconHex, 0x6E1977)
+    }
+
     func testInactiveOrbGlassTintIsSofterThanIconTint() {
         XCTAssertEqual(ModeSwitcherTintPolicy.inactiveOrbGlassTintOpacity, 0.34)
         XCTAssertEqual(ModeSwitcherTintPolicy.inactiveOrbIconOpacity, 0.94)
@@ -130,7 +138,7 @@ final class LauncherModeTintPolicyTests: XCTestCase {
         let modeSwitcher = try source(named: "Sources/Bucky/UI/SwiftUI/ModeSwitcherView.swift")
 
         XCTAssertFalse(modeSwitcher.contains("return \"123.rectangle.fill\""))
-        XCTAssertFalse(modeSwitcher.contains("return \"function\""))
+        XCTAssertTrue(modeSwitcher.contains("function"))
     }
 
     private func source(named path: String) throws -> String {

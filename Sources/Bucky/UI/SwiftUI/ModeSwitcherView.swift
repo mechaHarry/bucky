@@ -275,15 +275,18 @@ private struct TextInputModePill: View {
     @State private var calculatorGlowProgress: CGFloat = 0
 
     var body: some View {
-        let modeTint = LauncherModeTintPolicy.activeColor(for: mode)
+        let route = mode == .applications ? model.applicationQueryRoute : nil
+        let modeTint = route.map(LauncherModeTintPolicy.activeColor(for:)) ?? LauncherModeTintPolicy.activeColor(for: mode)
+        let modeIcon = route.map { LauncherModeTintPolicy.iconColor(for: $0, colorScheme: colorScheme) } ?? LauncherModeTintPolicy.iconColor(for: mode, colorScheme: colorScheme)
+        let modeSymbol = route.map(symbol(for:)) ?? symbol
         let calculatorResultFeedback = model.isApplicationCalculatorActive ? model.calculatorResultFeedback : nil
 
         ZStack {
             TextInputPillForegroundLayer(
-                symbol: symbol,
+                symbol: modeSymbol,
                 placeholder: mode.placeholder,
-                tint: LauncherModeTintPolicy.iconColor(for: mode, colorScheme: colorScheme),
-                isShowingProgress: model.isIndexing && mode == .applications,
+                tint: modeIcon,
+                isShowingProgress: (model.isIndexing && isOrdinaryAppsRoute(route)) || (model.isDictionaryLookupLoading && isDictionaryRoute(route)),
                 isShowingCalculatorResult: calculatorResultFeedback != nil,
                 text: $model.query,
                 isSearchFocused: $isSearchFocused,
@@ -323,6 +326,22 @@ private struct TextInputModePill: View {
         .onChange(of: calculatorResultFeedback?.id) { _, feedbackID in
             animateCalculatorGlow(for: feedbackID)
         }
+    }
+
+    private func symbol(for route: ApplicationQueryRoute) -> String {
+        if case .calculator = route { return "function" }
+        if case .dictionary = route { return "text.book.closed" }
+        return "square.grid.2x2"
+    }
+
+    private func isOrdinaryAppsRoute(_ route: ApplicationQueryRoute?) -> Bool {
+        guard case .applications = route else { return false }
+        return true
+    }
+
+    private func isDictionaryRoute(_ route: ApplicationQueryRoute?) -> Bool {
+        guard case .dictionary = route else { return false }
+        return true
     }
 
     private func animateCalculatorGlow(for feedbackID: Int?) {

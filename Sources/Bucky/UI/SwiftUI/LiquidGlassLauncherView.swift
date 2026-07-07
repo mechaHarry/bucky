@@ -207,7 +207,10 @@ struct LiquidGlassLauncherView: View {
                     .clipShape(resultsPaneShape)
             }
 
-            if let dictionaryPreview = renderedDictionaryPreview {
+            if model.isApplicationDictionaryActive, let loadingTerm = model.dictionaryPreviewLoadingTerm {
+                DictionaryPreviewSkeleton(term: loadingTerm, tint: LauncherModeTintPolicy.panelColor(for: .dictionary))
+                    .transition(.opacity)
+            } else if let dictionaryPreview = renderedDictionaryPreview {
                 DictionaryDefinitionPreviewOverlay(preview: dictionaryPreview, tint: LauncherModeTintPolicy.panelColor(for: .dictionary))
                     .opacity(isDictionaryPreviewVisible ? 1 : 0)
                     .scaleEffect(isDictionaryPreviewVisible ? 1 : 0.985)
@@ -223,7 +226,7 @@ struct LiquidGlassLauncherView: View {
             .fill(Color.clear)
             .glassEffect(
                 .regular
-                    .tint(LauncherModeTintPolicy.panelColor(for: model.mode).opacity(LauncherVisualStyle.resultsPaneModeTintOpacity))
+                    .tint(resultsPaneTint.opacity(LauncherVisualStyle.resultsPaneModeTintOpacity))
                     .interactive(false),
                 in: resultsPaneShape
             )
@@ -234,6 +237,16 @@ struct LiquidGlassLauncherView: View {
                         lineWidth: LauncherPinnedBorderPolicy.lineWidth(isPinned: model.isPinned)
                     )
             }
+    }
+
+    private var resultsPaneTint: Color {
+        if model.isApplicationDictionaryActive {
+            return LauncherModeTintPolicy.panelColor(for: model.applicationQueryRoute)
+        }
+        if model.isApplicationCalculatorActive {
+            return LauncherModeTintPolicy.panelColor(for: model.applicationQueryRoute)
+        }
+        return LauncherModeTintPolicy.panelColor(for: model.mode)
     }
 
     private var resultsPaneShape: RoundedRectangle {
@@ -616,6 +629,23 @@ struct LiquidGlassLauncherView: View {
                 }
             }
         }
+    }
+}
+
+@available(macOS 26.0, *)
+private struct DictionaryPreviewSkeleton: View {
+    let term: String
+    let tint: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(term).font(.title2.weight(.semibold)).foregroundStyle(tint)
+            RoundedRectangle(cornerRadius: 6).fill(tint.opacity(0.14)).frame(height: 18)
+            RoundedRectangle(cornerRadius: 6).fill(tint.opacity(0.10)).frame(height: 72)
+        }
+        .padding(22)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .redacted(reason: .placeholder)
     }
 }
 

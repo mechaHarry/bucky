@@ -2,7 +2,36 @@ import Carbon
 import XCTest
 @testable import Bucky
 
+private final class LockedBool: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedValue = false
+
+    var value: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedValue
+    }
+
+    func set(_ value: Bool) {
+        lock.lock()
+        storedValue = value
+        lock.unlock()
+    }
+}
+
 final class LauncherModeRoutingTests: XCTestCase {
+    func testAppsDictionaryPreviewUsesApplicationDictionaryRoute() throws {
+        let controller = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
+        let model = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherModel.swift")
+        let view = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
+
+        XCTAssertTrue(controller.contains("model.isApplicationDictionaryActive"))
+        XCTAssertTrue(controller.contains("model.mode == .files || model.mode == .dictionary || model.isApplicationDictionaryActive"))
+        XCTAssertTrue(model.contains("dictionaryRouteIsActive"))
+        XCTAssertTrue(model.contains("pendingDictionaryPreviewTask"))
+        XCTAssertTrue(view.contains("model.isApplicationDictionaryActive"))
+        XCTAssertTrue(view.contains("LauncherModeTintPolicy.panelColor(for: .dictionary)"))
+    }
     func testLauncherModesAreOrderedForCommandShortcuts() {
         XCTAssertEqual(LauncherMode.ordered, [
             .applications,
@@ -338,7 +367,7 @@ final class LauncherModeRoutingTests: XCTestCase {
         XCTAssertTrue(source.contains("if event.keyCode == UInt16(kVK_Space), self.usesSpaceHoldPreview"))
         XCTAssertTrue(source.contains("return self.handleSpacePreviewEvent(event)"))
         XCTAssertTrue(source.contains("private var usesSpaceHoldPreview: Bool"))
-        XCTAssertTrue(source.contains("model.mode == .files || model.mode == .dictionary"))
+        XCTAssertTrue(source.contains("model.mode == .files || model.mode == .dictionary || model.isApplicationDictionaryActive"))
     }
 
     func testDictionaryPreviewOverlayUsesModeTintAndRetainsStateForCloseAnimation() throws {
@@ -835,12 +864,102 @@ final class LauncherModeRoutingTests: XCTestCase {
         XCTAssertNil(model.toolItems.first?.previewText)
 
         XCTAssertTrue(model.handle(command: .beginSpaceHold))
+        XCTAssertEqual(model.dictionaryPreviewLoadingTerm, "apple")
 
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        RunLoop.current.run(until: Date().addingTimeInterval(0.1))
         XCTAssertEqual(lookup.queries, ["apple"])
         XCTAssertEqual(
             model.dictionaryPreview,
             DictionaryDefinitionPreview(term: "apple", definition: "Definition for apple")
         )
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testAppsDictionaryHistoryHoldIsConsumedAndStalePreviewIsInvalidatedByQueryChange() {
+        let history = DictionaryHistoryStore(fileURL: temporaryDictionaryHistoryFileURL())
+        history.add(term: "apple")
+        let model = makeDictionaryLauncherModel(dictionaryHistoryStore: history, dictionaryLookup: { query in
+            Thread.sleep(forTimeInterval: 0.12)
+            return [DictionaryResult(term: query, definition: "stale")]
+        })
+
+        model.show(mode: .dictionary)
+        XCTAssertTrue(model.handle(command: .beginSpaceHold))
+        XCTAssertEqual(model.dictionaryPreviewLoadingTerm, "apple")
+        model.query = "?banana"
+        model.queryDidChange()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+
+        XCTAssertNil(model.dictionaryPreview)
+        XCTAssertNil(model.dictionaryPreviewLoadingTerm)
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testDictionaryHistoryPreviewRefreshOnArrowUsesCancelableLookupForNewSelection() {
+        let history = DictionaryHistoryStore(fileURL: temporaryDictionaryHistoryFileURL())
+        history.add(term: "apple")
+        history.add(term: "banana")
+        let model = makeDictionaryLauncherModel(dictionaryHistoryStore: history, dictionaryLookup: { query in
+            Thread.sleep(forTimeInterval: 0.08)
+            return [DictionaryResult(term: query, definition: "Definition for \(query)")]
+        })
+
+        model.show(mode: .dictionary)
+        XCTAssertTrue(model.handle(command: .beginSpaceHold))
+        XCTAssertEqual(model.dictionaryPreviewLoadingTerm, "banana")
+        XCTAssertTrue(model.handle(command: .down))
+        XCTAssertEqual(model.dictionaryPreviewLoadingTerm, "apple")
+        RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+
+        XCTAssertEqual(model.dictionaryPreview?.term, "apple")
+        XCTAssertEqual(model.dictionaryPreview?.definition, "Definition for apple")
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testDictionaryHistoryArrowRefreshDoesNotInvokeLookupInline() {
+        let history = DictionaryHistoryStore(fileURL: temporaryDictionaryHistoryFileURL())
+        history.add(term: "apple")
+        history.add(term: "banana")
+        let lookupStartedOffMain = LockedBool()
+        let model = makeDictionaryLauncherModel(dictionaryHistoryStore: history, dictionaryLookup: { query in
+            lookupStartedOffMain.set(!Thread.isMainThread)
+            Thread.sleep(forTimeInterval: 0.05)
+            return [DictionaryResult(term: query, definition: "Definition for \(query)")]
+        })
+
+        model.show(mode: .dictionary)
+        XCTAssertTrue(model.handle(command: .beginSpaceHold))
+        RunLoop.current.run(until: Date().addingTimeInterval(0.08))
+        lookupStartedOffMain.set(false)
+        XCTAssertTrue(model.handle(command: .down))
+        XCTAssertFalse(lookupStartedOffMain.value)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        XCTAssertTrue(lookupStartedOffMain.value)
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testHidingDuringDictionaryHistoryPreviewLookupInvalidatesLateResult() {
+        let history = DictionaryHistoryStore(fileURL: temporaryDictionaryHistoryFileURL())
+        history.add(term: "apple")
+        let model = makeDictionaryLauncherModel(dictionaryHistoryStore: history, dictionaryLookup: { query in
+            Thread.sleep(forTimeInterval: 0.12)
+            return [DictionaryResult(term: query, definition: "late result")]
+        })
+
+        model.show(mode: .dictionary)
+        XCTAssertTrue(model.handle(command: .beginSpaceHold))
+        XCTAssertEqual(model.dictionaryPreviewLoadingTerm, "apple")
+        model.cancelDictionaryPreview()
+        model.show(mode: .dictionary)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+
+        XCTAssertNil(model.dictionaryPreview)
+        XCTAssertNil(model.dictionaryPreviewLoadingTerm)
     }
 
     @MainActor
@@ -865,15 +984,18 @@ final class LauncherModeRoutingTests: XCTestCase {
 
         XCTAssertEqual(model.toolItems.map(\.title), ["banana", "apple"])
         XCTAssertTrue(model.handle(command: .beginSpaceHold))
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
         XCTAssertEqual(model.dictionaryPreview?.term, "banana")
 
         XCTAssertTrue(model.handle(command: .down))
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
 
         XCTAssertEqual(model.selectedIndex, 1)
         XCTAssertEqual(model.dictionaryPreview?.term, "apple")
         XCTAssertEqual(model.dictionaryPreview?.definition, "Definition for apple")
 
         XCTAssertTrue(model.handle(command: .up))
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
 
         XCTAssertEqual(model.selectedIndex, 0)
         XCTAssertEqual(model.dictionaryPreview?.term, "banana")

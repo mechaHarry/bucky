@@ -15,6 +15,17 @@ struct LauncherModeTint: Equatable {
 }
 
 enum LauncherModeTintPolicy {
+    static func appsTint(for route: ApplicationQueryRoute) -> LauncherModeTint {
+        switch route {
+        case .applications:
+            return tint(for: .applications)
+        case .calculator:
+            return LauncherModeTint(activeHex: 0xFFD300, panelHex: 0xB08A00, iconHex: 0x6B5200, darkModeIconHex: 0xFFE98A)
+        case .dictionary:
+            return tint(for: .dictionary)
+        }
+    }
+
     static func tint(for mode: LauncherMode) -> LauncherModeTint {
         switch mode {
         case .applications:
@@ -55,6 +66,19 @@ enum LauncherModeTintPolicy {
 
     static func panelColor(for mode: LauncherMode) -> Color {
         color(hex: tint(for: mode).panelHex)
+    }
+
+    static func activeColor(for route: ApplicationQueryRoute) -> Color {
+        color(hex: appsTint(for: route).activeHex)
+    }
+
+    static func iconColor(for route: ApplicationQueryRoute, colorScheme: ColorScheme) -> Color {
+        let tint = appsTint(for: route)
+        return color(hex: colorScheme == .dark ? tint.darkModeIconHex : tint.iconHex)
+    }
+
+    static func panelColor(for route: ApplicationQueryRoute) -> Color {
+        color(hex: appsTint(for: route).panelHex)
     }
 
     private static func color(hex: Int) -> Color {
