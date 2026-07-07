@@ -65,7 +65,7 @@ Exclusions are applied after indexing and inclusions. An explicitly included app
 - Default hotkey is Option+Space through Carbon `RegisterEventHotKey`.
 - Hotkey can be changed in Settings and is persisted in `settings.json`.
 - Up and Down move selection by one row; Command+Up and Command+Down jump to the first and last visible result.
-- Command-number shortcuts are handled by the visible launcher window, not global Carbon hotkeys: Cmd+1 Apps, Cmd+2 Calculator, Cmd+3 Dictionary, Cmd+4 Files, and Cmd+5 Agenda.
+- Command-number shortcuts are handled by the visible launcher window, not global Carbon hotkeys: Cmd+1 Apps, Cmd+2 and Cmd+3 are unassigned, Cmd+4 Files, and Cmd+5 Agenda. Apps owns ordinary stable-ID/cache-backed app filtering plus the `=` Calculator and `?` Dictionary routes.
 - While the launcher is open and not showing Settings, Command+Left and Command+Right cycle across modes in ordered wraparound sequence.
 - Escape clears the input first; if the input is already blank, it closes the launcher window.
 - The launcher uses `LiquidGlassLauncherWindowController`, a borderless resizable `NSWindow` with an `NSHostingView` surface backed by `LiquidGlassLauncherView`, `LiquidGlassLauncherModel`, and the in-window settings model.
@@ -85,7 +85,7 @@ Exclusions are applied after indexing and inclusions. An explicitly included app
 
 ## Mode UX
 
-- Calculator, Dictionary, and Files modes do not search or launch apps.
+- Apps result rows and list presentation are shared across ordinary app results, calculator results, and dictionary results. Specialized calculator and dictionary stores, actions, history, and result tints remain separate. There are no standalone calculator or dictionary stones.
 - Apps is the default mode and must not activate Files code. `LiquidGlassLauncherModel` creates `FileBrowserModel` lazily only when Files is selected or the Files UI requests it.
 - Mode switches publish the new mode and restored query immediately, then defer mode-specific result snapshots behind the first interactable update. Stale deferred mode work is ignored by generation token.
 - Files mode shows a lightweight loading state if the file-browser model is not already warm, then prepares the model after the first Files frame.
@@ -93,7 +93,8 @@ Exclusions are applied after indexing and inclusions. An explicitly included app
 - Calculator mode exposes a clear-history button. Pin is global to all launcher modes. While pinned, the launcher stays above other apps, shows a bolder accent border, can be dragged by its background, refocuses on the global launcher hotkey, and stays open after result activation.
 - Calculator mode evaluates arithmetic expressions with a local parser supporting `+`, `-`, `*`, `/`, `×`, `÷`, decimals, grouping commas, unary signs, and parentheses.
 - Valid calculations with a binary arithmetic operator are added to `calculations.json` after a short typing debounce, and pressing Return on a live calculation commits it immediately.
-- Dictionary mode looks up text through macOS Dictionary Services via `DCSCopyTextDefinition`, with fuzzy candidates from `NSSpellChecker` completions and guesses. Dictionary.app is not launched during lookup.
+- The `=` Calculator route and `?` Dictionary route retain specialized stores, actions, history, and result tints while using the shared Apps result row/list presentation. Dictionary lookup and history preview are asynchronous and cancelable: each request is generation-scoped, lookup runs off the main thread, and the UI shows skeleton loading until data is ready. A bare `?` shows dictionary history; holding Space previews the selected entry, with arrow navigation and release controlling the preview lifecycle. Definitions come from macOS Dictionary Services via `DCSCopyTextDefinition`, with fuzzy candidates from `NSSpellChecker` completions and guesses. Dictionary.app is not launched during lookup.
+- Wikimedia Commons is used only for the preview image search and carousel. Image loading has an independent skeleton and nonblocking no-results fallback; image requests and cancellation do not block definition readability. Thumbnail URLs require the exact HTTPS Wikimedia host, transient failures use bounded graceful backoff, and the image client uses an ephemeral `URLSession` with cache-data-else-load policy and 4-second request/8-second resource timeouts.
 - Pressing Return on a calculation result copies its value to the pasteboard. Pressing Return on a dictionary result opens Dictionary.app at the matching word instead of copying the definition.
 
 ## Settings UX
