@@ -1021,9 +1021,9 @@ private enum LauncherWindowPresentationAnimationPolicy {
     static func duration(for timing: LauncherAnimationTiming) -> TimeInterval {
         switch timing {
         case .smooth:
-            return 0.24
+            return 0.20
         case .snappy:
-            return 0.12
+            return 0.10
         }
     }
 

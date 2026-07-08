@@ -424,9 +424,11 @@ final class LauncherModeRoutingTests: XCTestCase {
 
         XCTAssertTrue(source.contains("private enum LauncherWindowPresentationAnimationPolicy"))
         XCTAssertTrue(source.contains("static func duration(for timing: LauncherAnimationTiming) -> TimeInterval"))
-        XCTAssertTrue(source.contains("case .smooth:\n            return 0.24"))
-        XCTAssertTrue(source.contains("case .snappy:\n            return 0.12"))
+        XCTAssertTrue(source.contains("case .smooth:\n            return 0.20"))
+        XCTAssertTrue(source.contains("case .snappy:\n            return 0.10"))
         XCTAssertTrue(source.contains("static func timingFunction(for timing: LauncherAnimationTiming) -> CAMediaTimingFunction"))
+        XCTAssertTrue(source.contains("case .smooth:\n            return CAMediaTimingFunction(name: .easeInEaseOut)"))
+        XCTAssertTrue(source.contains("case .snappy:\n            return CAMediaTimingFunction(name: .easeOut)"))
         XCTAssertTrue(source.contains("context.duration = LauncherWindowPresentationAnimationPolicy.duration(for: model.animationTiming)"))
         XCTAssertTrue(source.contains("context.timingFunction = LauncherWindowPresentationAnimationPolicy.timingFunction(for: model.animationTiming)"))
         XCTAssertFalse(source.contains("static let duration: TimeInterval = 0.12"))
