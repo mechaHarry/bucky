@@ -410,9 +410,12 @@ final class LauncherModeRoutingTests: XCTestCase {
 
         XCTAssertTrue(source.contains("window.alphaValue = shouldMaterialize ? 0 : 1"))
         XCTAssertTrue(source.contains("withTransaction(transaction) {\n                model.isPresented = true\n            }\n            animateWindowOpen(transitionID: visibilityTransitionID)"))
-        XCTAssertTrue(source.contains("private func animateWindowOpen(transitionID: Int)"))
+        XCTAssertTrue(source.contains("windowOpenAnimationScheduler.schedule("))
+        XCTAssertTrue(source.contains("startAnimation: { [weak self] completion in"))
         XCTAssertTrue(source.contains("window.animator().alphaValue = 1"))
-        XCTAssertTrue(source.contains("self.finishShow(transitionID: transitionID)"))
+        XCTAssertTrue(source.contains("completion()"))
+        XCTAssertTrue(source.contains("completionAction: { [weak self] in"))
+        XCTAssertTrue(source.contains("self?.finishShow(transitionID: transitionID)"))
     }
 
     @available(macOS 26.0, *)

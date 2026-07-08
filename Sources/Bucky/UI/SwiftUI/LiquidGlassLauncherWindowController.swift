@@ -5,9 +5,52 @@ import UniformTypeIdentifiers
 
 @available(macOS 26.0, *)
 @MainActor
+final class LauncherWindowOpenAnimationScheduler {
+    typealias State = (transitionID: Int, isShowing: Bool)
+    typealias AnimationCompletion = @MainActor () -> Void
+    typealias Work = @MainActor () -> Void
+
+    private let enqueue: (@escaping Work) -> Void
+
+    init(enqueue: @escaping (@escaping Work) -> Void = { work in
+        DispatchQueue.main.async {
+            work()
+        }
+    }) {
+        self.enqueue = enqueue
+    }
+
+    func schedule(
+        expectedTransitionID: Int,
+        stateProvider: @escaping @MainActor () -> State?,
+        startAnimation: @escaping @MainActor (@escaping AnimationCompletion) -> Void,
+        completionAction: @escaping @MainActor () -> Void
+    ) {
+        enqueue {
+            guard let state = stateProvider(),
+                  state.transitionID == expectedTransitionID,
+                  state.isShowing else {
+                return
+            }
+
+            startAnimation {
+                guard let state = stateProvider(),
+                      state.transitionID == expectedTransitionID,
+                      state.isShowing else {
+                    return
+                }
+                completionAction()
+            }
+        }
+    }
+}
+
+@available(macOS 26.0, *)
+@MainActor
 final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     private let window: BuckyPanelWindow
     private let model: LiquidGlassLauncherModel
+    private let windowOpenAnimationScheduler = LauncherWindowOpenAnimationScheduler()
     private var settingsModel: SettingsViewModel!
     private var localKeyMonitor: Any?
     private var settingsHotKeyEventMonitor: Any?
@@ -922,21 +965,33 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     }
 
     private func animateWindowOpen(transitionID: Int) {
-        NSAnimationContext.runAnimationGroup { [weak self] context in
-            guard let self else { return }
-            context.duration = LauncherWindowPresentationAnimationPolicy.duration(for: model.animationTiming)
-            context.timingFunction = LauncherWindowPresentationAnimationPolicy.timingFunction(for: model.animationTiming)
-            window.animator().alphaValue = 1
-        } completionHandler: { [weak self] in
-            Task { @MainActor [weak self] in
-                guard let self,
-                      self.visibilityTransitionID == transitionID,
-                      self.visibilityState == .showing else {
-                    return
+        windowOpenAnimationScheduler.schedule(
+            expectedTransitionID: transitionID,
+            stateProvider: { [weak self] in
+                guard let self else { return nil }
+                return (
+                    transitionID: self.visibilityTransitionID,
+                    isShowing: self.visibilityState == .showing
+                )
+            },
+            startAnimation: { [weak self] completion in
+                guard let self else { return }
+                NSAnimationContext.runAnimationGroup { [weak self] context in
+                    guard let self else { return }
+                    context.duration = LauncherWindowPresentationAnimationPolicy.duration(for: model.animationTiming)
+                    context.timingFunction = LauncherWindowPresentationAnimationPolicy.timingFunction(for: model.animationTiming)
+                    window.animator().alphaValue = 1
+                } completionHandler: {
+                    Task { @MainActor [weak self] in
+                        guard self != nil else { return }
+                        completion()
+                    }
                 }
-                self.finishShow(transitionID: transitionID)
+            },
+            completionAction: { [weak self] in
+                self?.finishShow(transitionID: transitionID)
             }
-        }
+        )
     }
 
     private func finishHide(transitionID: Int) {
