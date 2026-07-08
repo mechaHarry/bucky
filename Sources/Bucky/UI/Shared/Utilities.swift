@@ -206,26 +206,6 @@ extension NSEvent {
         return LauncherMode(commandNumber: number)
     }
 
-    var isCommandEqual: Bool {
-        modifierFlags.intersection(.deviceIndependentFlagsMask) == .command
-            && charactersIgnoringModifiers == "="
-    }
-
-    var isCommandMinus: Bool {
-        modifierFlags.intersection(.deviceIndependentFlagsMask) == .command
-            && charactersIgnoringModifiers == "-"
-    }
-
-    var isControlMinus: Bool {
-        modifierFlags.intersection(.deviceIndependentFlagsMask) == .control
-            && charactersIgnoringModifiers == "-"
-    }
-
-    var isCommandS: Bool {
-        modifierFlags.intersection(.deviceIndependentFlagsMask) == .command
-            && charactersIgnoringModifiers?.lowercased() == "s"
-    }
-
     var firstAlphaNumericCharacter: Character? {
         let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
         guard flags.isEmpty,

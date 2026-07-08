@@ -44,5 +44,18 @@ final class AgendaRemovalContractTests: XCTestCase {
             let source = try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
             XCTAssertFalse(source.localizedCaseInsensitiveContains("agenda"), path)
         }
+
+        let utilities = try String(
+            contentsOf: root.appendingPathComponent("Sources/Bucky/UI/Shared/Utilities.swift"),
+            encoding: .utf8
+        )
+        for declaration in [
+            "var isCommandEqual: Bool",
+            "var isCommandMinus: Bool",
+            "var isControlMinus: Bool",
+            "var isCommandS: Bool"
+        ] {
+            XCTAssertFalse(utilities.contains(declaration), declaration)
+        }
     }
 }
