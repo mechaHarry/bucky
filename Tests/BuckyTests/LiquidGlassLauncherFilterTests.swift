@@ -97,6 +97,16 @@ final class LiquidGlassLauncherFilterTests: XCTestCase {
         XCTAssertFalse(launcher.contains("ToolItem(item)"))
     }
 
+    func testDictionaryRouteRendersAndScrollsSharedToolRows() throws {
+        let launcher = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
+
+        XCTAssertGreaterThanOrEqual(
+            launcher.components(separatedBy: "model.isApplicationToolActive").count - 1,
+            2
+        )
+        XCTAssertFalse(launcher.contains("if model.isApplicationCalculatorActive {\n                        resultScrollView(reconstructionID: toolResultsSnapshotIdentity)"))
+    }
+
     func testDictionaryLoadingRendersSharedSkeletonRowsBeforeStaleResults() throws {
         let launcher = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
 

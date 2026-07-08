@@ -154,6 +154,10 @@ final class LiquidGlassLauncherModel: ObservableObject {
         mode == .applications && applicationQueryRoute.dictionaryTerm != nil
     }
 
+    var isApplicationToolActive: Bool {
+        isApplicationCalculatorActive || isApplicationDictionaryActive
+    }
+
     var placeholder: String {
         mode.placeholder
     }

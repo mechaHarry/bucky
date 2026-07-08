@@ -1094,6 +1094,27 @@ final class LauncherModeRoutingTests: XCTestCase {
 
     @MainActor
     @available(macOS 26.0, *)
+    func testAppsDictionaryRouteUsesToolResultCountAndNavigation() {
+        let history = DictionaryHistoryStore(fileURL: temporaryDictionaryHistoryFileURL())
+        history.add(term: "apple")
+        history.add(term: "banana")
+        let model = makeDictionaryLauncherModel(dictionaryHistoryStore: history)
+
+        model.show(mode: .applications)
+        model.query = "?"
+        model.queryDidChange()
+
+        XCTAssertTrue(model.isApplicationToolActive)
+        XCTAssertEqual(model.resultCount, 2)
+        XCTAssertEqual(model.selectedIndex, 0)
+
+        XCTAssertTrue(model.handle(command: .down))
+        XCTAssertEqual(model.selectedIndex, 1)
+        XCTAssertEqual(model.toolItems[model.selectedIndex].title, "apple")
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
     func testAppsQuestionQueryPublishesLatestDictionaryLookupAfterDelay() {
         let model = makeDictionaryLauncherModel(
             dictionaryHistoryStore: DictionaryHistoryStore(fileURL: temporaryDictionaryHistoryFileURL()),

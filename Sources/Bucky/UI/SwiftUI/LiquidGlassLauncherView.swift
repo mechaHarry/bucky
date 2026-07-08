@@ -291,7 +291,7 @@ struct LiquidGlassLauncherView: View {
             Group {
                 switch model.mode {
                 case .applications:
-                    if model.isApplicationCalculatorActive {
+                    if model.isApplicationToolActive {
                         resultScrollView(reconstructionID: toolResultsSnapshotIdentity) {
                             ForEach(Array(model.toolItems.enumerated()), id: \.element) { index, item in
                                 toolRow(item: item, index: index)
@@ -508,7 +508,7 @@ struct LiquidGlassLauncherView: View {
     private func resultRowID(for index: Int) -> ResultRowID? {
         switch model.mode {
         case .applications:
-            if model.isApplicationCalculatorActive {
+            if model.isApplicationToolActive {
                 guard index >= 0, index < model.toolItems.count else { return nil }
                 return .tool(model.toolItems[index])
             }
