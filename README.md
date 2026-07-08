@@ -54,11 +54,11 @@ This zip is a local unsigned build artifact. For broad distribution outside your
 
 Use Option+Space to open or hide the floating launcher by default. Type to filter parsed app names, use the up and down arrows to move through the list, use Command+Up and Command+Down to jump to the top or bottom, and press Return to launch the selected app.
 
-Use `Cmd+1` for Apps, `Cmd+2` for Calculator, `Cmd+3` for Dictionary, and `Cmd+4` for Files while the launcher is open. In Calculator mode, arithmetic text such as `1` or `2 + 3` is evaluated inline without opening Calculator. In Dictionary mode, lookups use fuzzy spelling and completion matches. Press Return on a calculation result to copy it, or on a dictionary result to open Dictionary at the matching word. Calculator mode includes a clear-history button; pin is available from any mode, can be toggled with Command+P while Bucky is focused, and keeps the window above other apps until unpinned.
+Use `Cmd+1` for Apps and `Cmd+4` for Files while the launcher is open; `Cmd+2`, `Cmd+3`, and `Cmd+5` are unassigned. Command+Left and Command+Right cycle between Apps and Files. In Apps search, `=` as the first non-filler (non-whitespace) character starts the calculator route, and `?` in that position starts the dictionary route. Calculator expressions such as `1` or `2 + 3` are evaluated inline without opening Calculator, while dictionary lookups use fuzzy spelling and completion matches. Press Return on a calculation result to copy it, or on a dictionary result to open Dictionary at the matching word. The calculator route includes a clear-history button; pin is available in either mode, can be toggled with Command+P while Bucky is focused, and keeps the window above other apps until unpinned.
 
 Bucky now uses the SwiftUI-native Liquid Glass launcher with a glass window surface, per-row glass effects, glass buttons, and animated state transitions. macOS 26 is required; the previous AppKit launcher has been removed.
 
-The launcher reindexes app locations in the background every time it opens. While the launcher is open, Command+R also reindexes and refreshes the currently displayed results using the current search text. Command+Comma opens Settings.
+Indexing starts when the launcher controller initializes and refreshes when configured sources or relevant settings change. While the launcher is open, Command+R explicitly reindexes and refreshes the currently displayed results using the current search text. Command+Comma opens Settings.
 
 The menu bar item provides Open, Reindex, Settings, and Quit actions. Bucky scans `.app` bundles under `/Applications`, `/System/Applications`, and `~/Applications`.
 

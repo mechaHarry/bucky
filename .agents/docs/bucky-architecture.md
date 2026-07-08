@@ -16,6 +16,7 @@ This project is a local-only macOS launcher implemented as a Swift Package macOS
 - `Sources/Bucky/UI/Shell`: macOS shell controllers for the menu bar item.
   - `Sources/Bucky/UI/SwiftUI`: macOS 26 SwiftUI Liquid Glass launcher and settings view.
   - `Sources/Bucky/UI/Shared`: UI contracts, commands, and shared utilities.
+- Startup runs `LegacyAgendaStoreCleanup` on a utility queue to remove only the retired internal store at `legacyAgendaStoreURL`; cleanup failures never block startup.
 - Build command: `make bundle`.
 - Bundle metadata: `packaging/Info.plist`.
 - Minimum runtime target: macOS 26 (`Package.swift` and `LSMinimumSystemVersion`).
@@ -65,8 +66,8 @@ Exclusions are applied after indexing and inclusions. An explicitly included app
 - Default hotkey is Option+Space through Carbon `RegisterEventHotKey`.
 - Hotkey can be changed in Settings and is persisted in `settings.json`.
 - Up and Down move selection by one row; Command+Up and Command+Down jump to the first and last visible result.
-- Command-number shortcuts are handled by the visible launcher window, not global Carbon hotkeys: Cmd+1 Apps, Cmd+2 and Cmd+3 are unassigned, Cmd+4 Files, and Cmd+5 Agenda. Apps owns ordinary stable-ID/cache-backed app filtering plus the `=` Calculator and `?` Dictionary routes.
-- While the launcher is open and not showing Settings, Command+Left and Command+Right cycle across modes in ordered wraparound sequence.
+- Raw command-number shortcuts are handled by the visible launcher window, not global Carbon hotkeys: Cmd+1 Apps and Cmd+4 Files; Cmd+2, Cmd+3, and Cmd+5 are unassigned. Apps owns ordinary stable-ID/cache-backed app filtering plus the `=` Calculator and `?` Dictionary routes.
+- While the launcher is open and not showing Settings, Command+Left and Command+Right cycle between Apps and Files in both directions.
 - Escape clears the input first; if the input is already blank, it closes the launcher window.
 - The launcher uses `LiquidGlassLauncherWindowController`, a borderless resizable `NSWindow` with an `NSHostingView` surface backed by `LiquidGlassLauncherView`, `LiquidGlassLauncherModel`, and the in-window settings model.
 - SwiftUI owns the Liquid Glass visual system: `GlassEffectContainer`, `glassEffect`, glass button styles, and glass transitions for the main window, header controls, and individual result rows.
