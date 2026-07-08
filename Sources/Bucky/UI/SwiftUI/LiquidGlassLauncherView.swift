@@ -86,9 +86,6 @@ struct LiquidGlassLauncherView: View {
         .onChange(of: model.filteredItemIDs) {
             preloadApplicationIcons()
         }
-        .onChange(of: model.openedAgendaNote?.id) {
-            synchronizeSearchFocus()
-        }
         .onChange(of: model.dictionaryPreview) { _, _ in
             synchronizeDictionaryPreview(animated: true)
         }
@@ -137,7 +134,6 @@ struct LiquidGlassLauncherView: View {
 
     private func synchronizeSearchFocus() {
         let shouldFocus = model.isPresented && !model.isShowingSettings && !model.isShowingHelp && model.mode.acceptsTextInput
-            && !(model.mode == .agenda && model.openedAgendaNote != nil)
         isSearchFocused = false
         guard shouldFocus else { return }
 
@@ -145,8 +141,7 @@ struct LiquidGlassLauncherView: View {
             guard model.isPresented,
                   !model.isShowingSettings,
                   !model.isShowingHelp,
-                  model.mode.acceptsTextInput,
-                  !(model.mode == .agenda && model.openedAgendaNote != nil) else { return }
+                  model.mode.acceptsTextInput else { return }
             isSearchFocused = true
         }
     }
@@ -255,10 +250,7 @@ struct LiquidGlassLauncherView: View {
 
     @ViewBuilder
     private var results: some View {
-        if model.mode == .agenda {
-            AgendaView(model: model)
-                .transition(.opacity)
-        } else if model.mode == .files {
+        if model.mode == .files {
             if let fileBrowserModel = model.activeFileBrowserModel {
                 FileBrowserView(
                     model: fileBrowserModel,
@@ -327,8 +319,6 @@ struct LiquidGlassLauncherView: View {
                                 model.prepareFileBrowserMode()
                             }
                     }
-                case .agenda:
-                    AgendaView(model: model)
                 }
             }
         }
@@ -518,8 +508,6 @@ struct LiquidGlassLauncherView: View {
         case .files:
             guard index >= 0, index < model.fileBrowserModel.entries.count else { return nil }
             return .file(model.fileBrowserModel.entries[index].url)
-        case .agenda:
-            return nil
         }
     }
 

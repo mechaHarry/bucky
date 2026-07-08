@@ -223,52 +223,6 @@ final class SettingsViewLayoutTests: XCTestCase {
         XCTAssertFalse(source.contains("Bare Apps queries restore app history"))
     }
 
-    func testAgendaViewUsesNotesListAndFullNoteEditor() throws {
-        let agendaSource = try source(named: "Sources/Bucky/UI/SwiftUI/AgendaView.swift")
-        let launcher = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
-
-        XCTAssertTrue(agendaSource.contains("struct AgendaView: View"))
-        XCTAssertTrue(agendaSource.contains("AgendaColumn(title: \"Notes\""))
-        XCTAssertFalse(agendaSource.contains("AgendaColumn(title: \"Reminders\""))
-        XCTAssertTrue(agendaSource.contains("if model.openedAgendaNote != nil"))
-        XCTAssertTrue(agendaSource.contains(".opacity(model.openedAgendaNote == nil ? 1 : 0)"))
-        XCTAssertTrue(agendaSource.contains("@FocusState private var isNoteEditorFocused"))
-        XCTAssertTrue(agendaSource.contains("AgendaNoteEditor("))
-        XCTAssertTrue(agendaSource.contains("text: $model.agendaOpenNoteText"))
-        XCTAssertTrue(agendaSource.contains("@FocusState private var isNoteSearchFocused"))
-        XCTAssertTrue(agendaSource.contains("TextField(\"Search\", text: $noteSearchText)"))
-        XCTAssertTrue(agendaSource.contains(".focused($isNoteSearchFocused)"))
-        XCTAssertTrue(agendaSource.contains(".focused($isNoteEditorFocused)"))
-        XCTAssertTrue(agendaSource.contains(".onChange(of: model.openedAgendaNote?.id)"))
-        XCTAssertTrue(agendaSource.contains("setSelectedRange(NSRange(location: 0, length: 0))"))
-        XCTAssertTrue(agendaSource.contains("AgendaRemovalConfirmationOverlay("))
-        XCTAssertFalse(agendaSource.contains("AgendaReminderDraftOverlay("))
-        XCTAssertFalse(agendaSource.contains("DatePicker(\"Date\""))
-        XCTAssertFalse(agendaSource.contains(".onChange(of: noteText)"))
-        XCTAssertFalse(agendaSource.contains("VimTextView"))
-        XCTAssertFalse(agendaSource.contains("case \"h\":"))
-        XCTAssertFalse(agendaSource.contains("case \"j\":"))
-        XCTAssertFalse(agendaSource.contains("case \"k\":"))
-        XCTAssertFalse(agendaSource.contains("case \"l\":"))
-        XCTAssertFalse(agendaSource.contains("detailPane"))
-        XCTAssertFalse(agendaSource.contains("reminderEditor"))
-        XCTAssertTrue(launcher.contains("AgendaView(model: model)"))
-        XCTAssertTrue(launcher.contains("!(model.mode == .agenda && model.openedAgendaNote != nil)"))
-        XCTAssertTrue(launcher.contains(".onChange(of: model.openedAgendaNote?.id)"))
-    }
-
-    func testAgendaRemovalConfirmationStaysInsideLauncher() throws {
-        let modelSource = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherModel.swift")
-        let controllerSource = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
-
-        XCTAssertTrue(modelSource.contains("@Published var isConfirmingAgendaRemoval"))
-        XCTAssertTrue(modelSource.contains("func confirmAgendaRemoval()"))
-        XCTAssertTrue(modelSource.contains("func cancelAgendaRemoval()"))
-        XCTAssertFalse(modelSource.contains("confirmAgendaRemovalAction"))
-        XCTAssertFalse(controllerSource.contains("private func confirmAgendaRemoval"))
-        XCTAssertFalse(controllerSource.contains("alert.runModal()"))
-    }
-
     func testSettingsAndHelpSidebarsUseBackCollapseControls() throws {
         let source = try source(named: "Sources/Bucky/UI/SwiftUI/SettingsView.swift")
 

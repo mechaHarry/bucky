@@ -16,12 +16,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
     @Published var isWindowKey = false
     @Published var isShowingSettings = false
     @Published var isShowingHelp = false
-    @Published var agendaSelectedNoteIndex = 0
-    @Published private(set) var agendaNotes: [AgendaNoteReference] = []
-    @Published private(set) var openedAgendaNote: AgendaNoteReference?
-    @Published var agendaOpenNoteText = ""
-    @Published var isAgendaNoteSearchVisible = false
-    @Published var isConfirmingAgendaRemoval = false
     @Published private(set) var dictionaryPreview: DictionaryDefinitionPreview?
     @Published private(set) var dictionaryPreviewLoadingTerm: String?
     @Published private(set) var calculatorResultFeedback: CalculatorResultFeedback?
@@ -37,14 +31,12 @@ final class LiquidGlassLauncherModel: ObservableObject {
     var reindexAction: (() -> Void)?
     var pinnedChangedAction: ((Bool) -> Void)?
     var modeWillSwitchAction: ((LauncherMode, LauncherMode) -> Void)?
-    var openAgendaNoteAction: (() -> Void)?
 
     private let settingsStore: SettingsStore
     private let inclusionStore: InclusionStore
     private let exclusionStore: ExclusionStore
     private let calculationHistoryStore: CalculationHistoryStore
     private let dictionaryHistoryStore: DictionaryHistoryStore
-    private let agendaStore: AgendaStore
     private let dictionaryLookup: @Sendable (String) -> [DictionaryResult]
     private let dictionaryOpenHandler: (String) -> Void
     private let pasteboardCopyHandler: (String) -> Void
@@ -54,7 +46,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private var indexedItems: [LaunchItem] = []
     private var filterCache = ApplicationFilterCache()
     private var applicationQuery = ""
-    private var agendaQuery = ""
     private var needsReindexAfterCurrent = false
     private var pendingCalculationHistoryTimer: Timer?
     private var pendingCalculationHistoryExpression: String?
@@ -80,7 +71,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
         dictionaryLookup: @escaping @Sendable (String) -> [DictionaryResult] = { DictionaryLookup.results(for: $0) },
         dictionaryOpenHandler: @escaping (String) -> Void = LiquidGlassLauncherModel.openDictionaryTerm,
         pasteboardCopyHandler: @escaping (String) -> Void = LiquidGlassLauncherModel.copyStringToPasteboard,
-        agendaStore: AgendaStore = AgendaStore(),
         fileBrowserModel: FileBrowserModel? = nil,
         fileBrowserModelFactory: (() -> FileBrowserModel)? = nil,
         applicationIndexSnapshotCache: ApplicationIndexSnapshotCache = ApplicationIndexSnapshotCache()
@@ -93,7 +83,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
         self.dictionaryLookup = dictionaryLookup
         self.dictionaryOpenHandler = dictionaryOpenHandler
         self.pasteboardCopyHandler = pasteboardCopyHandler
-        self.agendaStore = agendaStore
         self.applicationIndexSnapshotCache = applicationIndexSnapshotCache
         self.activatedFileBrowserModel = fileBrowserModel
         self.fileBrowserModelFactory = fileBrowserModelFactory ?? {
@@ -102,7 +91,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
             }
         }
         animationTiming = settingsStore.settings.animationTiming
-        syncAgendaSnapshot()
         loadCachedApplicationSnapshot()
     }
 
@@ -132,10 +120,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
 
     var activeFileBrowserModel: FileBrowserModel? {
         activatedFileBrowserModel
-    }
-
-    var filteredAgendaNotes: [AgendaNoteReference] {
-        AgendaFilter.filterNotes(agendaNotes, query: query)
     }
 
     var isApplicationCalculatorActive: Bool {
@@ -171,8 +155,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
             case .applications:
                 return filteredItemIDs.count
             }
-        case .agenda:
-            return filteredAgendaNotes.count
         case .files:
             return MainActor.assumeIsolated {
                 fileBrowserModel.entries.count
@@ -203,13 +185,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
             if MainActor.assumeIsolated({ fileBrowserModel.entries.isEmpty }) {
                 return "No files"
             }
-        case .agenda:
-            if inputIsBlank, agendaNotes.isEmpty {
-                return "Agenda scratchpad"
-            }
-            if !inputIsBlank, filteredAgendaNotes.isEmpty {
-                return "No agenda matches"
-            }
         }
 
         return nil
@@ -227,7 +202,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         calculatorResultFeedback = nil
         applicationQuery = ""
         self.mode = mode
-        query = mode == .applications ? applicationQuery : (mode == .agenda ? agendaQuery : "")
+        query = mode == .applications ? applicationQuery : ""
         selectedIndex = 0
         isPinned = false
         applyCurrentMode()
@@ -297,17 +272,11 @@ final class LiquidGlassLauncherModel: ObservableObject {
     func handle(command: LauncherCommand) -> Bool {
         switch command {
         case .up:
-            if mode == .agenda {
-                return handleAgendaCommand(.agendaMoveSelection(.up))
-            }
             if mode == .files {
                 return handleFileBrowserCommand(command)
             }
             moveSelection(by: -1)
         case .down:
-            if mode == .agenda {
-                return handleAgendaCommand(.agendaMoveSelection(.down))
-            }
             if mode == .files {
                 return handleFileBrowserCommand(command)
             }
@@ -323,9 +292,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
             }
             moveSelection(to: resultCount - 1, anchor: .bottom)
         case .open:
-            if mode == .agenda {
-                return handleAgendaCommand(command)
-            }
             if mode == .files {
                 return handleFileBrowserCommand(command)
             }
@@ -334,10 +300,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
             if dictionaryRouteIsActive, dictionaryPreview != nil {
                 cancelDictionaryPreview()
                 return true
-            }
-            if mode == .agenda,
-               (openedAgendaNote != nil || isConfirmingAgendaRemoval) {
-                return handleAgendaCommand(command)
             }
             if mode == .files, fileBrowserFocusState != .browse {
                 return handleFileBrowserCommand(command)
@@ -362,12 +324,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
                 return handleFileBrowserCommand(command)
             }
             isPinned.toggle()
-        case .createAgendaItem, .removeAgendaSelection, .saveAgendaNote:
-            guard mode == .agenda else { return false }
-            return handleAgendaCommand(command)
-        case .agendaMoveSelection:
-            guard mode == .agenda else { return false }
-            return handleAgendaCommand(command)
         case .prepareSpaceInteraction:
             if dictionaryRouteIsActive {
                 return true
@@ -585,11 +541,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
                 }
                 applyApplicationFilter(preservePreviousOnEmpty: preservePreviousOnEmpty)
             }
-        case .agenda:
-            cancelPendingCalculationHistory()
-            cancelPendingDictionaryLookup()
-            toolItems = []
-            clampAgendaSelection()
         case .files:
             cancelPendingCalculationHistory()
             cancelPendingDictionaryLookup()
@@ -922,7 +873,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
                     )
                 ] + calculationHistoryItems()
             }
-        case .files, .agenda:
+        case .files:
             return []
         }
     }
@@ -1071,8 +1022,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
             applicationQuery = query
         case .files:
             break
-        case .agenda:
-            agendaQuery = query
         }
     }
 
@@ -1088,7 +1037,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         calculatorResultFeedback = nil
         storeCurrentQuery()
         mode = nextMode
-        query = nextMode == .applications ? applicationQuery : (nextMode == .agenda ? agendaQuery : "")
+        query = nextMode == .applications ? applicationQuery : ""
         selectedIndex = 0
         publishLightweightModeSnapshot(for: nextMode)
         scheduleModeSnapshot(for: nextMode)
@@ -1099,7 +1048,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         switch mode {
         case .applications:
             break
-        case .files, .agenda:
+        case .files:
             toolItems = []
         }
     }
@@ -1128,102 +1077,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
         MainActor.assumeIsolated {
             fileBrowserModel.focusState
         }
-    }
-
-    func rememberAgendaNote(url: URL) {
-        agendaStore.rememberNote(url: url)
-        syncAgendaSnapshot()
-        agendaSelectedNoteIndex = 0
-    }
-
-    func confirmAgendaRemoval() {
-        guard filteredAgendaNotes.indices.contains(agendaSelectedNoteIndex) else {
-            cancelAgendaRemoval()
-            return
-        }
-        agendaStore.removeNote(id: filteredAgendaNotes[agendaSelectedNoteIndex].id)
-        syncAgendaSnapshot()
-        cancelAgendaRemoval()
-    }
-
-    func cancelAgendaRemoval() {
-        isConfirmingAgendaRemoval = false
-    }
-
-    private func syncAgendaSnapshot() {
-        agendaNotes = agendaStore.notes
-        clampAgendaSelection()
-    }
-
-    private func handleAgendaCommand(_ command: LauncherCommand) -> Bool {
-        switch command {
-        case .open:
-            if isConfirmingAgendaRemoval {
-                confirmAgendaRemoval()
-                return true
-            }
-            guard filteredAgendaNotes.indices.contains(agendaSelectedNoteIndex) else {
-                openAgendaNoteAction?()
-                return true
-            }
-            openAgendaNote(filteredAgendaNotes[agendaSelectedNoteIndex])
-            return true
-        case .createAgendaItem:
-            openAgendaNoteAction?()
-            return true
-        case .removeAgendaSelection:
-            isConfirmingAgendaRemoval = true
-            return true
-        case .saveAgendaNote:
-            saveOpenedAgendaNote()
-            return true
-        case .close:
-            if isConfirmingAgendaRemoval {
-                cancelAgendaRemoval()
-                return true
-            }
-            if isAgendaNoteSearchVisible {
-                isAgendaNoteSearchVisible = false
-                return true
-            }
-            saveOpenedAgendaNote()
-            openedAgendaNote = nil
-            agendaOpenNoteText = ""
-            isAgendaNoteSearchVisible = false
-            return true
-        case let .agendaMoveSelection(direction):
-            moveAgendaSelection(direction)
-            return true
-        default:
-            return false
-        }
-    }
-
-    private func moveAgendaSelection(_ direction: AgendaNavigationDirection) {
-        switch direction {
-        case .left, .right:
-            break
-        case .up:
-            agendaSelectedNoteIndex = max(agendaSelectedNoteIndex - 1, 0)
-        case .down:
-            agendaSelectedNoteIndex = min(agendaSelectedNoteIndex + 1, max(filteredAgendaNotes.count - 1, 0))
-        }
-        clampAgendaSelection()
-    }
-
-    private func clampAgendaSelection() {
-        agendaSelectedNoteIndex = min(max(agendaSelectedNoteIndex, 0), max(filteredAgendaNotes.count - 1, 0))
-    }
-
-    private func openAgendaNote(_ note: AgendaNoteReference) {
-        openedAgendaNote = note
-        agendaOpenNoteText = (try? String(contentsOf: note.url, encoding: .utf8)) ?? ""
-        isAgendaNoteSearchVisible = false
-    }
-
-    private func saveOpenedAgendaNote() {
-        guard let openedAgendaNote else { return }
-        try? agendaOpenNoteText.write(to: openedAgendaNote.url, atomically: true, encoding: .utf8)
     }
 
     private func handleFileBrowserCommand(
@@ -1307,8 +1160,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
             MainActor.assumeIsolated {
                 fileBrowserModel.handle(.open)
             }
-        case .agenda:
-            break
         }
     }
 

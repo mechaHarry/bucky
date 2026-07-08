@@ -32,8 +32,6 @@ enum LauncherModeTintPolicy {
             return LauncherModeTint(activeHex: 0x266EF6, panelHex: 0x08578A, iconHex: 0x0B3D91, darkModeIconHex: 0x9CC7FF)
         case .files:
             return LauncherModeTint(activeHex: 0xFF0130, panelHex: 0xC60404, iconHex: 0x7A0018, darkModeIconHex: 0xFFA6B8)
-        case .agenda:
-            return LauncherModeTint(activeHex: 0x12E772, panelHex: 0x35B535, iconHex: 0x0D5F2F, darkModeIconHex: 0xB7FFD1)
         }
     }
 

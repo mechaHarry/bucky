@@ -137,32 +137,6 @@ extension String {
 }
 
 enum LauncherKeyRoutingPolicy {
-    static func agendaNavigationDirection(
-        modifierFlags: NSEvent.ModifierFlags,
-        keyCode: UInt16
-    ) -> AgendaNavigationDirection? {
-        let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
-        guard flags.contains(.option),
-              !flags.contains(.command),
-              !flags.contains(.control),
-              !flags.contains(.shift) else {
-            return nil
-        }
-
-        switch keyCode {
-        case UInt16(kVK_UpArrow):
-            return .up
-        case UInt16(kVK_DownArrow):
-            return .down
-        case UInt16(kVK_LeftArrow):
-            return .left
-        case UInt16(kVK_RightArrow):
-            return .right
-        default:
-            return nil
-        }
-    }
-
     static func shouldRouteAlphaNumeric(mode: LauncherMode, fileFocusState: FileBrowserFocusState?) -> Bool {
         guard mode == .files else { return true }
         return fileFocusState != .renaming
@@ -203,9 +177,7 @@ enum LauncherKeyRoutingPolicy {
             return false
         }
 
-        let agendaReservedLauncherKeys: Set<String> = ["=", "-", "s"]
-        let reservedLauncherKeys: Set<String> = Set(["1", "2", "3", "4", "5", "r", ",", "p", "[", "]"])
-            .union(agendaReservedLauncherKeys)
+        let reservedLauncherKeys: Set<String> = ["1", "2", "3", "4", "5", "r", ",", "p", "[", "]"]
         guard !reservedLauncherKeys.contains(key) else {
             return false
         }
@@ -252,13 +224,6 @@ extension NSEvent {
     var isCommandS: Bool {
         modifierFlags.intersection(.deviceIndependentFlagsMask) == .command
             && charactersIgnoringModifiers?.lowercased() == "s"
-    }
-
-    var optionArrowDirection: AgendaNavigationDirection? {
-        LauncherKeyRoutingPolicy.agendaNavigationDirection(
-            modifierFlags: modifierFlags,
-            keyCode: keyCode
-        )
     }
 
     var firstAlphaNumericCharacter: Character? {

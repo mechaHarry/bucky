@@ -5,16 +5,13 @@ final class LauncherModeTintPolicyTests: XCTestCase {
     func testModeTintPaletteUsesBrightStoneColors() {
         XCTAssertEqual(LauncherModeTintPolicy.tint(for: .applications).activeHex, 0x266EF6)
         XCTAssertEqual(LauncherModeTintPolicy.tint(for: .files).activeHex, 0xFF0130)
-        XCTAssertEqual(LauncherModeTintPolicy.tint(for: .agenda).activeHex, 0x12E772)
     }
 
     func testModeUsesContrastingIconInk() {
         XCTAssertEqual(LauncherModeTintPolicy.tint(for: .applications).iconHex, 0x0B3D91)
         XCTAssertEqual(LauncherModeTintPolicy.tint(for: .files).iconHex, 0x7A0018)
-        XCTAssertEqual(LauncherModeTintPolicy.tint(for: .agenda).iconHex, 0x0D5F2F)
         XCTAssertEqual(LauncherModeTintPolicy.tint(for: .applications).darkModeIconHex, 0x9CC7FF)
         XCTAssertEqual(LauncherModeTintPolicy.tint(for: .files).darkModeIconHex, 0xFFA6B8)
-        XCTAssertEqual(LauncherModeTintPolicy.tint(for: .agenda).darkModeIconHex, 0xB7FFD1)
         XCTAssertNotEqual(
             LauncherModeTintPolicy.tint(for: .applications).iconHex,
             LauncherModeTintPolicy.tint(for: .applications).activeHex
@@ -23,16 +20,11 @@ final class LauncherModeTintPolicyTests: XCTestCase {
             LauncherModeTintPolicy.tint(for: .files).iconHex,
             LauncherModeTintPolicy.tint(for: .files).activeHex
         )
-        XCTAssertNotEqual(
-            LauncherModeTintPolicy.tint(for: .agenda).iconHex,
-            LauncherModeTintPolicy.tint(for: .agenda).activeHex
-        )
     }
 
     func testModeTintPaletteUsesDarkPanelCompanions() {
         XCTAssertEqual(LauncherModeTintPolicy.tint(for: .applications).panelHex, 0x08578A)
         XCTAssertEqual(LauncherModeTintPolicy.tint(for: .files).panelHex, 0xC60404)
-        XCTAssertEqual(LauncherModeTintPolicy.tint(for: .agenda).panelHex, 0x35B535)
     }
 
     func testAppsTintPreservesRouteSpecificNativeIdentity() {
@@ -121,7 +113,6 @@ final class LauncherModeTintPolicyTests: XCTestCase {
         XCTAssertTrue(modeSwitcher.contains(".help(helpText(for: mode))"))
         XCTAssertTrue(modeSwitcher.contains("Command+1"))
         XCTAssertTrue(modeSwitcher.contains("Command+4"))
-        XCTAssertTrue(modeSwitcher.contains("Command+5"))
         XCTAssertFalse(modeSwitcher.contains("Command+2"))
         XCTAssertFalse(modeSwitcher.contains("Command+3"))
     }

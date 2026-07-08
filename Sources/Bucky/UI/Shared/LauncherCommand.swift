@@ -15,10 +15,6 @@ enum LauncherCommand {
     case nextMode
     case clearHistory
     case togglePin
-    case createAgendaItem
-    case removeAgendaSelection
-    case saveAgendaNote
-    case agendaMoveSelection(AgendaNavigationDirection)
     case prepareSpaceInteraction
     case space
     case shiftSpace

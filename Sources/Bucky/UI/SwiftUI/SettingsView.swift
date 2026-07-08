@@ -1143,15 +1143,6 @@ private enum HelpShortcutCatalog {
                     HelpExplanation(title: "Directory entry", detail: "Use the right and left arrow navigation flow to enter and leave directories.")
                 ]
             )
-        case .agenda:
-            return HelpPageContent(
-                shortcuts: [
-                    openMode
-                ],
-                explanations: [
-                    HelpExplanation(title: "Agenda filter", detail: "Typing filters remembered notes.")
-                ]
-            )
         }
     }
 }

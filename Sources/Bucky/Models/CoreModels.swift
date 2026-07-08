@@ -441,9 +441,8 @@ struct DictionaryResult: Hashable {
 enum LauncherMode: Int, CaseIterable {
     case applications = 1
     case files = 4
-    case agenda = 5
 
-    static let ordered: [LauncherMode] = [.applications, .files, .agenda]
+    static let ordered: [LauncherMode] = [.applications, .files]
 
     init?(commandNumber: Int) {
         self.init(rawValue: commandNumber)
@@ -463,8 +462,6 @@ enum LauncherMode: Int, CaseIterable {
             return "Search Apps Here"
         case .files:
             return "Browse Files"
-        case .agenda:
-            return "Agenda Scratchpad"
         }
     }
 
@@ -478,8 +475,6 @@ enum LauncherMode: Int, CaseIterable {
             return "Apps"
         case .files:
             return "Files"
-        case .agenda:
-            return "Agenda"
         }
     }
 
@@ -489,8 +484,6 @@ enum LauncherMode: Int, CaseIterable {
             return "square.grid.2x2"
         case .files:
             return "folder"
-        case .agenda:
-            return "checklist"
         }
     }
 

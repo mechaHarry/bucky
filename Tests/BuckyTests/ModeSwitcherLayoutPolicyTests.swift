@@ -74,15 +74,12 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
 
     func testTextInputModesUseSharedTextPillLayout() {
         XCTAssertEqual(LauncherMode.ordered.filter(\.acceptsTextInput), [
-            .applications,
-            .agenda
+            .applications
         ])
         XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: .applications))
         XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: .files))
-        XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: .agenda))
         XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: .applications))
         XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: .files))
-        XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: .agenda))
         XCTAssertEqual(
             ModeSwitcherLayoutPolicy.activeTextPillIconLeadingInset,
             ModeSwitcherLayoutPolicy.activeTextPillHorizontalInset

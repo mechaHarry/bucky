@@ -35,8 +35,7 @@ final class LauncherModeRoutingTests: XCTestCase {
     func testLauncherModesAreOrderedForCommandShortcuts() {
         XCTAssertEqual(LauncherMode.ordered, [
             .applications,
-            .files,
-            .agenda
+            .files
         ])
     }
 
@@ -45,28 +44,24 @@ final class LauncherModeRoutingTests: XCTestCase {
         XCTAssertNil(LauncherMode(commandNumber: 2))
         XCTAssertNil(LauncherMode(commandNumber: 3))
         XCTAssertEqual(LauncherMode(commandNumber: 4), .files)
-        XCTAssertEqual(LauncherMode(commandNumber: 5), .agenda)
+        XCTAssertNil(LauncherMode(commandNumber: 5))
         XCTAssertNil(LauncherMode(commandNumber: 6))
     }
 
     func testModeCycleWrapsThroughOrderedModes() {
-        XCTAssertEqual(LauncherMode.applications.previousMode, .agenda)
+        XCTAssertEqual(LauncherMode.applications.previousMode, .files)
         XCTAssertEqual(LauncherMode.applications.nextMode, .files)
-        XCTAssertEqual(LauncherMode.files.nextMode, .agenda)
-        XCTAssertEqual(LauncherMode.agenda.nextMode, .applications)
-        XCTAssertEqual(LauncherMode.agenda.previousMode, .files)
+        XCTAssertEqual(LauncherMode.files.nextMode, .applications)
     }
 
     func testModePlaceholdersAreSeparated() {
         XCTAssertEqual(LauncherMode.applications.placeholder, "Search Apps Here")
         XCTAssertEqual(LauncherMode.files.placeholder, "Browse Files")
-        XCTAssertEqual(LauncherMode.agenda.placeholder, "Agenda Scratchpad")
     }
 
     func testTextInputFocusModesExcludeFiles() {
         XCTAssertTrue(LauncherMode.applications.acceptsTextInput)
         XCTAssertFalse(LauncherMode.files.acceptsTextInput)
-        XCTAssertTrue(LauncherMode.agenda.acceptsTextInput)
     }
 
     @available(macOS 26.0, *)
@@ -194,7 +189,7 @@ final class LauncherModeRoutingTests: XCTestCase {
     }
 
     func testReservedLauncherCommandKeysDoNotPassThroughAsTextEditingCommands() {
-        for key in ["1", "2", "3", "4", "5", "r", ",", "p", "[", "]", "=", "-", "s"] {
+        for key in ["1", "2", "3", "4", "5", "r", ",", "p", "[", "]"] {
             XCTAssertFalse(
                 LauncherKeyRoutingPolicy.shouldPassThroughNativeTextEditingCommand(
                     mode: .applications,
@@ -206,20 +201,6 @@ final class LauncherModeRoutingTests: XCTestCase {
                 "Expected Command+\(key) to remain reserved for launcher routing"
             )
         }
-    }
-
-    func testOptionArrowNavigationIgnoresSystemAddedDeviceFlags() {
-        XCTAssertEqual(
-            LauncherKeyRoutingPolicy.agendaNavigationDirection(
-                modifierFlags: [.option, .numericPad],
-                keyCode: UInt16(kVK_RightArrow)
-            ),
-            .right
-        )
-        XCTAssertNil(LauncherKeyRoutingPolicy.agendaNavigationDirection(
-            modifierFlags: [.option, .command],
-            keyCode: UInt16(kVK_RightArrow)
-        ))
     }
 
     func testFilesRenamePassesThroughNativeEditingCommands() {
@@ -474,36 +455,6 @@ final class LauncherModeRoutingTests: XCTestCase {
     }
 
     @available(macOS 26.0, *)
-    func testAgendaKeyboardCommandsAreReservedAndRouted() throws {
-        let command = try source(named: "Sources/Bucky/UI/Shared/LauncherCommand.swift")
-        let controller = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
-        let utilities = try source(named: "Sources/Bucky/UI/Shared/Utilities.swift")
-
-        XCTAssertTrue(command.contains("case createAgendaItem"))
-        XCTAssertTrue(command.contains("case removeAgendaSelection"))
-        XCTAssertTrue(command.contains("case saveAgendaNote"))
-        XCTAssertTrue(command.contains("case agendaMoveSelection(AgendaNavigationDirection)"))
-        XCTAssertTrue(utilities.contains("var isCommandEqual: Bool"))
-        XCTAssertTrue(utilities.contains("var isCommandMinus: Bool"))
-        XCTAssertTrue(utilities.contains("var isControlMinus: Bool"))
-        XCTAssertTrue(utilities.contains("var isCommandS: Bool"))
-        XCTAssertTrue(utilities.contains("var optionArrowDirection: AgendaNavigationDirection?"))
-        XCTAssertTrue(utilities.contains("LauncherKeyRoutingPolicy.agendaNavigationDirection("))
-        XCTAssertTrue(utilities.contains("\"=\", \"-\", \"s\""))
-        XCTAssertTrue(controller.contains("event.isCommandEqual"))
-        XCTAssertTrue(controller.contains(".createAgendaItem"))
-        XCTAssertTrue(controller.contains("event.isCommandMinus"))
-        XCTAssertTrue(controller.contains("event.isControlMinus"))
-        XCTAssertTrue(controller.contains(".removeAgendaSelection"))
-        XCTAssertTrue(controller.contains("event.isCommandS"))
-        XCTAssertTrue(controller.contains(".saveAgendaNote"))
-        XCTAssertTrue(controller.contains("event.optionArrowDirection"))
-        XCTAssertTrue(controller.contains("self.model.mode == .agenda,\n               let direction = event.optionArrowDirection"))
-        XCTAssertTrue(controller.contains("model.mode == .agenda,\n           let direction = event.optionArrowDirection"))
-        XCTAssertTrue(controller.contains(".agendaMoveSelection(direction)"))
-    }
-
-    @available(macOS 26.0, *)
     func testModeSwitchDoesNotSynchronouslyReloadHistoryStores() throws {
         let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherModel.swift")
 
@@ -662,32 +613,6 @@ final class LauncherModeRoutingTests: XCTestCase {
 
     @MainActor
     @available(macOS 26.0, *)
-    func testSwitchingModesStoresIndependentQueries() {
-        let model = LiquidGlassLauncherModel(
-            settingsStore: SettingsStore(),
-            inclusionStore: InclusionStore(),
-            exclusionStore: ExclusionStore(),
-            calculationHistoryStore: CalculationHistoryStore(),
-            fileBrowserModel: FileBrowserModel(
-                fileSystem: StubFileSystemClient(home: URL(fileURLWithPath: "/Users/test"), entriesByDirectory: [:]),
-                store: InMemoryFileBrowserStore(state: .defaultValue),
-                directoryStream: ImmediateDirectoryStream()
-            )
-        )
-
-        model.show(mode: .applications)
-        model.query = "ray"
-        _ = model.handle(command: .switchMode(.agenda))
-        model.query = "hello"
-        _ = model.handle(command: .switchMode(.applications))
-
-        XCTAssertEqual(model.query, "ray")
-        _ = model.handle(command: .switchMode(.agenda))
-        XCTAssertEqual(model.query, "hello")
-    }
-
-    @MainActor
-    @available(macOS 26.0, *)
     func testModeCycleCommandsUseDoublyLinkedModeOrder() {
         let model = LiquidGlassLauncherModel(
             settingsStore: SettingsStore(),
@@ -703,7 +628,7 @@ final class LauncherModeRoutingTests: XCTestCase {
 
         model.show(mode: .applications)
         _ = model.handle(command: .previousMode)
-        XCTAssertEqual(model.mode, .agenda)
+        XCTAssertEqual(model.mode, .files)
 
         _ = model.handle(command: .nextMode)
         XCTAssertEqual(model.mode, .applications)

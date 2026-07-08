@@ -81,7 +81,6 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         model.openHelpAction = { [weak self] in self?.toggleHelp() }
         model.returnToLauncherAction = { [weak self] in self?.showLauncherFromPanel() }
         model.reindexAction = { [weak self] in self?.reindex() }
-        model.openAgendaNoteAction = { [weak self] in self?.presentAgendaNotePicker() }
         model.pinnedChangedAction = { [weak self] isPinned in
             self?.setPinned(isPinned)
         }
@@ -357,26 +356,6 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         }
     }
 
-    private func presentAgendaNotePicker() {
-        let panel = NSOpenPanel()
-        panel.title = "Open Agenda Note"
-        panel.prompt = "Open"
-        panel.allowsMultipleSelection = true
-        panel.canChooseFiles = true
-        panel.canChooseDirectories = false
-        panel.canCreateDirectories = true
-        panel.allowedContentTypes = ["md", "mdx", "txt", "json", "yaml", "yml"].compactMap {
-            UTType(filenameExtension: $0)
-        }
-
-        panel.beginSheetModal(for: window) { [weak self] response in
-            guard response == .OK else { return }
-            for url in panel.urls {
-                self?.model.rememberAgendaNote(url: url)
-            }
-        }
-    }
-
     private func buildWindow() {
         window.level = .floating
         window.becomesKeyOnlyIfNeeded = false
@@ -478,16 +457,6 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
                 return event
             }
 
-            if self.model.mode == .agenda, self.model.openedAgendaNote != nil {
-                if event.isCommandS {
-                    return self.handleLauncherCommand(.saveAgendaNote) ? nil : event
-                }
-                if event.keyCode == UInt16(kVK_Escape) {
-                    return self.handleLauncherCommand(.close) ? nil : event
-                }
-                return event
-            }
-
             if let mode = event.commandNumberMode {
                 return self.handleLauncherCommand(.switchMode(mode)) ? nil : event
             }
@@ -520,19 +489,6 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             }
             if event.isCommandRightArrow {
                 return self.handleLauncherCommand(.nextMode) ? nil : event
-            }
-            if event.isCommandEqual {
-                return self.handleLauncherCommand(.createAgendaItem) ? nil : event
-            }
-            if event.isCommandMinus || event.isControlMinus {
-                return self.handleLauncherCommand(.removeAgendaSelection) ? nil : event
-            }
-            if event.isCommandS {
-                return self.handleLauncherCommand(.saveAgendaNote) ? nil : event
-            }
-            if self.model.mode == .agenda,
-               let direction = event.optionArrowDirection {
-                return self.handleLauncherCommand(.agendaMoveSelection(direction)) ? nil : event
             }
 
             switch event.keyCode {
@@ -615,19 +571,6 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         }
         if event.isCommandRightArrow {
             return handleLauncherCommand(.nextMode)
-        }
-        if event.isCommandEqual {
-            return handleLauncherCommand(.createAgendaItem)
-        }
-        if event.isCommandMinus || event.isControlMinus {
-            return handleLauncherCommand(.removeAgendaSelection)
-        }
-        if event.isCommandS {
-            return handleLauncherCommand(.saveAgendaNote)
-        }
-        if model.mode == .agenda,
-           let direction = event.optionArrowDirection {
-            return handleLauncherCommand(.agendaMoveSelection(direction))
         }
         return false
     }
