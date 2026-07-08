@@ -2,7 +2,7 @@ import AppKit
 
 @MainActor
 final class StatusMenuController: NSObject {
-    private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let openAction: @MainActor () -> Void
     private let reindexAction: @MainActor () -> Void
     private let settingsAction: @MainActor () -> Void
@@ -21,10 +21,9 @@ final class StatusMenuController: NSObject {
 
     private func buildMenu() {
         if let button = statusItem.button {
-            button.image = nil
-            button.title = "🦾"
-            button.font = .systemFont(ofSize: 16)
-            button.toolTip = "Bucky"
+            let image = NSImage(systemSymbolName: "bolt.fill", accessibilityDescription: "Bucky")
+            image?.isTemplate = true
+            Self.configureButton(button, image: image)
         }
 
         let menu = NSMenu()
@@ -47,6 +46,13 @@ final class StatusMenuController: NSObject {
         menu.addItem(quitItem)
 
         statusItem.menu = menu
+    }
+
+    internal static func configureButton(_ button: NSStatusBarButton, image: NSImage?) {
+        button.image = image
+        button.imagePosition = image == nil ? .noImage : .imageOnly
+        button.title = image == nil ? "B" : ""
+        button.toolTip = "Bucky"
     }
 
     @objc private func open() {

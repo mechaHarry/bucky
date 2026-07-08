@@ -21,7 +21,7 @@ This project is a local-only macOS launcher implemented as a Swift Package macOS
 - Bundle metadata: `packaging/Info.plist`.
 - Minimum runtime target: macOS 26 (`Package.swift` and `LSMinimumSystemVersion`).
 - The app runs as an accessory/menu-bar app (`LSUIElement` true).
-- The status item uses the `🦾` text glyph with variable width.
+- The status item uses a compact square AppKit item with a template `bolt.fill` SF Symbol and a compact `B` text fallback if the symbol is unavailable.
 
 ## App Indexing
 
