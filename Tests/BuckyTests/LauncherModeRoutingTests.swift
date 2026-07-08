@@ -387,7 +387,7 @@ final class LauncherModeRoutingTests: XCTestCase {
         let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
 
         XCTAssertTrue(source.contains("transaction.disablesAnimations = true"))
-        XCTAssertTrue(source.contains("withTransaction(transaction) {\n                model.isPresented = true\n            }\n            animateWindowOpen(transitionID: visibilityTransitionID)"))
+        XCTAssertTrue(source.contains("withTransaction(transaction) {\n                model.isPresented = true\n            }\n            animateWindowOpen(generation: generation)"))
         XCTAssertFalse(source.contains("scheduleApplicationReindexIfNeeded"))
         XCTAssertTrue(source.contains("startApplicationIndexSourceStream()"))
         XCTAssertFalse(source.contains("withAnimation(presentationAnimation, completionCriteria: .removed) {\n                model.isPresented = true"))
@@ -398,9 +398,11 @@ final class LauncherModeRoutingTests: XCTestCase {
     func testHideFadesWholeWindowBeforeRemovingSwiftUIContent() throws {
         let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
 
-        XCTAssertTrue(source.contains("NSAnimationContext.runAnimationGroup"))
-        XCTAssertTrue(source.contains("window.animator().alphaValue = 0"))
-        XCTAssertTrue(source.contains("transaction.disablesAnimations = true\n                withTransaction(transaction) {\n                    self.model.isPresented = false\n                }"))
+        XCTAssertTrue(source.contains("visibilityTransitionCoordinator.request(.hide)"))
+        XCTAssertTrue(source.contains("private func startVisibilityAnimation()"))
+        XCTAssertTrue(source.contains("_ = visibilityTransitionCoordinator.startAnimation()"))
+        XCTAssertTrue(source.contains("private func completeHidePresentation()"))
+        XCTAssertTrue(source.contains("model.isPresented = false"))
         XCTAssertFalse(source.contains("withAnimation(presentationAnimation, completionCriteria: .removed) {\n            model.isPresented = false"))
     }
 
@@ -408,29 +410,35 @@ final class LauncherModeRoutingTests: XCTestCase {
     func testHotKeyShowFadesWholeWindowAfterNonAnimatedContentMaterialization() throws {
         let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
 
-        XCTAssertTrue(source.contains("window.alphaValue = shouldMaterialize ? 0 : 1"))
-        XCTAssertTrue(source.contains("withTransaction(transaction) {\n                model.isPresented = true\n            }\n            animateWindowOpen(transitionID: visibilityTransitionID)"))
+        XCTAssertTrue(source.contains("let priorPhase = visibilityTransitionCoordinator.phase"))
+        XCTAssertTrue(source.contains("LauncherWindowShowTransitionPolicy.decision("))
+        XCTAssertTrue(source.contains("showDecision == .replaceAnimation"))
+        XCTAssertTrue(source.contains("window.alphaValue = 0"))
+        XCTAssertTrue(source.contains("withTransaction(transaction) {\n                model.isPresented = true\n            }\n            animateWindowOpen(generation: generation)"))
         XCTAssertTrue(source.contains("windowOpenAnimationScheduler.schedule("))
         XCTAssertTrue(source.contains("startAnimation: { [weak self] completion in"))
-        XCTAssertTrue(source.contains("window.animator().alphaValue = 1"))
-        XCTAssertTrue(source.contains("completion()"))
+        XCTAssertTrue(source.contains("visibilityTransitionCoordinator.startAnimation(completion: completion)"))
         XCTAssertTrue(source.contains("completionAction: { [weak self] in"))
-        XCTAssertTrue(source.contains("self?.finishShow(transitionID: transitionID)"))
+        XCTAssertTrue(source.contains("generation: generation"))
+        XCTAssertTrue(source.contains("intent: .show"))
+        XCTAssertTrue(source.contains("phase: .showing"))
+        XCTAssertFalse(source.contains("completionAction: {}"))
     }
 
     @available(macOS 26.0, *)
     func testWindowOpenCloseAnimationUsesConfiguredPresentationPolicy() throws {
-        let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/LauncherWindowVisibilityTransitionCoordinator.swift")
 
-        XCTAssertTrue(source.contains("private enum LauncherWindowPresentationAnimationPolicy"))
+        XCTAssertTrue(source.contains("enum LauncherWindowPresentationAnimationPolicy"))
         XCTAssertTrue(source.contains("static func duration(for timing: LauncherAnimationTiming) -> TimeInterval"))
         XCTAssertTrue(source.contains("case .smooth:\n            return 0.20"))
         XCTAssertTrue(source.contains("case .snappy:\n            return 0.10"))
         XCTAssertTrue(source.contains("static func timingFunction(for timing: LauncherAnimationTiming) -> CAMediaTimingFunction"))
         XCTAssertTrue(source.contains("case .smooth:\n            return CAMediaTimingFunction(name: .easeInEaseOut)"))
         XCTAssertTrue(source.contains("case .snappy:\n            return CAMediaTimingFunction(name: .easeOut)"))
-        XCTAssertTrue(source.contains("context.duration = LauncherWindowPresentationAnimationPolicy.duration(for: model.animationTiming)"))
-        XCTAssertTrue(source.contains("context.timingFunction = LauncherWindowPresentationAnimationPolicy.timingFunction(for: model.animationTiming)"))
+        XCTAssertTrue(source.contains("let timing = animationTiming()"))
+        XCTAssertTrue(source.contains("let duration = LauncherWindowPresentationAnimationPolicy.duration(for: timing)"))
+        XCTAssertTrue(source.contains("let timingFunction = LauncherWindowPresentationAnimationPolicy.timingFunction(for: timing)"))
         XCTAssertFalse(source.contains("static let duration: TimeInterval = 0.12"))
     }
 
@@ -451,7 +459,7 @@ final class LauncherModeRoutingTests: XCTestCase {
         let model = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherModel.swift")
         let utilities = try source(named: "Sources/Bucky/UI/Shared/Utilities.swift")
 
-        XCTAssertTrue(controller.contains("self.visibilityState == .showing,\n                   self.model.mode.acceptsTextInput,\n                   let character = event.launcherTextInputCharacter"))
+        XCTAssertTrue(controller.contains("self.visibilityTransitionCoordinator.phase == .showing,\n                   self.model.mode.acceptsTextInput,\n                   let character = event.launcherTextInputCharacter"))
         XCTAssertTrue(controller.contains("self.model.insertTextInput(character)"))
         XCTAssertTrue(model.contains("func insertTextInput(_ character: Character)"))
         XCTAssertTrue(model.contains("query.append(character)\n        queryDidChange()"))
