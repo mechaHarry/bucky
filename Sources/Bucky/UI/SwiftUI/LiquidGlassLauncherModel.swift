@@ -203,6 +203,11 @@ final class LiquidGlassLauncherModel: ObservableObject {
         isShowingHelp = false
     }
 
+    func resetPanelVisibilityAfterHide() {
+        isShowingSettings = false
+        isShowingHelp = false
+    }
+
     func setWindowKeyState(_ isWindowKey: Bool) {
         guard self.isWindowKey != isWindowKey else { return }
         self.isWindowKey = isWindowKey

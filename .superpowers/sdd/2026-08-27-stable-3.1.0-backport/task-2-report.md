@@ -121,3 +121,44 @@ Fix-round commit:
 ```bash
 git commit -S -m "fix: clear help state when launcher hides"
 ```
+
+## Fix Round 2
+
+Reviewer issue: improve stale-help regression coverage with an executable seam.
+
+Root cause:
+
+- Fix round 1 proved the `finishHide()` source integration, but the behavioral regression exercised `showLauncherSurface()` instead of the exact reset path used when the launcher hide animation completes.
+
+Fix:
+
+- Introduced the smallest production seam on `LiquidGlassLauncherModel`:
+  - `resetPanelVisibilityAfterHide()`
+- Updated `LiquidGlassLauncherWindowController.finishHide()` to call that exact seam.
+- Kept the functional behavior unchanged: hide completion still clears both panel flags, and Escape may still hide the whole help window.
+
+Regression coverage:
+
+- Added an executable behavioral test that forces both `isShowingSettings` and `isShowingHelp` to `true`, invokes `resetPanelVisibilityAfterHide()`, and asserts both flags become `false`.
+- Kept the source-contract test explicit by asserting `finishHide()` calls `model.resetPanelVisibilityAfterHide()`.
+
+Fix-round verification:
+
+```bash
+swift test --filter LauncherModeRoutingTests/testFinishHideClearsSettingsAndHelpPanelState
+swift test --filter LauncherModeRoutingTests/testResetPanelVisibilityAfterHideClearsBothPanelFlags
+swift test --filter LauncherModeRoutingTests
+git diff --check
+```
+
+Results:
+
+- Both focused regressions passed.
+- `LauncherModeRoutingTests`: passed, 51 tests, 0 failures.
+- `git diff --check` returned clean.
+
+Fix-round commit:
+
+```bash
+git commit -S -m "fix: add executable stale-help reset seam"
+```
