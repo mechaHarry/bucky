@@ -901,6 +901,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         window.orderOut(nil)
         window.resignKey()
         model.hideSettings()
+        model.hideHelp()
         visibilityState = .hidden
     }
 
