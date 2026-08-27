@@ -252,6 +252,11 @@ extension NSEvent {
         return flags == .command && charactersIgnoringModifiers == ","
     }
 
+    var isCommandSlash: Bool {
+        let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
+        return flags == .command && charactersIgnoringModifiers == "/"
+    }
+
     var isCommandP: Bool {
         let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
         return flags == .command && charactersIgnoringModifiers?.lowercased() == "p"
@@ -271,6 +276,20 @@ extension NSEvent {
             && keyCode == UInt16(kVK_DownArrow)
     }
 
+    var isCommandLeftArrow: Bool {
+        let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
+        return flags.contains(.command)
+            && flags.intersection([.shift, .option, .control]).isEmpty
+            && keyCode == UInt16(kVK_LeftArrow)
+    }
+
+    var isCommandRightArrow: Bool {
+        let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
+        return flags.contains(.command)
+            && flags.intersection([.shift, .option, .control]).isEmpty
+            && keyCode == UInt16(kVK_RightArrow)
+    }
+
     var isCommandLeftBracket: Bool {
         let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
         return flags == .command && charactersIgnoringModifiers == "["
@@ -280,5 +299,4 @@ extension NSEvent {
         let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
         return flags == .command && charactersIgnoringModifiers == "]"
     }
-
 }

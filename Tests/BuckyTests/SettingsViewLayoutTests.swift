@@ -36,12 +36,12 @@ final class SettingsViewLayoutTests: XCTestCase {
         let source = try source(named: "Sources/Bucky/UI/SwiftUI/SettingsView.swift")
 
         XCTAssertTrue(source.contains("@State private var isSidebarCollapsed = false"))
-        XCTAssertTrue(source.contains(".frame(width: isSidebarCollapsed ? 74 : 210)"))
+        XCTAssertTrue(source.contains(".frame(width: isSidebarCollapsed ? 102 : 210)"))
         XCTAssertTrue(source.contains("SettingsSidebarRow("))
         XCTAssertTrue(source.contains("if !isCollapsed"))
         XCTAssertTrue(source.contains("Image(systemName: pane.systemImage)"))
-        XCTAssertTrue(source.contains("Image(systemName: isSidebarCollapsed ? \"sidebar.left\" : \"sidebar.leading\")"))
-        XCTAssertTrue(source.contains(".frame(maxWidth: .infinity, alignment: isSidebarCollapsed ? .center : .trailing)"))
+        XCTAssertTrue(source.contains("SidebarBackCollapseControls("))
+        XCTAssertTrue(source.contains("Image(systemName: isCollapsed ? \"sidebar.left\" : \"sidebar.leading\")"))
         XCTAssertTrue(source.contains("Color(nsColor: .controlBackgroundColor).opacity(0.34)"))
         XCTAssertTrue(source.contains("Color(nsColor: .separatorColor).opacity(0.45)"))
         XCTAssertTrue(source.contains(".strokeBorder("))
@@ -77,7 +77,7 @@ final class SettingsViewLayoutTests: XCTestCase {
         XCTAssertTrue(launcher.contains("private var settingsModel: SettingsViewModel!"))
         XCTAssertTrue(launcherView.contains("@ObservedObject var settingsModel: SettingsViewModel"))
         XCTAssertTrue(launcherView.contains("if model.isShowingSettings"))
-        XCTAssertTrue(launcherView.contains("SettingsView(model: settingsModel)"))
+        XCTAssertTrue(launcherView.contains("SettingsView(model: settingsModel, onBack:"))
         XCTAssertTrue(appDelegate.contains("settingsAction: { [weak launcherController] in launcherController?.showSettings() }"))
         XCTAssertTrue(appDelegate.contains("self?.launcherController?.toggle()"))
         XCTAssertFalse(appDelegate.contains("SettingsWindowController"))
@@ -161,10 +161,83 @@ final class SettingsViewLayoutTests: XCTestCase {
         XCTAssertTrue(model.contains("func hideSettings()"))
         XCTAssertTrue(launcher.contains("model.openSettingsAction = { [weak self] in self?.toggleSettings() }"))
         XCTAssertTrue(launcher.contains("private func toggleSettings()"))
-        XCTAssertTrue(launcher.contains("private func showLauncherFromSettings()"))
-        XCTAssertTrue(launcher.contains("if model.isShowingSettings {\n            showLauncherFromSettings()"))
+        XCTAssertTrue(launcher.contains("private func showLauncherFromPanel()"))
+        XCTAssertTrue(launcher.contains("if model.isShowingSettings || model.isShowingHelp {\n            showLauncherFromPanel()"))
         XCTAssertTrue(launcher.contains("case .settings:\n                toggleSettings()"))
         XCTAssertFalse(launcher.contains("openSettingsAction: @escaping () -> Void"))
+    }
+
+    func testCommandSlashShowsHelpInsideLauncher() throws {
+        let launcher = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
+        let launcherView = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
+        let model = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherModel.swift")
+        let utilities = try source(named: "Sources/Bucky/UI/Shared/Utilities.swift")
+
+        XCTAssertTrue(model.contains("@Published var isShowingHelp = false"))
+        XCTAssertTrue(model.contains("func showHelp()"))
+        XCTAssertTrue(model.contains("func hideHelp()"))
+        XCTAssertTrue(utilities.contains("var isCommandSlash: Bool"))
+        XCTAssertTrue(launcher.contains("private func showHelp()"))
+        XCTAssertTrue(launcher.contains("private func toggleHelp()"))
+        XCTAssertTrue(launcher.contains("if event.isCommandSlash"))
+        XCTAssertTrue(launcher.contains("return self.handleLauncherCommand(.help) ? nil : event"))
+        XCTAssertTrue(launcherView.contains("HelpView(globalHotKeyTitle: settingsModel.hotKeyTitle, onBack:"))
+        XCTAssertTrue(launcherView.contains("if model.isShowingSettings"))
+        XCTAssertTrue(launcherView.contains("else if model.isShowingHelp"))
+        XCTAssertTrue(launcherView.contains(".animation(settingsModeAnimation, value: model.isShowingHelp)"))
+    }
+
+    func testHelpPaneListsGlobalAndModeHotkeys() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/SettingsView.swift")
+
+        XCTAssertTrue(source.contains("struct HelpView: View"))
+        XCTAssertTrue(source.contains("case global"))
+        XCTAssertTrue(source.contains("case mode(LauncherMode)"))
+        XCTAssertTrue(source.contains("HelpShortcutCatalog.content(for: selectedPane, globalHotKeyTitle: globalHotKeyTitle)"))
+        XCTAssertTrue(source.contains("Section(\"Hotkeys\")"))
+        XCTAssertTrue(source.contains("Section(\"Others\")"))
+        XCTAssertTrue(source.contains("Command+/"))
+        XCTAssertTrue(source.contains("Command+Left"))
+        XCTAssertTrue(source.contains("Command+Right"))
+        XCTAssertTrue(source.contains("Command+\\(mode.rawValue)"))
+        XCTAssertTrue(source.contains("mode.shortTitle"))
+        XCTAssertFalse(source.contains("case .agenda"))
+        XCTAssertFalse(source.contains("Agenda"))
+    }
+
+    func testFilesHelpDistinguishesSelectionFromHoldToPreview() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/SettingsView.swift")
+
+        XCTAssertTrue(source.contains("HelpShortcut(title: \"Select item\", keys: \"Space\""))
+        XCTAssertTrue(source.contains("HelpShortcut(title: \"Range select\", keys: \"Shift+Space\""))
+        XCTAssertTrue(source.contains("HelpShortcut(title: \"Preview selected file\", keys: \"Hold Space\""))
+        XCTAssertFalse(source.contains("HelpShortcut(title: \"Preview\", keys: \"Space\""))
+    }
+
+    func testSettingsAndHelpSidebarsUseBackCollapseControls() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/SettingsView.swift")
+
+        XCTAssertTrue(source.contains("let onBack: () -> Void"))
+        XCTAssertTrue(source.contains("SidebarBackCollapseControls("))
+        XCTAssertTrue(source.contains("Back to Bucky"))
+        XCTAssertTrue(source.contains("Image(systemName: \"chevron.left\")"))
+        XCTAssertTrue(source.contains(".frame(width: isSidebarCollapsed ? 102 : 210)"))
+        XCTAssertTrue(source.contains(".frame(maxWidth: .infinity, minHeight: 34, alignment: isCollapsed ? .center : .leading)"))
+        XCTAssertTrue(source.contains("HStack(spacing: 8)"))
+        XCTAssertTrue(source.contains("isCollapsed ? 19 : 15"))
+    }
+
+    func testBackToBuckyControlHasDedicatedHoverAndPressTreatment() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/SettingsView.swift")
+
+        XCTAssertTrue(source.contains("private struct SidebarBackButtonStyle: ButtonStyle"))
+        XCTAssertTrue(source.contains("configuration.isPressed"))
+        XCTAssertTrue(source.contains("@State private var isBackHovered = false"))
+        XCTAssertTrue(source.contains(".onHover { isBackHovered = $0 }"))
+        XCTAssertTrue(source.contains(".buttonStyle(SidebarBackButtonStyle(isHovered: isBackHovered))"))
+        XCTAssertTrue(source.contains(".scaleEffect(configuration.isPressed ? 0.96 : isHovered ? 1.015 : 1)"))
+        XCTAssertTrue(source.contains(".animation(.snappy(duration: 0.12), value: configuration.isPressed)"))
+        XCTAssertTrue(source.contains(".strokeBorder(Color.accentColor.opacity(isHovered ? 0.55 : 0.32), lineWidth: 1.15)"))
     }
 
     func testAppsPaneUsesLauncherStyleRows() throws {
@@ -225,6 +298,7 @@ final class SettingsViewLayoutTests: XCTestCase {
         XCTAssertTrue(source.contains("private var settingsModeTransition: AnyTransition"))
         XCTAssertTrue(source.contains(".transition(settingsModeTransition)"))
         XCTAssertTrue(source.contains(".animation(settingsModeAnimation, value: model.isShowingSettings)"))
+        XCTAssertTrue(source.contains(".animation(settingsModeAnimation, value: model.isShowingHelp)"))
         XCTAssertFalse(source.contains(".animation(resultUpdateAnimation, value: model.isShowingSettings)"))
     }
 
@@ -232,7 +306,7 @@ final class SettingsViewLayoutTests: XCTestCase {
         let launcherView = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
         let settingsSurface = launcherView.components(separatedBy: "private var settingsSurface: some View").last ?? ""
 
-        XCTAssertTrue(settingsSurface.contains("SettingsView(model: settingsModel)"))
+        XCTAssertTrue(settingsSurface.contains("SettingsView(model: settingsModel, onBack:"))
         XCTAssertTrue(settingsSurface.contains(".frame(maxWidth: .infinity, maxHeight: .infinity)"))
         XCTAssertFalse(settingsSurface.contains(".padding(LauncherWindowFramePolicy.shadowBleed)"))
     }
