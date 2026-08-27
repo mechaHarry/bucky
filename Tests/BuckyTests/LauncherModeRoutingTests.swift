@@ -391,6 +391,20 @@ final class LauncherModeRoutingTests: XCTestCase {
     }
 
     @available(macOS 26.0, *)
+    func testReturningFromPanelDuringHideReplacesTransitionGeneration() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
+
+        XCTAssertTrue(source.contains("private func showLauncherFromPanel()"))
+        XCTAssertTrue(source.contains("let priorPhase = visibilityTransitionCoordinator.phase"))
+        XCTAssertTrue(source.contains("let isMaterialized = window.isVisible && model.isPresented"))
+        XCTAssertTrue(source.contains("let showDecision = LauncherWindowShowTransitionPolicy.decision(\n            priorPhase: priorPhase,\n            isMaterialized: isMaterialized\n        )"))
+        XCTAssertTrue(source.contains("let generation = visibilityTransitionCoordinator.request(.show)\n        model.showLauncherSurface()"))
+        XCTAssertTrue(source.contains("if showDecision == .replaceAnimation {\n            animateWindowOpen(generation: generation)\n        } else {\n            visibilityTransitionCoordinator.complete("))
+        XCTAssertTrue(source.contains("generation: generation,\n                intent: .show,\n                phase: .showing"))
+        XCTAssertTrue(source.contains("model.resetPanelVisibilityAfterHide()"))
+    }
+
+    @available(macOS 26.0, *)
     func testWindowOpenCloseAnimationUsesConfiguredPresentationPolicy() throws {
         let source = try source(named: "Sources/Bucky/UI/SwiftUI/LauncherWindowVisibilityTransitionCoordinator.swift")
 

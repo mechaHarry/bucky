@@ -270,8 +270,37 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
 
     private func showLauncherFromPanel() {
         stopRecordingSettingsHotKey()
+        let priorPhase = visibilityTransitionCoordinator.phase
+        let isMaterialized = window.isVisible && model.isPresented
+        let showDecision = LauncherWindowShowTransitionPolicy.decision(
+            priorPhase: priorPhase,
+            isMaterialized: isMaterialized
+        )
+        let generation = visibilityTransitionCoordinator.request(.show)
         model.showLauncherSurface()
+        if showDecision == .materialize {
+            positionWindow(animated: false)
+            window.alphaValue = 0
+        } else if showDecision == .synchronous {
+            window.alphaValue = 1
+        }
         activateAndFocusWindow()
+        if showDecision == .materialize {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                model.isPresented = true
+            }
+            animateWindowOpen(generation: generation)
+        } else if showDecision == .replaceAnimation {
+            animateWindowOpen(generation: generation)
+        } else {
+            visibilityTransitionCoordinator.complete(
+                generation: generation,
+                intent: .show,
+                phase: .showing
+            )
+        }
     }
 
     private func show(mode: LauncherMode) {
