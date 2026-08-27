@@ -83,3 +83,41 @@ Planned signed commit message:
 ```bash
 git commit -S -m "feat: add stable launcher help navigation"
 ```
+
+## Fix Round 1
+
+Reviewer issue: P1 stale help state after the help panel hides.
+
+Root cause:
+
+- `LiquidGlassLauncherWindowController.finishHide()` cleared `isShowingSettings` but did not clear `isShowingHelp`, leaving stale help state latched across the next launcher toggle cycle.
+
+Fix:
+
+- Added `model.hideHelp()` to `finishHide()` so hide completion clears both panel flags symmetrically.
+
+Regression coverage:
+
+- Added a source-contract regression test proving `finishHide()` clears both settings and help panel state.
+- Added a focused model-state test proving `showLauncherSurface()` clears both panel flags, which covers the next-toggle state seam without broad controller refactoring.
+
+Fix-round verification:
+
+```bash
+swift test --filter LauncherModeRoutingTests/testFinishHideClearsSettingsAndHelpPanelState
+swift test --filter LauncherModeRoutingTests/testShowLauncherSurfaceClearsBothPanelFlags
+swift test --filter LauncherModeRoutingTests
+git diff --check
+```
+
+Results:
+
+- Both narrow regressions passed.
+- `LauncherModeRoutingTests`: passed, 51 tests, 0 failures.
+- `git diff --check` returned clean.
+
+Fix-round commit:
+
+```bash
+git commit -S -m "fix: clear help state when launcher hides"
+```

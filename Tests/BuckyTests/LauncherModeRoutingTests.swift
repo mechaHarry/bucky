@@ -334,6 +334,15 @@ final class LauncherModeRoutingTests: XCTestCase {
     }
 
     @available(macOS 26.0, *)
+    func testFinishHideClearsSettingsAndHelpPanelState() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
+
+        XCTAssertTrue(source.contains("private func finishHide(transitionID: Int)"))
+        XCTAssertTrue(source.contains("model.hideSettings()"))
+        XCTAssertTrue(source.contains("model.hideHelp()"))
+    }
+
+    @available(macOS 26.0, *)
     func testSettingsTransitionPreservesVisibleWindowFrameAndDisplay() throws {
         let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
 
@@ -554,6 +563,30 @@ final class LauncherModeRoutingTests: XCTestCase {
         XCTAssertEqual(model.query, "2+2")
         _ = model.handle(command: .switchMode(.dictionary))
         XCTAssertEqual(model.query, "hello")
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testShowLauncherSurfaceClearsBothPanelFlags() {
+        let model = LiquidGlassLauncherModel(
+            settingsStore: SettingsStore(),
+            inclusionStore: InclusionStore(),
+            exclusionStore: ExclusionStore(),
+            calculationHistoryStore: CalculationHistoryStore()
+        )
+
+        model.showSettings()
+        XCTAssertTrue(model.isShowingSettings)
+        XCTAssertFalse(model.isShowingHelp)
+
+        model.showHelp()
+        XCTAssertFalse(model.isShowingSettings)
+        XCTAssertTrue(model.isShowingHelp)
+
+        model.showLauncherSurface()
+
+        XCTAssertFalse(model.isShowingSettings)
+        XCTAssertFalse(model.isShowingHelp)
     }
 
     @MainActor
