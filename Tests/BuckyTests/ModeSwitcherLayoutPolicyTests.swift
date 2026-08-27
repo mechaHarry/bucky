@@ -179,6 +179,18 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
         XCTAssertFalse(source.contains("NSTextFieldDelegate"))
     }
 
+    func testLauncherSearchFocusRetriesWhenWindowBecomesKey() throws {
+        let source = try launcherViewSource()
+        let modelSource = try launcherModelSource()
+        let controllerSource = try launcherWindowControllerSource()
+
+        XCTAssertTrue(modelSource.contains("@Published var isWindowKey = false"))
+        XCTAssertTrue(source.contains(".onChange(of: model.isWindowKey)"))
+        XCTAssertTrue(source.contains("if isWindowKey {\n                synchronizeSearchFocus()\n            }"))
+        XCTAssertTrue(controllerSource.contains("func windowDidBecomeKey(_ notification: Notification) {\n        model.setWindowKeyState(true)\n    }"))
+        XCTAssertEqual(controllerSource.components(separatedBy: "model.setWindowKeyState(true)").count - 1, 1)
+    }
+
     func testFilesPathMarqueeUsesFixedPathWidthInsidePill() {
         let pathWidth = ModeSwitcherLayoutPolicy.filesPathTextWidth(
             in: 420,
@@ -206,6 +218,33 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .appendingPathComponent("Sources/Bucky/UI/SwiftUI/ModeSwitcherView.swift")
+        return try String(contentsOf: sourceURL, encoding: .utf8)
+    }
+
+    private func launcherViewSource() throws -> String {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
+        return try String(contentsOf: sourceURL, encoding: .utf8)
+    }
+
+    private func launcherModelSource() throws -> String {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherModel.swift")
+        return try String(contentsOf: sourceURL, encoding: .utf8)
+    }
+
+    private func launcherWindowControllerSource() throws -> String {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
         return try String(contentsOf: sourceURL, encoding: .utf8)
     }
 }
