@@ -323,6 +323,17 @@ final class LauncherModeRoutingTests: XCTestCase {
     }
 
     @available(macOS 26.0, *)
+    func testOptionPinnedFocusHandlingRemainsScopedToFilesModeInMonitorPaths() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
+
+        XCTAssertTrue(source.contains("if event.type == .flagsChanged, self.model.mode == .files {\n                return self.handleFileModifierEvent(event)\n            }"))
+        XCTAssertEqual(
+            source.components(separatedBy: "fileFocusState: self.model.mode == .files ? self.fileBrowserFocusState : nil").count - 1,
+            3
+        )
+    }
+
+    @available(macOS 26.0, *)
     func testTextInputModesCaptureTypedCharactersDuringShowAnimation() throws {
         let controller = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
         let model = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherModel.swift")
