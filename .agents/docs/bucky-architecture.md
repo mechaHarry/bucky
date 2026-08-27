@@ -65,7 +65,7 @@ Exclusions are applied after indexing and inclusions. An explicitly included app
 - Default hotkey is Option+Space through Carbon `RegisterEventHotKey`.
 - Hotkey can be changed in Settings and is persisted in `settings.json`.
 - Up and Down move selection by one row; Command+Up and Command+Down jump to the first and last visible result.
-- Command-number shortcuts are handled by the visible launcher window, not global Carbon hotkeys: Cmd+1 Apps, Cmd+2 Calculator, Cmd+3 Dictionary, and Cmd+4 Files.
+- Launcher shortcuts are handled by the visible launcher window, not global Carbon hotkeys: Command+Left and Command+Right cycle modes with wraparound, Command+/ opens shortcut help, and Command-number shortcuts open Calculator, Dictionary, and Files directly.
 - Escape clears the input first; if the input is already blank, it closes the launcher window.
 - The launcher uses `LiquidGlassLauncherWindowController`, a borderless resizable `NSWindow` with an `NSHostingView` surface backed by `LiquidGlassLauncherView`, `LiquidGlassLauncherModel`, and the in-window settings model.
 - SwiftUI owns the Liquid Glass visual system: `GlassEffectContainer`, `glassEffect`, glass button styles, and glass transitions for the main window, header controls, and individual result rows.
@@ -88,6 +88,7 @@ Exclusions are applied after indexing and inclusions. An explicitly included app
 - Apps is the default mode and must not activate Files code. `LiquidGlassLauncherModel` creates `FileBrowserModel` lazily only when Files is selected or the Files UI requests it.
 - Mode switches publish the new mode and restored query immediately, then defer mode-specific result snapshots behind the first interactable update. Stale deferred mode work is ignored by generation token.
 - Files mode shows a lightweight loading state if the file-browser model is not already warm, then prepares the model after the first Files frame.
+- Files mode lists mounted volumes alongside directory contents and supports folders-first sorting so directories can stay grouped ahead of non-folder entries.
 - File-browser directory lists flow through `FileBrowserDirectoryStreaming` before reaching SwiftUI. The model publishes stable loading, empty, and loaded snapshots and ignores stale stream results when a newer directory request wins.
 - Calculator mode exposes a clear-history button. Pin is global to all launcher modes. While pinned, the launcher stays above other apps, shows a bolder accent border, can be dragged by its background, refocuses on the global launcher hotkey, and stays open after result activation.
 - Calculator mode evaluates arithmetic expressions with a local parser supporting `+`, `-`, `*`, `/`, `×`, `÷`, decimals, grouping commas, unary signs, and parentheses.
