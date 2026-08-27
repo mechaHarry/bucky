@@ -335,11 +335,12 @@ final class LauncherModeRoutingTests: XCTestCase {
 
     @available(macOS 26.0, *)
     func testFinishHideClearsSettingsAndHelpPanelState() throws {
-        let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
+        let controller = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
+        let model = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherModel.swift")
 
-        XCTAssertTrue(source.contains("private func finishHide(transitionID: Int)"))
-        XCTAssertTrue(source.contains("model.hideSettings()"))
-        XCTAssertTrue(source.contains("model.hideHelp()"))
+        XCTAssertTrue(controller.contains("private func finishHide(transitionID: Int)"))
+        XCTAssertTrue(controller.contains("model.resetPanelVisibilityAfterHide()"))
+        XCTAssertTrue(model.contains("func resetPanelVisibilityAfterHide()"))
     }
 
     @available(macOS 26.0, *)
@@ -567,7 +568,7 @@ final class LauncherModeRoutingTests: XCTestCase {
 
     @MainActor
     @available(macOS 26.0, *)
-    func testShowLauncherSurfaceClearsBothPanelFlags() {
+    func testResetPanelVisibilityAfterHideClearsBothPanelFlags() {
         let model = LiquidGlassLauncherModel(
             settingsStore: SettingsStore(),
             inclusionStore: InclusionStore(),
@@ -575,15 +576,13 @@ final class LauncherModeRoutingTests: XCTestCase {
             calculationHistoryStore: CalculationHistoryStore()
         )
 
-        model.showSettings()
-        XCTAssertTrue(model.isShowingSettings)
-        XCTAssertFalse(model.isShowingHelp)
+        model.isShowingSettings = true
+        model.isShowingHelp = true
 
-        model.showHelp()
-        XCTAssertFalse(model.isShowingSettings)
+        XCTAssertTrue(model.isShowingSettings)
         XCTAssertTrue(model.isShowingHelp)
 
-        model.showLauncherSurface()
+        model.resetPanelVisibilityAfterHide()
 
         XCTAssertFalse(model.isShowingSettings)
         XCTAssertFalse(model.isShowingHelp)
