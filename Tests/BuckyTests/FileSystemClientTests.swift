@@ -24,35 +24,57 @@ final class FileSystemClientTests: XCTestCase {
         XCTAssertEqual(entries.first?.kind, .file)
     }
 
-    func testDirectoriesSortBeforeFilesByName() throws {
+    func testNameSortDoesNotForceDirectoriesBeforeFilesByDefault() throws {
         try FileManager.default.createDirectory(at: temporaryDirectory.appendingPathComponent("Sources"), withIntermediateDirectories: true)
         try "readme".write(to: temporaryDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
 
-        let entries = try FileSystemClient().entries(in: temporaryDirectory, sort: .name)
+        let entries = try FileSystemClient().entries(in: temporaryDirectory, sort: .name, foldersFirst: false)
+
+        XCTAssertEqual(entries.map(\.name), ["README.md", "Sources"])
+        XCTAssertEqual(entries.first?.kind, .file)
+    }
+
+    func testFoldersFirstOptionGroupsDirectoriesBeforeFiles() throws {
+        try FileManager.default.createDirectory(at: temporaryDirectory.appendingPathComponent("Sources"), withIntermediateDirectories: true)
+        try "readme".write(to: temporaryDirectory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+
+        let entries = try FileSystemClient().entries(in: temporaryDirectory, sort: .name, foldersFirst: true)
 
         XCTAssertEqual(entries.map(\.name), ["Sources", "README.md"])
         XCTAssertEqual(entries.first?.kind, .directory)
     }
 
-    func testSortBySizeOrdersFilesDescendingAfterDirectories() throws {
+    func testSortBySizeOrdersEntriesDescendingWithoutForcingDirectoriesFirst() throws {
         try FileManager.default.createDirectory(at: temporaryDirectory.appendingPathComponent("Folder"), withIntermediateDirectories: true)
         try "12345".write(to: temporaryDirectory.appendingPathComponent("large.txt"), atomically: true, encoding: .utf8)
         try "1".write(to: temporaryDirectory.appendingPathComponent("small.txt"), atomically: true, encoding: .utf8)
 
-        let entries = try FileSystemClient().entries(in: temporaryDirectory, sort: .size)
+        let entries = try FileSystemClient().entries(in: temporaryDirectory, sort: .size, foldersFirst: false)
 
-        XCTAssertEqual(entries.map(\.name), ["Folder", "large.txt", "small.txt"])
+        XCTAssertEqual(entries.map(\.name), ["large.txt", "small.txt", "Folder"])
     }
 
     func testSortByDateCreatedOrdersDatedEntriesBeforeNilDates() {
         let entries = [
-            entry(named: "aaa-undated.txt", createdAt: nil),
-            entry(named: "zzz-dated.txt", createdAt: Date(timeIntervalSince1970: 1))
+            entry(named: "NewerFile.txt", kind: .file, createdAt: Date(timeIntervalSince1970: 2)),
+            entry(named: "OlderFolder", kind: .directory, createdAt: Date(timeIntervalSince1970: 1)),
+            entry(named: "Undated.txt", kind: .file, createdAt: nil)
         ]
 
-        let sorted = FileSystemClient.sorted(entries, by: .dateCreated)
+        let sorted = FileSystemClient.sorted(entries, by: .dateCreated, foldersFirst: false)
 
-        XCTAssertEqual(sorted.map(\.name), ["zzz-dated.txt", "aaa-undated.txt"])
+        XCTAssertEqual(sorted.map(\.name), ["NewerFile.txt", "OlderFolder", "Undated.txt"])
+    }
+
+    func testSortByDateCreatedCanStillGroupFoldersFirst() {
+        let entries = [
+            entry(named: "NewerFile.txt", kind: .file, createdAt: Date(timeIntervalSince1970: 2)),
+            entry(named: "OlderFolder", kind: .directory, createdAt: Date(timeIntervalSince1970: 1))
+        ]
+
+        let sorted = FileSystemClient.sorted(entries, by: .dateCreated, foldersFirst: true)
+
+        XCTAssertEqual(sorted.map(\.name), ["OlderFolder", "NewerFile.txt"])
     }
 
     func testParentURLStopsAtRoot() {
@@ -92,10 +114,15 @@ final class FileSystemClientTests: XCTestCase {
         XCTAssertEqual(FileSystemClient().resolvedDirectoryURL(for: link), target.standardizedFileURL)
     }
 
-    private func entry(named name: String, createdAt: Date? = nil, modifiedAt: Date? = nil) -> FileBrowserEntry {
+    private func entry(
+        named name: String,
+        kind: FileBrowserEntry.Kind = .file,
+        createdAt: Date? = nil,
+        modifiedAt: Date? = nil
+    ) -> FileBrowserEntry {
         FileBrowserEntry(
             url: temporaryDirectory.appendingPathComponent(name),
-            kind: .file,
+            kind: kind,
             size: nil,
             createdAt: createdAt,
             modifiedAt: modifiedAt,

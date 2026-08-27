@@ -14,6 +14,7 @@ final class FileBrowserModel: ObservableObject {
     @Published private(set) var navigationTransition: FileBrowserNavigationTransition?
     @Published private(set) var selectionScrollEvent: FileBrowserSelectionScrollEvent?
     @Published private(set) var sort: FileBrowserSort
+    @Published private(set) var foldersFirst: Bool
     @Published private(set) var pinnedDirectories: [URL] = []
     @Published private(set) var focusedPinnedIndex = 0
     @Published private(set) var focusedActionIndex = 0
@@ -57,14 +58,33 @@ final class FileBrowserModel: ObservableObject {
     }
 
     var focusedPinnedURL: URL? {
-        guard focusedPinnedIndex >= 0, focusedPinnedIndex < pinnedDirectories.count else { return nil }
-        return pinnedDirectories[focusedPinnedIndex]
+        guard focusedPinnedIndex >= 0, focusedPinnedIndex < sidebarDirectories.count else { return nil }
+        return sidebarDirectories[focusedPinnedIndex]
+    }
+
+    var sidebarDirectories: [URL] {
+        let mountsDirectory = URL(fileURLWithPath: "/Volumes", isDirectory: true).standardizedFileURL
+        let directories = pinnedDirectories + [mountsDirectory]
+        return directories.reduce(into: []) { result, directory in
+            guard !result.contains(where: { $0.standardizedFileURL.path == directory.standardizedFileURL.path }) else {
+                return
+            }
+            result.append(directory.standardizedFileURL)
+        }
     }
 
     var availableActions: [FileBrowserAction] {
-        activeSelectionURLs.count > 1
-            ? [.batchRename, .copyPaths, .copy, .move, .moveToTrash]
-            : [.open, .rename, .revealInFinder, .copyPath, .copy, .move, .moveToTrash]
+        if selectedURLs.isEmpty,
+           selectedEntry?.isMount == true,
+           selectedEntry?.canUnmount == true {
+            return [.open, .revealInFinder, .copyPath, .unmount]
+        }
+
+        if activeSelectionURLs.count > 1 {
+            return [.batchRename, .copyPaths, .copy, .move, .moveToTrash]
+        }
+
+        return [.open, .rename, .revealInFinder, .copyPath, .copy, .move, .moveToTrash]
     }
 
     var focusableActions: [FileBrowserAction] {
@@ -85,6 +105,7 @@ final class FileBrowserModel: ObservableObject {
         self.directoryObserver = directoryObserver
         self.fileServices = fileServices
         self.sort = store.state.sort
+        self.foldersFirst = store.state.foldersFirst
         self.pinnedDirectories = store.state.pinnedDirectories
         self.recentTraversalChain = store.state.traversalChain
         self.rememberedSelectionByDirectory = store.state.rememberedSelections.reduce(into: [:]) { selections, item in
@@ -129,7 +150,7 @@ final class FileBrowserModel: ObservableObject {
             }
         case .bottom:
             if focusState == .pinnedItems {
-                moveFocusedPin(to: pinnedDirectories.count - 1)
+                moveFocusedPin(to: sidebarDirectories.count - 1)
             } else {
                 moveSelection(to: entries.count - 1, anchor: .bottom)
             }
@@ -240,6 +261,13 @@ final class FileBrowserModel: ObservableObject {
         reloadEntries(selecting: preferredSelection)
     }
 
+    func setFoldersFirst(_ isEnabled: Bool) {
+        guard foldersFirst != isEnabled else { return }
+        let preferredSelection = selectedEntry?.url ?? rememberedSelection(in: currentDirectory)
+        foldersFirst = isEnabled
+        reloadEntries(selecting: preferredSelection)
+    }
+
     func setRenameText(_ text: String) {
         guard var renameState else { return }
         renameState.proposedName = text
@@ -306,6 +334,13 @@ final class FileBrowserModel: ObservableObject {
             startTransfer(.move)
         case .moveToTrash:
             requestTrashConfirmation()
+        case .unmount:
+            guard let url = selectedEntry?.url,
+                  selectedEntry?.isMount == true,
+                  selectedEntry?.canUnmount == true else {
+                return
+            }
+            focusState = .confirming(.unmount(url))
         }
     }
 
@@ -372,6 +407,13 @@ final class FileBrowserModel: ObservableObject {
                     focusState = .browse
                     reloadEntries()
                 }
+            }
+        case let .unmount(url):
+            performServiceAction(recoveringTo: .confirming(confirmation)) {
+                try fileServices.unmount(url)
+                selectedURLs = []
+                focusState = .browse
+                reloadEntries()
             }
         }
     }
@@ -445,7 +487,7 @@ final class FileBrowserModel: ObservableObject {
         entries = []
         directorySnapshots = [FileBrowserDirectorySnapshot(directory: requestedDirectory, entries: [])]
 
-        directoryStream.loadEntries(in: requestedDirectory, sort: sort) { [weak self] result in
+        directoryStream.loadEntries(in: requestedDirectory, sort: sort, foldersFirst: foldersFirst) { [weak self] result in
             guard let self, generation == self.directoryLoadGeneration else { return }
 
             switch result {
@@ -521,7 +563,7 @@ final class FileBrowserModel: ObservableObject {
         pendingSnapshotRequests.insert(key)
         let generation = directoryLoadGeneration
         var hasReturned = false
-        directoryStream.loadEntries(in: directory, sort: sort) { [weak self] result in
+        directoryStream.loadEntries(in: directory, sort: sort, foldersFirst: foldersFirst) { [weak self] result in
             guard let self, generation == self.directoryLoadGeneration else { return }
             let loaded = (try? result.get()) ?? []
             self.snapshotEntryCache[key] = loaded
@@ -535,7 +577,7 @@ final class FileBrowserModel: ObservableObject {
     }
 
     private func cacheKey(for directory: URL) -> DirectorySnapshotCacheKey {
-        DirectorySnapshotCacheKey(directory: directory.standardizedFileURL, sort: sort)
+        DirectorySnapshotCacheKey(directory: directory.standardizedFileURL, sort: sort, foldersFirst: foldersFirst)
     }
 
     private func moveSelection(by delta: Int) {
@@ -666,33 +708,34 @@ final class FileBrowserModel: ObservableObject {
     }
 
     private func moveFocusedPin(to index: Int) {
-        guard !pinnedDirectories.isEmpty else { return }
-        focusedPinnedIndex = max(0, min(pinnedDirectories.count - 1, index))
+        guard !sidebarDirectories.isEmpty else { return }
+        focusedPinnedIndex = max(0, min(sidebarDirectories.count - 1, index))
     }
 
     private func cyclePinnedItems(toFirstCharacter character: Character, direction: FileBrowserCycleDirection) {
-        guard !pinnedDirectories.isEmpty else { return }
+        let directories = sidebarDirectories
+        guard !directories.isEmpty else { return }
         let needle = String(character).lowercased()
         let orderedIndexes: [Int]
         switch direction {
         case .forward:
-            let start = min(focusedPinnedIndex + 1, pinnedDirectories.count)
-            orderedIndexes = Array(start..<pinnedDirectories.count) + Array(0..<start)
+            let start = min(focusedPinnedIndex + 1, directories.count)
+            orderedIndexes = Array(start..<directories.count) + Array(0..<start)
         case .backward:
             let beforeSelection = focusedPinnedIndex > 0
                 ? Array(stride(from: focusedPinnedIndex - 1, through: 0, by: -1))
                 : []
             orderedIndexes = beforeSelection
-                + Array(stride(from: pinnedDirectories.count - 1, through: focusedPinnedIndex, by: -1))
+                + Array(stride(from: directories.count - 1, through: focusedPinnedIndex, by: -1))
         }
 
-        if let match = orderedIndexes.first(where: { pinMatchesFirstCharacter(pinnedDirectories[$0], needle: needle) }) {
+        if let match = orderedIndexes.first(where: { pinMatchesFirstCharacter(directories[$0], needle: needle) }) {
             focusedPinnedIndex = match
         }
     }
 
     private func beginPinnedFocus() {
-        guard !pinnedDirectories.isEmpty else { return }
+        guard !sidebarDirectories.isEmpty else { return }
         clampFocusedPinnedIndex()
         focusState = .pinnedItems
     }
@@ -738,11 +781,11 @@ final class FileBrowserModel: ObservableObject {
     }
 
     private func clampFocusedPinnedIndex() {
-        guard !pinnedDirectories.isEmpty else {
+        guard !sidebarDirectories.isEmpty else {
             focusedPinnedIndex = 0
             return
         }
-        focusedPinnedIndex = max(0, min(pinnedDirectories.count - 1, focusedPinnedIndex))
+        focusedPinnedIndex = max(0, min(sidebarDirectories.count - 1, focusedPinnedIndex))
     }
 
     private func navigateToDirectory(
@@ -889,7 +932,7 @@ final class FileBrowserModel: ObservableObject {
             focusState = .previewActions
         case .transferPending:
             focusState = .previewActions
-        case .confirming(.transfer), .confirming(.conflict):
+        case .confirming(.transfer), .confirming(.conflict), .confirming(.unmount):
             focusState = .previewActions
         case .confirming(.trash):
             focusState = .previewActions
@@ -911,6 +954,7 @@ final class FileBrowserModel: ObservableObject {
             pinnedDirectories: pinnedDirectories,
             lastDirectory: currentDirectory,
             sort: sort,
+            foldersFirst: foldersFirst,
             traversalChain: recentTraversalChain,
             rememberedSelections: rememberedSelectionByDirectory
                 .map { FileBrowserRememberedSelection(directory: $0.key, selection: $0.value) }
@@ -943,4 +987,5 @@ extension FileBrowserModel {
 private struct DirectorySnapshotCacheKey: Hashable {
     let directory: URL
     let sort: FileBrowserSort
+    let foldersFirst: Bool
 }
