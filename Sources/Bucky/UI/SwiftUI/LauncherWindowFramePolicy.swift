@@ -69,7 +69,12 @@ struct LauncherWindowRepositionPolicy {
             return true
         }
 
-        return false
+        switch command {
+        case .previousMode, .nextMode:
+            return true
+        default:
+            return false
+        }
     }
 }
 
