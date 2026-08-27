@@ -1,7 +1,7 @@
 # Task 3 Report
 
 Date: 2026-08-27
-Worktree: `/Users/harriche/gits/github.com/mechaHarry/bucky/.worktrees/release-3.0.3-stable-backport`
+Worktree: isolated release worktree for `agent/release-3.0.3-stable-backport`
 Base before Task 3: `38266fa`
 
 ## Scope Completed
@@ -92,7 +92,7 @@ Observed notes:
 
 - No new network behavior was added.
 - No new destructive filesystem operation was added.
-- No user, company, customer, domain, or private path data was added.
+- No user, company, customer, domain, or private path data was added to source or tests.
 - The status-menu change is local AppKit UI presentation only and preserves existing menu actions.
 - `packaging/Info.plist` remains `3.0.2`; the SDD ledger assigns the `3.1.0` semantic-version bump to Task 4, so Task 3 did not modify release metadata.
 
@@ -106,5 +106,53 @@ git commit -S -m "fix: stabilize launcher transitions"
 
 Commit note:
 
-- The initial signed commit attempt was blocked because `/Users/harriche/.local/share/ggshield/git-hooks/pre-commit` could not find `ggshield`.
+- The initial signed commit attempt was blocked because the configured local `ggshield` pre-commit hook could not find the `ggshield` executable.
 - Per the global plan constraint, the final signed commit used `--no-verify` to bypass only that unavailable local hook.
+
+## Fix Round 1
+
+Reviewer issue: P1 transition race when returning from Help or Settings while a hide animation is in flight.
+
+Root cause:
+
+- `hide()` requested a hide generation and started the alpha animation.
+- `showLauncherFromPanel()` cleared the Help/Settings panel and focused the window, but did not request a replacement show generation.
+- The old hide animation completion could therefore still match the coordinator state and run `completeHidePresentation()`, ordering the launcher out after the panel return.
+
+Fix:
+
+- Updated `showLauncherFromPanel()` to use `LauncherWindowShowTransitionPolicy`, request `.show` through `visibilityTransitionCoordinator`, and either start `animateWindowOpen(generation:)` or complete the show generation for synchronous materialized returns.
+- Preserved `model.resetPanelVisibilityAfterHide()` in `completeHidePresentation()`.
+- Kept stable Help/mode behavior unchanged and did not add any Apps/Agenda/Notes routing.
+
+Regression coverage:
+
+- Added a coordinator test proving a show request during hiding cancels the hide and ignores the stale hide completion.
+- Added a source-contract test proving panel returns request a replacement show generation and complete or animate it.
+
+Fix-round verification:
+
+```bash
+swift test --filter LauncherModeRoutingTests/testReturningFromPanelDuringHideReplacesTransitionGeneration
+swift test --filter LauncherWindowVisibilityTransitionTests/testShowRequestDuringHidingCancelsHideAndIgnoresStaleHideCompletion
+swift test --filter LauncherWindow
+swift test --filter LauncherModeRoutingTests
+git diff --check
+```
+
+Results:
+
+- The new source-contract test failed before the fix because `showLauncherFromPanel()` did not request `.show`.
+- Both focused regressions passed after the fix.
+- Full focused transition/routing tests passed with 28/28 `LauncherWindow` tests and 57/57 `LauncherModeRoutingTests`.
+- `git diff --check` returned clean.
+
+Fix-round commit:
+
+```bash
+git commit -S --no-verify -m "fix: replace panel return transitions"
+```
+
+Commit note:
+
+- The signed fix-round commit used `--no-verify` for the same unavailable local `ggshield` pre-commit hook recorded above.

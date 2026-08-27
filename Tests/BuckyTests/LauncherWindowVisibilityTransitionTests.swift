@@ -127,6 +127,40 @@ final class LauncherWindowVisibilityTransitionTests: XCTestCase {
         XCTAssertEqual(driver.cancelCount, 4)
     }
 
+    func testShowRequestDuringHidingCancelsHideAndIgnoresStaleHideCompletion() {
+        let driver = FakeAlphaAnimationDriver(alphaValue: 1)
+        var showCount = 0
+        var hideCount = 0
+        let coordinator = makeCoordinator(
+            driver: driver,
+            didShow: { showCount += 1 },
+            didHide: { hideCount += 1 }
+        )
+
+        let hideGeneration = coordinator.request(.hide)
+        XCTAssertTrue(coordinator.startAnimation())
+        let showGeneration = coordinator.request(.show)
+        XCTAssertTrue(coordinator.startAnimation())
+
+        driver.finishAnimation(at: 0)
+
+        XCTAssertEqual(coordinator.generation, showGeneration)
+        XCTAssertEqual(coordinator.phase, .showing)
+        XCTAssertEqual(driver.alphaValue, 1)
+        XCTAssertEqual(showCount, 0)
+        XCTAssertEqual(hideCount, 0)
+        XCTAssertEqual(hideGeneration, 1)
+        XCTAssertEqual(showGeneration, 2)
+
+        driver.finishAnimation(at: 1)
+
+        XCTAssertEqual(coordinator.phase, .shown)
+        XCTAssertEqual(driver.alphaValue, 1)
+        XCTAssertEqual(showCount, 1)
+        XCTAssertEqual(hideCount, 0)
+        XCTAssertEqual(driver.cancelCount, 2)
+    }
+
     func testAnimationUsesConfiguredTimingPolicyForBothDirections() {
         let driver = FakeAlphaAnimationDriver()
         let coordinator = makeCoordinator(driver: driver, timing: .smooth)
