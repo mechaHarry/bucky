@@ -13,7 +13,7 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
         )
 
         XCTAssertEqual(shortPathWidth, longPathWidth)
-        XCTAssertEqual(shortPathWidth, 320)
+        XCTAssertEqual(shortPathWidth, 274)
     }
 
     func testFilesPathWidthNeverGoesNegative() {
@@ -187,6 +187,17 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
 
         XCTAssertEqual(ModeSwitcherLayoutPolicy.filesPathMarqueeWidth(in: 420), pathWidth)
         XCTAssertLessThan(pathWidth, 420)
+    }
+
+    func testFilesPillExposesPersistentFoldersFirstToggle() throws {
+        let source = try modeSwitcherSource()
+
+        XCTAssertTrue(source.contains("private var foldersFirstToggle: some View"))
+        XCTAssertTrue(source.contains("model.activeFileBrowserModel?.foldersFirst ?? false"))
+        XCTAssertTrue(source.contains("model.activeFileBrowserModel?.setFoldersFirst($0)"))
+        XCTAssertTrue(source.contains(".toggleStyle(.button)"))
+        XCTAssertTrue(source.contains(".help(\"Folders first\")"))
+        XCTAssertTrue(source.contains("ModeSwitcherLayoutPolicy.filesFoldersFirstToggleWidth"))
     }
 
     private func modeSwitcherSource() throws -> String {

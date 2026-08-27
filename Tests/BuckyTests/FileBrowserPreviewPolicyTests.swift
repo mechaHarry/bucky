@@ -74,6 +74,17 @@ final class FileBrowserPreviewPolicyTests: XCTestCase {
         XCTAssertEqual(rows.remainingCount, 2)
     }
 
+    func testActionPaneScrollsFocusedActionsInsideWindowBounds() throws {
+        let source = try fileBrowserViewSource()
+
+        XCTAssertTrue(source.contains("ScrollViewReader { actionScrollProxy in"))
+        XCTAssertTrue(source.contains("ScrollView(.vertical)"))
+        XCTAssertTrue(source.contains(".id(index)"))
+        XCTAssertTrue(source.contains("scrollFocusedAction(in: actionScrollProxy, animated:"))
+        XCTAssertTrue(source.contains("actionScrollProxy.scrollTo(model.focusedActionIndex, anchor: .center)"))
+        XCTAssertTrue(source.contains("max(0, proxy.size.height - FileBrowserActionPaneLayoutPolicy.outerPadding * 2)"))
+    }
+
     func testCodePreviewThemeUsesDarkBackgroundAndLightText() {
         XCTAssertLessThan(FileBrowserCodePreviewTheme.background.perceivedBrightness, 0.2)
         XCTAssertGreaterThan(FileBrowserCodePreviewTheme.foreground.perceivedBrightness, 0.75)
@@ -224,17 +235,21 @@ final class FileBrowserPreviewPolicyTests: XCTestCase {
     }
 
     func testFileRowsUseAsyncSharedIconCache() throws {
-        let sourceURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("Sources/Bucky/UI/SwiftUI/FileBrowserView.swift")
-        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let source = try fileBrowserViewSource()
 
         XCTAssertTrue(source.contains("FileIconCache.shared.cachedIcon(for: url)"))
         XCTAssertTrue(source.contains("FileIconCache.shared.icon(for: url)"))
         XCTAssertTrue(source.contains("preloadFileIcons()"))
         XCTAssertFalse(source.contains("icon = model.icon(for: url)"))
+    }
+
+    private func fileBrowserViewSource() throws -> String {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Sources/Bucky/UI/SwiftUI/FileBrowserView.swift")
+        return try String(contentsOf: sourceURL, encoding: .utf8)
     }
 }
 
