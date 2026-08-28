@@ -91,10 +91,27 @@ enum LauncherMode: Int, CaseIterable {
     case dictionary = 3
     case files = 4
 
-    static let ordered: [LauncherMode] = [.applications, .calculator, .dictionary, .files]
+    static let ordered: [LauncherMode] = StoneCatalog.orderedDefinitions.map { LauncherMode(stoneID: $0.id) }
 
     init?(commandNumber: Int) {
-        self.init(rawValue: commandNumber)
+        guard let definition = StoneCatalog.definition(forShortcutNumber: commandNumber) else {
+            return nil
+        }
+
+        self = LauncherMode(stoneID: definition.id)
+    }
+
+    init(stoneID: StoneID) {
+        switch stoneID {
+        case .applications:
+            self = .applications
+        case .calculator:
+            self = .calculator
+        case .dictionary:
+            self = .dictionary
+        case .files:
+            self = .files
+        }
     }
 
     var previousMode: LauncherMode {
@@ -106,46 +123,36 @@ enum LauncherMode: Int, CaseIterable {
     }
 
     var placeholder: String {
-        switch self {
-        case .applications:
-            return "Search Apps Here"
-        case .calculator:
-            return "Perform Calculations Here"
-        case .dictionary:
-            return "Search Dictionary Here"
-        case .files:
-            return "Browse Files"
-        }
+        stoneDefinition.presentation.placeholder
     }
 
     var acceptsTextInput: Bool {
-        self != .files
+        stoneDefinition.acceptsTextInput
     }
 
     var shortTitle: String {
-        switch self {
-        case .applications:
-            return "Apps"
-        case .calculator:
-            return "Calculator"
-        case .dictionary:
-            return "Dictionary"
-        case .files:
-            return "Files"
-        }
+        stoneDefinition.presentation.title
     }
 
     var helpSystemImage: String {
+        stoneDefinition.presentation.systemImage
+    }
+
+    var stoneID: StoneID {
         switch self {
         case .applications:
-            return "square.grid.2x2"
+            return .applications
         case .calculator:
-            return "123.rectangle.fill"
+            return .calculator
         case .dictionary:
-            return "text.book.closed"
+            return .dictionary
         case .files:
-            return "folder"
+            return .files
         }
+    }
+
+    var stoneDefinition: StoneDefinition {
+        StoneCatalog.definition(for: stoneID)
     }
 
     private func adjacentMode(offset: Int) -> LauncherMode {

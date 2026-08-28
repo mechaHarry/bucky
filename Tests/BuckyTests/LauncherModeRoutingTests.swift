@@ -44,6 +44,23 @@ final class LauncherModeRoutingTests: XCTestCase {
         XCTAssertFalse(LauncherMode.files.acceptsTextInput)
     }
 
+    func testLauncherModesBridgeToStoneCatalogEntries() {
+        XCTAssertEqual(LauncherMode.applications.stoneID, .applications)
+        XCTAssertEqual(LauncherMode.calculator.stoneID, .calculator)
+        XCTAssertEqual(LauncherMode.dictionary.stoneID, .dictionary)
+        XCTAssertEqual(LauncherMode.files.stoneID, .files)
+
+        XCTAssertEqual(LauncherMode(stoneID: .applications), .applications)
+        XCTAssertEqual(LauncherMode(stoneID: .calculator), .calculator)
+        XCTAssertEqual(LauncherMode(stoneID: .dictionary), .dictionary)
+        XCTAssertEqual(LauncherMode(stoneID: .files), .files)
+
+        XCTAssertEqual(LauncherMode.applications.stoneDefinition, StoneCatalog.definition(for: .applications))
+        XCTAssertEqual(LauncherMode.calculator.stoneDefinition, StoneCatalog.definition(for: .calculator))
+        XCTAssertEqual(LauncherMode.dictionary.stoneDefinition, StoneCatalog.definition(for: .dictionary))
+        XCTAssertEqual(LauncherMode.files.stoneDefinition, StoneCatalog.definition(for: .files))
+    }
+
     @available(macOS 26.0, *)
     func testNearestSelectionScrollTracksImmediatelyForKeyRepeat() {
         XCTAssertFalse(SelectionScrollAnimationPolicy.shouldAnimate(anchor: .nearest))

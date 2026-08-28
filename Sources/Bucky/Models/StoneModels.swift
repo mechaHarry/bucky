@@ -1,0 +1,172 @@
+import Foundation
+
+enum StoneID: Int, CaseIterable, Identifiable, Hashable {
+    case applications = 1
+    case calculator = 2
+    case dictionary = 3
+    case files = 4
+
+    var id: Self { self }
+}
+
+enum StoneSurface: Hashable {
+    case textInput
+    case fileBrowser
+
+    var acceptsTextInput: Bool {
+        switch self {
+        case .textInput:
+            return true
+        case .fileBrowser:
+            return false
+        }
+    }
+}
+
+enum StoneUpdatePolicy: Equatable, Hashable {
+    case immediate
+    case deferred(delayNanoseconds: UInt64)
+}
+
+struct StoneTint: Equatable, Hashable {
+    let activeHex: Int
+    let panelHex: Int
+    let iconHex: Int
+    let darkModeIconHex: Int
+}
+
+struct StonePresentation: Equatable, Hashable {
+    let title: String
+    let placeholder: String
+    let systemImage: String
+}
+
+struct StoneDefinition: Identifiable, Equatable, Hashable {
+    let id: StoneID
+    let shortcutNumber: Int
+    let presentation: StonePresentation
+    let surface: StoneSurface
+    let updatePolicy: StoneUpdatePolicy
+    let tint: StoneTint
+
+    var acceptsTextInput: Bool {
+        surface.acceptsTextInput
+    }
+}
+
+enum StoneCatalog {
+    static let orderedDefinitions: [StoneDefinition] = [
+        StoneDefinition(
+            id: .applications,
+            shortcutNumber: 1,
+            presentation: StonePresentation(
+                title: "Apps",
+                placeholder: "Search Apps Here",
+                systemImage: "square.grid.2x2"
+            ),
+            surface: .textInput,
+            updatePolicy: .deferred(delayNanoseconds: 40_000_000),
+            tint: StoneTint(
+                activeHex: 0x266EF6,
+                panelHex: 0x08578A,
+                iconHex: 0x0B3D91,
+                darkModeIconHex: 0x9CC7FF
+            )
+        ),
+        StoneDefinition(
+            id: .calculator,
+            shortcutNumber: 2,
+            presentation: StonePresentation(
+                title: "Calculator",
+                placeholder: "Perform Calculations Here",
+                systemImage: "123.rectangle.fill"
+            ),
+            surface: .textInput,
+            updatePolicy: .immediate,
+            tint: StoneTint(
+                activeHex: 0xFFD300,
+                panelHex: 0xFFC239,
+                iconHex: 0x3A2B00,
+                darkModeIconHex: 0xFFF0A3
+            )
+        ),
+        StoneDefinition(
+            id: .dictionary,
+            shortcutNumber: 3,
+            presentation: StonePresentation(
+                title: "Dictionary",
+                placeholder: "Search Dictionary Here",
+                systemImage: "text.book.closed"
+            ),
+            surface: .textInput,
+            updatePolicy: .deferred(delayNanoseconds: 80_000_000),
+            tint: StoneTint(
+                activeHex: 0xE429F2,
+                panelHex: 0xBF00FF,
+                iconHex: 0x6E1977,
+                darkModeIconHex: 0xF5B8FF
+            )
+        ),
+        StoneDefinition(
+            id: .files,
+            shortcutNumber: 4,
+            presentation: StonePresentation(
+                title: "Files",
+                placeholder: "Browse Files",
+                systemImage: "folder"
+            ),
+            surface: .fileBrowser,
+            updatePolicy: .immediate,
+            tint: StoneTint(
+                activeHex: 0xFF0130,
+                panelHex: 0xC60404,
+                iconHex: 0x7A0018,
+                darkModeIconHex: 0xFFA6B8
+            )
+        )
+    ]
+
+    private static let definitionsByID: [StoneID: StoneDefinition] = {
+        var definitionsByID: [StoneID: StoneDefinition] = [:]
+
+        for definition in orderedDefinitions {
+            let previous = definitionsByID.updateValue(definition, forKey: definition.id)
+            precondition(previous == nil, "StoneCatalog contains duplicate definition for \(definition.id)")
+        }
+
+        precondition(definitionsByID.count == orderedDefinitions.count, "StoneCatalog lost definitions while indexing by id")
+        return definitionsByID
+    }()
+
+    private static let definitionsByShortcutNumber: [Int: StoneDefinition] = {
+        var definitionsByShortcutNumber: [Int: StoneDefinition] = [:]
+
+        for definition in orderedDefinitions {
+            let previous = definitionsByShortcutNumber.updateValue(definition, forKey: definition.shortcutNumber)
+            precondition(previous == nil, "StoneCatalog contains duplicate shortcut number \(definition.shortcutNumber)")
+        }
+
+        precondition(definitionsByShortcutNumber.count == orderedDefinitions.count, "StoneCatalog lost definitions while indexing by shortcut number")
+        return definitionsByShortcutNumber
+    }()
+
+    static func definition(for id: StoneID) -> StoneDefinition {
+        guard let definition = definitionsByID[id] else {
+            preconditionFailure("StoneCatalog is missing definition for \(id)")
+        }
+
+        return definition
+    }
+
+    static func definition(forRawValue rawValue: Int) -> StoneDefinition? {
+        guard let id = StoneID(rawValue: rawValue) else {
+            return nil
+        }
+
+        return definition(for: id)
+    }
+
+    static func definition(forShortcutNumber shortcutNumber: Int) -> StoneDefinition? {
+        definitionsByShortcutNumber[shortcutNumber]
+    }
+}
