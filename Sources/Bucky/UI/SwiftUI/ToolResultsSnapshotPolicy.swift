@@ -15,8 +15,12 @@ enum ToolResultsSnapshotPolicy {
     }
 
     static func animation(for mode: LauncherMode, items: [ToolItem]) -> Animation {
+        animation(for: mode, snapshot: .loaded(rows: items.map(StoneResultRow.tool)))
+    }
+
+    static func animation(for mode: LauncherMode, snapshot: StoneResultSnapshot) -> Animation {
         guard mode == .dictionary,
-              items.contains(where: { $0.kind == .dictionary }) else {
+              snapshot.rows.contains(where: { $0.kind == .dictionary }) else {
             return .none
         }
 

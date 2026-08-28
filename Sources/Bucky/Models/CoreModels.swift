@@ -58,6 +58,46 @@ struct ToolItem: Hashable {
     let subtitle: String
     let copyText: String?
     let kind: Kind
+    let stoneResultID: StoneResultRow.ID
+
+    init(
+        title: String,
+        subtitle: String,
+        copyText: String?,
+        kind: Kind,
+        stoneResultID: StoneResultRow.ID? = nil
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.copyText = copyText
+        self.kind = kind
+        self.stoneResultID = stoneResultID ?? Self.defaultStoneResultID(
+            title: title,
+            subtitle: subtitle,
+            copyText: copyText,
+            kind: kind
+        )
+    }
+
+    private static func defaultStoneResultID(
+        title: String,
+        subtitle: String,
+        copyText: String?,
+        kind: Kind
+    ) -> StoneResultRow.ID {
+        switch kind {
+        case .calculation:
+            return .tool(kind: .calculation, key: "live:\(subtitle)")
+        case .calculationHistory:
+            return .tool(kind: .calculationHistory, key: "history:\(title)")
+        case .dictionary:
+            return .tool(kind: .dictionary, key: "term:\(normalized(title))")
+        case .dictionaryHistory:
+            return .tool(kind: .dictionaryHistory, key: "history:\(normalized(title))")
+        case .message:
+            return .tool(kind: .message, key: "message:\(title):\(subtitle):\(copyText ?? "")")
+        }
+    }
 }
 struct CalculationHistoryEntry: Codable, Hashable {
     let expression: String

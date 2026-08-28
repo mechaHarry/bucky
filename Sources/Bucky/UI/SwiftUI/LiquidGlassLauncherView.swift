@@ -9,7 +9,7 @@ struct LiquidGlassLauncherView: View {
     @Namespace private var selectionGlassNamespace
     @State private var handledSelectionScrollRequestID = 0
     @State private var iconPreloadTask: Task<Void, Never>?
-    @State private var scrollTargetID: ResultRowID?
+    @State private var scrollTargetID: StoneResultRow.ID?
     @State private var scrollTargetAnchor: UnitPoint?
 
     private var resultUpdateAnimation: Animation {
@@ -181,68 +181,51 @@ struct LiquidGlassLauncherView: View {
     @ViewBuilder
     private var results: some View {
         if model.mode == .files {
-            if let fileBrowserModel = model.activeFileBrowserModel {
-                FileBrowserView(
-                    model: fileBrowserModel,
-                    selectionTint: LauncherModeTintPolicy.selectionColor(for: model.mode)
-                )
-                    .transition(.opacity)
-            } else {
-                Text("Loading files")
-                    .font(.system(size: 17, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .task {
-                        await Task.yield()
-                        model.prepareFileBrowserMode()
-                    }
-            }
-        } else if let emptyMessage = model.emptyMessage {
-            Text(emptyMessage)
+            fileBrowserResults
+        } else {
+            stoneResults(model.resultSnapshot)
+        }
+    }
+
+    @ViewBuilder
+    private var fileBrowserResults: some View {
+        if let fileBrowserModel = model.activeFileBrowserModel {
+            FileBrowserView(
+                model: fileBrowserModel,
+                selectionTint: LauncherModeTintPolicy.selectionColor(for: model.mode)
+            )
+                .transition(.opacity)
+        } else {
+            Text("Loading files")
+                .font(.system(size: 17, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .task {
+                    await Task.yield()
+                    model.prepareFileBrowserMode()
+                }
+        }
+    }
+
+    @ViewBuilder
+    private func stoneResults(_ snapshot: StoneResultSnapshot) -> some View {
+        if let surfaceMessage = snapshot.surfaceMessage {
+            Text(surfaceMessage)
                 .font(.system(size: 17, weight: .medium))
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .transition(.opacity)
         } else {
-            Group {
-                switch model.mode {
-                case .applications:
-                    resultScrollView(reconstructionID: applicationsReconstructionIdentity) {
-                        ForEach(Array(model.filteredItemIDs.enumerated()), id: \.element) { index, id in
-                            if let item = model.item(for: id) {
-                                applicationRow(item: item, id: id, index: index)
-                            }
-                        }
-                    }
-                case .calculator, .dictionary:
-                    resultScrollView(reconstructionID: toolResultsSnapshotIdentity) {
-                        ForEach(Array(model.toolItems.enumerated()), id: \.element) { index, item in
-                            toolRow(item: item, index: index)
-                                .transition(toolResultTransition)
-                        }
-                    }
-                    .animation(
-                        toolSnapshotAnimation(for: model.toolItems),
-                        value: toolResultsSnapshotIdentity
-                    )
-                case .files:
-                    if let fileBrowserModel = model.activeFileBrowserModel {
-                        FileBrowserView(
-                            model: fileBrowserModel,
-                            selectionTint: LauncherModeTintPolicy.selectionColor(for: model.mode)
-                        )
-                    } else {
-                        Text("Loading files")
-                            .font(.system(size: 17, weight: .medium))
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .task {
-                                await Task.yield()
-                                model.prepareFileBrowserMode()
-                            }
-                    }
+            resultScrollView(reconstructionID: snapshot.identity) {
+                ForEach(Array(snapshot.rows.enumerated()), id: \.element.id) { index, row in
+                    stoneRow(row, index: index)
+                        .transition(rowTransition(for: row))
                 }
             }
+            .animation(
+                toolSnapshotAnimation(for: snapshot),
+                value: snapshot.identity
+            )
         }
     }
 
@@ -270,103 +253,66 @@ struct LiquidGlassLauncherView: View {
         }
     }
 
-    private func applicationRow(item: LaunchItem, id: AppRowID, index: Int) -> some View {
-        let rowID = ResultRowID.application(id)
+    private func stoneRow(_ row: StoneResultRow, index: Int) -> some View {
         let isSelected = index == model.selectedIndex
-
-        return LauncherResultRow(
-            isSelected: isSelected,
-            selectionTint: LauncherModeTintPolicy.selectionColor(for: model.mode),
-            selectionNamespace: selectionGlassNamespace
-        ) {
-            HStack(spacing: 14) {
-                HStack(spacing: 14) {
-                    ApplicationIconView(url: item.url)
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(item.title)
-                            .font(.system(size: 18, weight: .semibold))
-                            .lineLimit(1)
-                        Text(item.subtitle)
-                            .font(.system(size: 12, weight: .regular))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-
-                    Spacer(minLength: 12)
-
-                    Text(item.category.title)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                        .accessibilityLabel("Result type: \(item.category.title)")
-                }
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    model.selectedIndex = index
-                    _ = model.handle(command: .open)
-                }
-
-                Button {
-                    model.exclude(item)
-                } label: {
-                    Image(systemName: "eye.slash")
-                        .frame(width: 16, height: 16)
-                        .padding(5)
-                }
-                .buttonStyle(.plain)
-                .background {
-                    Circle()
-                        .fill(Color(nsColor: .controlBackgroundColor).opacity(0.34))
-                }
-                .foregroundStyle(.secondary)
-                .help("Hide from results")
-                .launcherActionButtonRim()
-            }
-        }
-        .id(rowID)
-    }
-
-    private func toolRow(item: ToolItem, index: Int) -> some View {
-        let rowID = ResultRowID.tool(item)
-        let isSelected = index == model.selectedIndex
-        let actionConfiguration = toolActionConfiguration(for: item)
+        let actionConfiguration = rowActionConfiguration(for: row)
 
         return LauncherResultRow(
             isSelected: isSelected,
             selectionTint: LauncherModeTintPolicy.selectionColor(for: model.mode),
             selectionNamespace: selectionGlassNamespace,
-            verticalPadding: 11
+            verticalPadding: row.kind == .application ? 10 : 11
         ) {
             HStack(spacing: 14) {
                 HStack(spacing: 14) {
-                    Image(systemName: toolSymbol(for: item.kind))
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(toolColor(for: item.kind))
-                        .frame(width: 38, height: 38)
+                    rowIcon(for: row)
 
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(item.title)
-                            .font(.system(size: item.kind == .calculation ? 26 : 18, weight: .semibold, design: item.kind == .calculation ? .rounded : .default))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(row.display)
+                            .font(rowTitleFont(for: row.kind))
                             .lineLimit(1)
-                        Text(item.subtitle)
-                            .font(.system(size: 13))
+                        Text(row.subtitle)
+                            .font(rowSubtitleFont(for: row.kind))
                             .foregroundStyle(.secondary)
-                            .lineLimit(2)
+                            .lineLimit(row.kind == .application ? 1 : 2)
                     }
 
                     Spacer(minLength: 12)
+
+                    if let accessoryText = row.accessoryText {
+                        Text(accessoryText)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                            .accessibilityLabel("Result type: \(accessoryText)")
+                    }
                 }
                 .contentShape(Rectangle())
                 .onTapGesture {
                     model.selectedIndex = index
-                    _ = model.handle(command: .open)
+                    model.activate(row)
                 }
 
-                if let actionConfiguration {
+                if row.kind == .application {
+                    Button {
+                        model.exclude(row)
+                    } label: {
+                        Image(systemName: "eye.slash")
+                            .frame(width: 16, height: 16)
+                            .padding(5)
+                    }
+                    .buttonStyle(.plain)
+                    .background {
+                        Circle()
+                            .fill(Color(nsColor: .controlBackgroundColor).opacity(0.34))
+                    }
+                    .foregroundStyle(.secondary)
+                    .help("Hide from results")
+                    .launcherActionButtonRim()
+                } else if let actionConfiguration {
                     Button {
                         model.selectedIndex = index
-                        performToolRowAction(actionConfiguration.action, item: item)
+                        model.performAccessoryActivation(for: row)
                     } label: {
                         Image(systemName: actionConfiguration.symbol)
                             .frame(width: 16, height: 16)
@@ -383,16 +329,7 @@ struct LiquidGlassLauncherView: View {
                 }
             }
         }
-        .id(rowID)
-    }
-
-    private func performToolRowAction(_ action: RowAction, item: ToolItem) {
-        switch action {
-        case .open:
-            _ = model.handle(command: .open)
-        case .removeDictionaryHistory:
-            model.removeDictionaryHistory(item)
-        }
+        .id(row.id)
     }
 
     private func handleSelectionScrollRequest(_ request: SelectionScrollRequest) {
@@ -422,37 +359,29 @@ struct LiquidGlassLauncherView: View {
         }
     }
 
-    private func resultRowID(for index: Int) -> ResultRowID? {
+    private func resultRowID(for index: Int) -> StoneResultRow.ID? {
         switch model.mode {
         case .applications:
-            guard index >= 0, index < model.filteredItemIDs.count else { return nil }
-            return .application(model.filteredItemIDs[index])
+            return model.resultRow(at: index)?.id
         case .calculator, .dictionary:
-            guard index >= 0, index < model.toolItems.count else { return nil }
-            return .tool(model.toolItems[index])
+            return model.resultRow(at: index)?.id
         case .files:
             guard index >= 0, index < model.fileBrowserModel.entries.count else { return nil }
             return .file(model.fileBrowserModel.entries[index].url)
         }
     }
 
-    private var toolResultTransition: AnyTransition {
-        .opacity.combined(with: .move(edge: .top))
-    }
-
-    private var applicationsReconstructionIdentity: AnyHashable {
-        AnyHashable(model.filteredItemIDs.map { "\($0.rawValue)" }.joined(separator: "\u{1F}"))
-    }
-
-    private var toolResultsSnapshotIdentity: String {
-        model.toolItems.map { item in
-            "\(item.kind)|\(item.title)|\(item.subtitle)|\(item.copyText ?? "")"
+    private func rowTransition(for row: StoneResultRow) -> AnyTransition {
+        switch row.kind {
+        case .dictionary, .dictionaryHistory, .calculation, .calculationHistory, .message:
+            return .opacity.combined(with: .move(edge: .top))
+        case .application, .file:
+            return .opacity
         }
-        .joined(separator: "\u{1F}")
     }
 
-    private func toolSnapshotAnimation(for items: [ToolItem]) -> Animation? {
-        switch ToolResultsSnapshotPolicy.animation(for: model.mode, items: items) {
+    private func toolSnapshotAnimation(for snapshot: StoneResultSnapshot) -> Animation? {
+        switch ToolResultsSnapshotPolicy.animation(for: model.mode, snapshot: snapshot) {
         case .none:
             return nil
         case .subtle:
@@ -460,7 +389,32 @@ struct LiquidGlassLauncherView: View {
         }
     }
 
-    private func toolSymbol(for kind: ToolItem.Kind) -> String {
+    @ViewBuilder
+    private func rowIcon(for row: StoneResultRow) -> some View {
+        if row.kind == .application, let iconURL = row.iconURL {
+            ApplicationIconView(url: iconURL)
+        } else {
+            Image(systemName: toolSymbol(for: row.kind))
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(toolColor(for: row.kind))
+                .frame(width: 38, height: 38)
+        }
+    }
+
+    private func rowTitleFont(for kind: StoneResultRow.Kind) -> Font {
+        if kind == .calculation {
+            return .system(size: 26, weight: .semibold, design: .rounded)
+        }
+        return .system(size: 18, weight: .semibold)
+    }
+
+    private func rowSubtitleFont(for kind: StoneResultRow.Kind) -> Font {
+        kind == .application
+            ? .system(size: 12, weight: .regular)
+            : .system(size: 13)
+    }
+
+    private func toolSymbol(for kind: StoneResultRow.Kind) -> String {
         switch kind {
         case .calculation:
             return "function"
@@ -472,10 +426,14 @@ struct LiquidGlassLauncherView: View {
             return "clock.arrow.circlepath"
         case .message:
             return "info.circle"
+        case .application:
+            return "app.dashed"
+        case .file:
+            return "doc"
         }
     }
 
-    private func toolColor(for kind: ToolItem.Kind) -> Color {
+    private func toolColor(for kind: StoneResultRow.Kind) -> Color {
         switch kind {
         case .calculation, .calculationHistory:
             return .cyan
@@ -483,23 +441,23 @@ struct LiquidGlassLauncherView: View {
             return .mint
         case .message:
             return .secondary
+        case .application, .file:
+            return .secondary
         }
     }
 
-    private func toolActionConfiguration(for item: ToolItem) -> RowActionConfiguration? {
-        switch item.kind {
-        case .calculation, .calculationHistory:
-            guard item.copyText != nil else { return nil }
-            return RowActionConfiguration(symbol: "doc.on.doc", help: "Copy result", action: .open)
-        case .dictionary:
-            return RowActionConfiguration(symbol: "book", help: "Open in Dictionary", action: .open)
-        case .dictionaryHistory:
+    private func rowActionConfiguration(for row: StoneResultRow) -> RowActionConfiguration? {
+        switch row.accessoryActivation {
+        case .copy:
+            return RowActionConfiguration(symbol: "doc.on.doc", help: "Copy result")
+        case .open:
+            return RowActionConfiguration(symbol: "book", help: "Open in Dictionary")
+        case .removeHistory:
             return RowActionConfiguration(
                 symbol: "trash",
-                help: "Remove from dictionary history",
-                action: .removeDictionaryHistory
+                help: "Remove from dictionary history"
             )
-        case .message:
+        case .none:
             return nil
         }
     }
@@ -547,13 +505,6 @@ private struct LauncherWindowFocusVisualModifier: ViewModifier {
 }
 
 @available(macOS 26.0, *)
-private enum ResultRowID: Hashable {
-    case application(AppRowID)
-    case tool(ToolItem)
-    case file(URL)
-}
-
-@available(macOS 26.0, *)
 enum LauncherVisualStyle {
     static let windowCornerRadius: CGFloat = 30
     static let aetherContentSpacing: CGFloat = 14
@@ -587,13 +538,6 @@ struct LauncherPinnedBorderPolicy {
 private struct RowActionConfiguration {
     let symbol: String
     let help: String
-    let action: RowAction
-}
-
-@available(macOS 26.0, *)
-private enum RowAction {
-    case open
-    case removeDictionaryHistory
 }
 
 @available(macOS 26.0, *)
