@@ -23,6 +23,22 @@ Reduce accidental complexity in Bucky while preserving current launcher, files, 
 6. Do not log custom command contents or other user data.
 7. Make destructive file and Git operations recoverable and verify their exact scope.
 
+## Stone Framework Goal
+
+The launcher should have a first-class Stone extension model. A Stone is a launcher capability with a consistent contract for identity, mode-switch presentation, input behavior, asynchronous result production, loading and empty states, row rendering, activation, keyboard actions, history, persistence, help text, and visual tokens. Existing Apps, Calculator, Dictionary, and Files behavior will be adapted behind that contract incrementally; they do not need to become identical internally.
+
+Adding a Stone should normally require:
+
+1. defining one Stone descriptor and its state/intent boundaries;
+2. registering the descriptor in one catalog that drives mode ordering, shortcut/help metadata, placeholder text, icon, and tint;
+3. implementing the Stone’s result provider and activation actions behind a protocol or value-based adapter;
+4. adding focused behavior tests for the provider, state transitions, and activation;
+5. adding the Stone to the shared UI shell through existing row, loading, empty, selection, animation, and error components.
+
+The framework must prevent a new Stone from requiring unrelated edits to window management, global hotkey handling, persistence plumbing, or generic result-list rendering. A Stone may opt into specialized UI, such as Files’ directory browser, but that specialization must be an explicit capability rather than an accidental switch-case spread across views and models.
+
+The initial framework should remain value-oriented and local to the launcher. It should not introduce runtime plugin loading, dynamic modules, dependency injection containers, or a generalized event bus. The first milestone is to centralize metadata and generic result lifecycle seams, then migrate one existing tool Stone as proof that a future Stone can be added without duplicating the current Calculator/Dictionary wiring.
+
 ## Workstreams
 
 ### 1. Test suite hygiene and fixture privacy
@@ -47,6 +63,20 @@ Split only cohesive, private responsibilities from oversized files after the sha
 - file-browser preview support from `FileBrowserView.swift` where the extracted boundaries do not require behavior changes.
 
 Do not split `FileBrowserModel` or `LiquidGlassLauncherWindowController` solely to reduce line count. Their state transitions must first have clear interfaces and contract tests.
+
+### 3a. Stone framework integration
+
+Introduce a small launcher-domain layer around the current `LauncherMode` and `ToolItem` concepts. The layer should provide:
+
+- a stable Stone identity and ordered catalog;
+- presentation metadata used by the mode switcher, help view, placeholder, and mode tint policy;
+- explicit capabilities for text input, deferred updates, history, row actions, selection behavior, and specialized surfaces;
+- a result snapshot type that can represent loading, empty, message, and loaded rows without making every Stone invent its own loading UX;
+- an activation intent/result boundary so generic row selection can request copy, open, remove-history, or Stone-specific actions without knowing Calculator or Dictionary internals.
+
+Keep `LauncherMode` as a compatibility façade until all current consumers migrate. The catalog becomes the single source of truth for mode metadata and ordering. The first migrated Stone should be Dictionary or Calculator, chosen by which one proves deferred asynchronous results and history behavior with the least UI risk. Files remains a specialized Stone until its directory navigation state can be represented cleanly without forcing generic tool-row assumptions onto it.
+
+Stone tests must assert catalog completeness, unique shortcut identity, metadata consistency, loading/empty behavior, stale-result suppression, and activation intents. They must not assert that a particular source file contains a particular `switch` statement.
 
 ### 4. Security, memory, and lifecycle review
 
