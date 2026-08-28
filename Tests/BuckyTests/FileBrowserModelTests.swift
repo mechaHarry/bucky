@@ -83,7 +83,7 @@ final class FileBrowserModelTests: XCTestCase {
         XCTAssertEqual(model.directorySnapshots, [
             FileBrowserDirectorySnapshot(directory: home, entries: [])
         ])
-        XCTAssertEqual(stream.requests.map(requestDescription), ["\(home.path)|name"])
+        XCTAssertEqual(stream.requests.map(requestDescription), ["\(home.path)|name|false"])
 
         stream.completeRequest(at: 0, with: .success(entries(["home.txt"], in: home)))
 
@@ -192,8 +192,8 @@ final class FileBrowserModelTests: XCTestCase {
         XCTAssertEqual(model.currentDirectory, home)
         XCTAssertTrue(model.isLoadingEntries)
         XCTAssertEqual(stream.requests.map(requestDescription), [
-            "\(missing.path)|name",
-            "\(home.path)|name"
+            "\(missing.path)|name|false",
+            "\(home.path)|name|false"
         ])
 
         stream.completeRequest(at: 1, with: .success(entries(["home.txt"], in: home)))
@@ -435,6 +435,45 @@ final class FileBrowserModelTests: XCTestCase {
         model.handle(.shiftSpace)
         XCTAssertEqual(model.availableActions, [.batchRename, .copyPaths, .copy, .move, .moveToTrash])
         XCTAssertEqual(model.focusableActions, [.batchRename, .copyPaths, .copy, .move, .moveToTrash])
+    }
+
+    func testUnmountableMountShowsUnmountActionOnlyForSingleFocusedVolume() {
+        let volumes = URL(fileURLWithPath: "/Volumes", isDirectory: true)
+        let mount = volumes.appendingPathComponent("Backup", isDirectory: true)
+        let model = makeModel(entries: [mountEntry(mount, canUnmount: true)], home: volumes)
+
+        XCTAssertEqual(model.availableActions, [.open, .revealInFinder, .copyPath, .unmount])
+
+        model.handle(.space)
+
+        XCTAssertEqual(model.availableActions, [.open, .rename, .revealInFinder, .copyPath, .copy, .move, .moveToTrash])
+    }
+
+    func testUnmountActionRequiresConfirmationBeforeCallingNativeService() {
+        let volumes = URL(fileURLWithPath: "/Volumes", isDirectory: true)
+        let mount = volumes.appendingPathComponent("Backup", isDirectory: true)
+        let service = RecordingFileBrowserServices()
+        let model = makeModel(entries: [mountEntry(mount, canUnmount: true)], home: volumes, fileServices: service)
+
+        perform(.unmount, on: model)
+
+        XCTAssertEqual(model.focusState, .confirming(.unmount(mount)))
+        XCTAssertEqual(service.events, [])
+
+        model.handle(.open)
+
+        XCTAssertEqual(service.events, [.unmount(mount)])
+        XCTAssertEqual(model.focusState, .browse)
+    }
+
+    func testSidebarIncludesMountsShortcutAfterUserPins() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let projects = home.appendingPathComponent("Projects", isDirectory: true)
+        let model = makeModel(home: home, entriesByDirectory: [home: [], projects: []])
+
+        model.togglePin(projects)
+
+        XCTAssertEqual(model.sidebarDirectories.map(\.path), [projects.path, "/Volumes"])
     }
 
     func testActionOverlayKeyboardSelectionAndReturnStartsFocusedAction() {
@@ -1231,6 +1270,34 @@ final class FileBrowserModelTests: XCTestCase {
         XCTAssertEqual(model.sort, .size)
         XCTAssertEqual(store.state.sort, .size)
         XCTAssertEqual(client.entryRequests.filter { $0.directory == home }.map(\.sort), [.name, .size])
+        XCTAssertEqual(client.entryRequests.filter { $0.directory == home }.map(\.foldersFirst), [false, false])
+    }
+
+    func testToggleFoldersFirstReloadsEntriesAndPersistsSelection() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let client = RecordingFileSystemClient(home: home, entriesByDirectory: [
+            home: entries(["Folder/", "file.txt"], in: home)
+        ])
+        let store = InMemoryFileBrowserStore(state: FileBrowserPersistedState(
+            pinnedDirectories: [],
+            lastDirectory: home,
+            sort: .dateCreated,
+            foldersFirst: false,
+            traversalChain: []
+        ))
+        let model = FileBrowserModel(
+            fileSystem: client,
+            store: store,
+            directoryStream: ImmediateDirectoryStream(fileSystem: client)
+        )
+
+        model.setFoldersFirst(true)
+
+        XCTAssertTrue(model.foldersFirst)
+        XCTAssertTrue(store.state.foldersFirst)
+        XCTAssertEqual(model.sort, .dateCreated)
+        XCTAssertEqual(client.entryRequests.filter { $0.directory == home }.map(\.sort), [.dateCreated, .dateCreated])
+        XCTAssertEqual(client.entryRequests.filter { $0.directory == home }.map(\.foldersFirst), [false, true])
     }
 
     func testSortReloadKeepsLastLookedFileWhenEntryOrderChanges() {
@@ -1434,6 +1501,19 @@ final class FileBrowserModelTests: XCTestCase {
         FileBrowserEntry(url: url, kind: .file, size: 1, createdAt: nil, modifiedAt: nil, isHidden: false)
     }
 
+    private func mountEntry(_ url: URL, canUnmount: Bool) -> FileBrowserEntry {
+        FileBrowserEntry(
+            url: url,
+            kind: .directory,
+            size: nil,
+            createdAt: nil,
+            modifiedAt: nil,
+            isHidden: false,
+            isMount: true,
+            canUnmount: canUnmount
+        )
+    }
+
     private func perform(_ action: FileBrowserAction, on model: FileBrowserModel) {
         model.handle(.open)
         guard let index = model.focusableActions.firstIndex(of: action) else {
@@ -1446,7 +1526,7 @@ final class FileBrowserModelTests: XCTestCase {
         model.handle(.open)
     }
 
-    private func requestDescription(_ request: (directory: URL, sort: FileBrowserSort)) -> String {
-        "\(request.directory.path)|\(request.sort.rawValue)"
+    private func requestDescription(_ request: (directory: URL, sort: FileBrowserSort, foldersFirst: Bool)) -> String {
+        "\(request.directory.path)|\(request.sort.rawValue)|\(request.foldersFirst)"
     }
 }

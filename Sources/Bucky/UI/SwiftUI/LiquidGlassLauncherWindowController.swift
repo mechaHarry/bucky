@@ -5,9 +5,53 @@ import UniformTypeIdentifiers
 
 @available(macOS 26.0, *)
 @MainActor
+final class LauncherWindowOpenAnimationScheduler {
+    typealias State = (transitionID: Int, isShowing: Bool)
+    typealias AnimationCompletion = @MainActor () -> Void
+    typealias Work = @MainActor () -> Void
+
+    private let enqueue: (@escaping Work) -> Void
+
+    init(enqueue: @escaping (@escaping Work) -> Void = { work in
+        DispatchQueue.main.async {
+            work()
+        }
+    }) {
+        self.enqueue = enqueue
+    }
+
+    func schedule(
+        expectedTransitionID: Int,
+        stateProvider: @escaping @MainActor () -> State?,
+        startAnimation: @escaping @MainActor (@escaping AnimationCompletion) -> Void,
+        completionAction: @escaping @MainActor () -> Void
+    ) {
+        enqueue {
+            guard let state = stateProvider(),
+                  state.transitionID == expectedTransitionID,
+                  state.isShowing else {
+                return
+            }
+
+            startAnimation {
+                guard let state = stateProvider(),
+                      state.transitionID == expectedTransitionID,
+                      state.isShowing else {
+                    return
+                }
+                completionAction()
+            }
+        }
+    }
+}
+
+@available(macOS 26.0, *)
+@MainActor
 final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     private let window: BuckyPanelWindow
     private let model: LiquidGlassLauncherModel
+    private let windowOpenAnimationScheduler = LauncherWindowOpenAnimationScheduler()
+    private var visibilityTransitionCoordinator: LauncherWindowVisibilityTransitionCoordinator!
     private var settingsModel: SettingsViewModel!
     private var localKeyMonitor: Any?
     private var settingsHotKeyEventMonitor: Any?
@@ -17,12 +61,8 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     private var spaceKeyRouter = LauncherSpaceKeyRouter()
     private var pendingSpaceHoldTimer: Timer?
     private var isOptionPinnedFocusActive = false
-    private var visibilityState: WindowVisibilityState = .hidden
-    private var visibilityTransitionID = 0
+    private var focusClaimID = 0
     private var applicationIndexSourceStream: ApplicationIndexSourceStream?
-    private var presentationAnimationDuration: TimeInterval {
-        0.24
-    }
 
     init(
         settingsStore: SettingsStore,
@@ -30,7 +70,8 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         exclusionStore: ExclusionStore,
         calculationHistoryStore: CalculationHistoryStore,
         dictionaryHistoryStore: DictionaryHistoryStore,
-        hotKeyChangeHandler: @escaping @MainActor (HotKeyConfiguration) -> Bool
+        hotKeyChangeHandler: @escaping @MainActor (HotKeyConfiguration) -> Bool,
+        alphaDriverFactory: (@MainActor (NSWindow) -> any LauncherWindowAlphaAnimationDriver)? = nil
     ) {
         model = LiquidGlassLauncherModel(
             settingsStore: settingsStore,
@@ -46,12 +87,22 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
                 width: LauncherWindowFramePolicy.defaultSize.width,
                 height: LauncherWindowFramePolicy.defaultSize.height
             ),
-            styleMask: [.borderless, .resizable],
+            styleMask: [.borderless, .resizable, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
 
         super.init()
+
+        let animationModel = model
+        visibilityTransitionCoordinator = LauncherWindowVisibilityTransitionCoordinator(
+            alphaDriver: alphaDriverFactory?(window) ?? AppKitLauncherWindowAlphaAnimationDriver(window: window),
+            animationTiming: { animationModel.animationTiming },
+            didShow: {},
+            didHide: { [weak self] in
+                self?.completeHidePresentation()
+            }
+        )
 
         settingsModel = SettingsViewModel(
             settingsStore: settingsStore,
@@ -80,6 +131,8 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
 
         model.hideAction = { [weak self] in self?.hide() }
         model.openSettingsAction = { [weak self] in self?.toggleSettings() }
+        model.openHelpAction = { [weak self] in self?.toggleHelp() }
+        model.returnToLauncherAction = { [weak self] in self?.showLauncherFromPanel() }
         model.reindexAction = { [weak self] in self?.reindex() }
         model.pinnedChangedAction = { [weak self] isPinned in
             self?.setPinned(isPinned)
@@ -115,8 +168,8 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     }
 
     func toggle() {
-        if model.isShowingSettings {
-            showLauncherFromSettings()
+        if model.isShowingSettings || model.isShowingHelp {
+            showLauncherFromPanel()
             return
         }
 
@@ -125,7 +178,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             return
         }
 
-        switch visibilityState {
+        switch visibilityTransitionCoordinator.phase {
         case .hidden, .hiding:
             show()
         case .showing, .shown:
@@ -138,7 +191,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     }
 
     func showSettings() {
-        beginVisibilityTransition(.showing)
+        let generation = visibilityTransitionCoordinator.request(.show)
         closeQuickLookPreviewPanel()
         cancelSpaceHoldState(deliverEndHold: true)
         cancelOptionPinnedFocus()
@@ -153,9 +206,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             positionWindow(animated: false)
         }
         window.alphaValue = 1
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-        model.setWindowKeyState(true)
+        activateAndFocusWindow()
         if shouldMaterialize {
             var transaction = Transaction()
             transaction.disablesAnimations = true
@@ -163,84 +214,148 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
                 model.isPresented = true
             }
         }
-        finishShow(transitionID: visibilityTransitionID)
+        visibilityTransitionCoordinator.complete(
+            generation: generation,
+            intent: .show,
+            phase: .showing
+        )
     }
 
     private func toggleSettings() {
         if model.isShowingSettings {
-            showLauncherFromSettings()
+            showLauncherFromPanel()
         } else {
             showSettings()
         }
     }
 
-    private func showLauncherFromSettings() {
-        stopRecordingSettingsHotKey()
-        model.hideSettings()
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-        model.setWindowKeyState(true)
-    }
+    private func showHelp() {
+        let generation = visibilityTransitionCoordinator.request(.show)
+        closeQuickLookPreviewPanel()
+        cancelSpaceHoldState(deliverEndHold: true)
+        cancelOptionPinnedFocus()
+        settingsModel.refresh()
 
-    private func show(mode: LauncherMode) {
-        stopRecordingSettingsHotKey()
-        beginVisibilityTransition(.showing)
         let shouldMaterialize = !window.isVisible || !model.isPresented
-        model.show(mode: mode)
         if shouldMaterialize {
             model.isPresented = false
         }
-        positionWindow(animated: false)
+        model.showHelp()
+        if shouldMaterialize {
+            positionWindow(animated: false)
+        }
         window.alphaValue = 1
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-        model.setWindowKeyState(true)
+        activateAndFocusWindow()
         if shouldMaterialize {
             var transaction = Transaction()
             transaction.disablesAnimations = true
             withTransaction(transaction) {
                 model.isPresented = true
             }
-            finishShow(transitionID: visibilityTransitionID)
+        }
+        visibilityTransitionCoordinator.complete(
+            generation: generation,
+            intent: .show,
+            phase: .showing
+        )
+    }
+
+    private func toggleHelp() {
+        if model.isShowingHelp {
+            showLauncherFromPanel()
         } else {
-            finishShow(transitionID: visibilityTransitionID)
+            showHelp()
+        }
+    }
+
+    private func showLauncherFromPanel() {
+        stopRecordingSettingsHotKey()
+        let priorPhase = visibilityTransitionCoordinator.phase
+        let isMaterialized = window.isVisible && model.isPresented
+        let showDecision = LauncherWindowShowTransitionPolicy.decision(
+            priorPhase: priorPhase,
+            isMaterialized: isMaterialized
+        )
+        let generation = visibilityTransitionCoordinator.request(.show)
+        model.showLauncherSurface()
+        if showDecision == .materialize {
+            positionWindow(animated: false)
+            window.alphaValue = 0
+        } else if showDecision == .synchronous {
+            window.alphaValue = 1
+        }
+        activateAndFocusWindow()
+        if showDecision == .materialize {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                model.isPresented = true
+            }
+            animateWindowOpen(generation: generation)
+        } else if showDecision == .replaceAnimation {
+            animateWindowOpen(generation: generation)
+        } else {
+            visibilityTransitionCoordinator.complete(
+                generation: generation,
+                intent: .show,
+                phase: .showing
+            )
+        }
+    }
+
+    private func show(mode: LauncherMode) {
+        stopRecordingSettingsHotKey()
+        let priorPhase = visibilityTransitionCoordinator.phase
+        let isMaterialized = window.isVisible && model.isPresented
+        let showDecision = LauncherWindowShowTransitionPolicy.decision(
+            priorPhase: priorPhase,
+            isMaterialized: isMaterialized
+        )
+        let generation = visibilityTransitionCoordinator.request(.show)
+        let shouldMaterialize = showDecision == .materialize
+        model.show(mode: mode)
+        if shouldMaterialize {
+            model.isPresented = false
+        }
+        positionWindow(animated: false)
+        if shouldMaterialize {
+            window.alphaValue = 0
+        } else if showDecision == .synchronous {
+            window.alphaValue = 1
+        }
+        activateAndFocusWindow()
+        if shouldMaterialize {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                model.isPresented = true
+            }
+            animateWindowOpen(generation: generation)
+        } else if showDecision == .replaceAnimation {
+            animateWindowOpen(generation: generation)
+        } else {
+            visibilityTransitionCoordinator.complete(
+                generation: generation,
+                intent: .show,
+                phase: .showing
+            )
         }
     }
 
     func hide() {
-        guard visibilityState != .hidden,
-              visibilityState != .hiding else {
+        guard visibilityTransitionCoordinator.phase != .hidden else {
             return
         }
 
-        beginVisibilityTransition(.hiding)
+        cancelFocusClaim()
+        visibilityTransitionCoordinator.request(.hide)
         closeQuickLookPreviewPanel()
         cancelSpaceHoldState(deliverEndHold: true)
         cancelOptionPinnedFocus()
         stopRecordingSettingsHotKey()
         model.cancelPendingCalculationHistory()
 
-        let transitionID = visibilityTransitionID
-        NSAnimationContext.runAnimationGroup { [weak self] context in
-            guard let self else { return }
-            context.duration = presentationAnimationDuration
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            window.animator().alphaValue = 0
-        } completionHandler: { [weak self] in
-            Task { @MainActor [weak self] in
-                guard let self,
-                      self.visibilityTransitionID == transitionID,
-                      self.visibilityState == .hiding else {
-                    return
-                }
-                var transaction = Transaction()
-                transaction.disablesAnimations = true
-                withTransaction(transaction) {
-                    self.model.isPresented = false
-                }
-                self.finishHide(transitionID: transitionID)
-            }
-        }
+        startVisibilityAnimation()
     }
 
     func reindex() {
@@ -325,6 +440,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
 
     private func buildWindow() {
         window.level = .floating
+        window.becomesKeyOnlyIfNeeded = false
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
         window.isOpaque = false
         window.backgroundColor = .clear
@@ -373,6 +489,23 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
                 if event.isCommandComma {
                     return self.handleLauncherCommand(.settings) ? nil : event
                 }
+                if event.isCommandSlash {
+                    return self.handleLauncherCommand(.help) ? nil : event
+                }
+                if event.keyCode == UInt16(kVK_Escape) {
+                    return self.handleLauncherCommand(.close) ? nil : event
+                }
+                return event
+            }
+
+            if self.model.isShowingHelp {
+                guard event.type == .keyDown else { return event }
+                if event.isCommandSlash {
+                    return self.handleLauncherCommand(.help) ? nil : event
+                }
+                if event.isCommandComma {
+                    return self.handleLauncherCommand(.settings) ? nil : event
+                }
                 if event.keyCode == UInt16(kVK_Escape) {
                     return self.handleLauncherCommand(.close) ? nil : event
                 }
@@ -415,6 +548,9 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             if event.isCommandComma {
                 return self.handleLauncherCommand(.settings) ? nil : event
             }
+            if event.isCommandSlash {
+                return self.handleLauncherCommand(.help) ? nil : event
+            }
             if event.isCommandP {
                 return self.handleLauncherCommand(.togglePin) ? nil : event
             }
@@ -429,6 +565,12 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             }
             if event.isCommandDownArrow {
                 return self.handleLauncherCommand(.bottom) ? nil : event
+            }
+            if event.isCommandLeftArrow {
+                return self.handleLauncherCommand(.previousMode) ? nil : event
+            }
+            if event.isCommandRightArrow {
+                return self.handleLauncherCommand(.nextMode) ? nil : event
             }
 
             switch event.keyCode {
@@ -450,7 +592,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             case UInt16(kVK_Escape):
                 return self.handleLauncherCommand(.close) ? nil : event
             default:
-                if self.visibilityState == .showing,
+                if self.visibilityTransitionCoordinator.phase == .showing,
                    self.model.mode.acceptsTextInput,
                    let character = event.launcherTextInputCharacter {
                     self.model.insertTextInput(character)
@@ -488,6 +630,9 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         if event.isCommandComma {
             return handleLauncherCommand(.settings)
         }
+        if event.isCommandSlash {
+            return handleLauncherCommand(.help)
+        }
         if event.isCommandP {
             return handleLauncherCommand(.togglePin)
         }
@@ -502,6 +647,12 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         }
         if event.isCommandDownArrow {
             return handleLauncherCommand(.bottom)
+        }
+        if event.isCommandLeftArrow {
+            return handleLauncherCommand(.previousMode)
+        }
+        if event.isCommandRightArrow {
+            return handleLauncherCommand(.nextMode)
         }
         return false
     }
@@ -533,6 +684,25 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             switch command {
             case .settings:
                 toggleSettings()
+                return true
+            case .help:
+                showHelp()
+                return true
+            case .close:
+                hide()
+                return true
+            default:
+                return false
+            }
+        }
+
+        if model.isShowingHelp {
+            switch command {
+            case .help:
+                toggleHelp()
+                return true
+            case .settings:
+                showSettings()
                 return true
             case .close:
                 hide()
@@ -666,7 +836,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         let frame = LauncherWindowFramePolicy.frame(
             mode: model.mode,
             fileFocusState: model.mode == .files ? fileBrowserFocusState : nil,
-            isShowingSettings: model.isShowingSettings,
+            isShowingSettings: model.isShowingSettings || model.isShowingHelp,
             visibleFrame: visibleFrame
         )
 
@@ -687,6 +857,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
 
     private func syncQuickLookPreviewPanel() {
         guard !model.isShowingSettings,
+              !model.isShowingHelp,
               model.mode == .files,
               case let .quickLook(preview) = fileBrowserFocusState else {
             closeQuickLookPreviewPanel()
@@ -765,7 +936,41 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         }
 
         window.makeKeyAndOrderFront(nil)
-        model.setWindowKeyState(true)
+    }
+
+    private func activateAndFocusWindow() {
+        focusClaimID += 1
+        let claimID = focusClaimID
+        claimLauncherFocus()
+        scheduleFocusClaimRetry(claimID: claimID, retryIndex: 0)
+    }
+
+    private func claimLauncherFocus() {
+        window.orderFrontRegardless()
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    private func scheduleFocusClaimRetry(claimID: Int, retryIndex: Int) {
+        guard retryIndex < LauncherWindowFocusClaimPolicy.retryDelays.count else { return }
+
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + LauncherWindowFocusClaimPolicy.retryDelays[retryIndex]
+        ) { [weak self] in
+            guard let self,
+                  self.focusClaimID == claimID,
+                  LauncherWindowFocusClaimPolicy.shouldRetry(
+                    isWindowKey: self.window.isKeyWindow
+                  ) else {
+                return
+            }
+
+            self.claimLauncherFocus()
+            self.scheduleFocusClaimRetry(claimID: claimID, retryIndex: retryIndex + 1)
+        }
+    }
+
+    private func cancelFocusClaim() {
+        focusClaimID += 1
     }
 
     private func setPinned(_ isPinned: Bool) {
@@ -778,46 +983,48 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             return
         }
 
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-        model.setWindowKeyState(true)
+        activateAndFocusWindow()
     }
 
-    private func beginVisibilityTransition(_ state: WindowVisibilityState) {
-        visibilityTransitionID += 1
-        visibilityState = state
+    private func animateWindowOpen(generation: Int) {
+        windowOpenAnimationScheduler.schedule(
+            expectedTransitionID: generation,
+            stateProvider: { [weak self] in
+                guard let self else { return nil }
+                return (
+                    transitionID: self.visibilityTransitionCoordinator.generation,
+                    isShowing: self.visibilityTransitionCoordinator.phase == .showing
+                )
+            },
+            startAnimation: { [weak self] completion in
+                self?.visibilityTransitionCoordinator.startAnimation(completion: completion)
+            },
+            completionAction: { [weak self] in
+                self?.visibilityTransitionCoordinator.complete(
+                    generation: generation,
+                    intent: .show,
+                    phase: .showing
+                )
+            }
+        )
     }
 
-    private func finishShow(transitionID: Int) {
-        guard visibilityTransitionID == transitionID,
-              visibilityState == .showing else {
-            return
+    private func startVisibilityAnimation() {
+        _ = visibilityTransitionCoordinator.startAnimation()
+    }
+
+    private func completeHidePresentation() {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            model.isPresented = false
         }
-
-        visibilityState = .shown
-    }
-
-    private func finishHide(transitionID: Int) {
-        guard visibilityTransitionID == transitionID,
-              visibilityState == .hiding else {
-            return
-        }
-
         window.makeFirstResponder(nil)
         window.orderOut(nil)
         window.resignKey()
-        model.hideSettings()
-        visibilityState = .hidden
+        model.resetPanelVisibilityAfterHide()
     }
 
-}
-
-@available(macOS 26.0, *)
-private enum WindowVisibilityState {
-    case hidden
-    case showing
-    case shown
-    case hiding
 }
 
 enum LauncherSpaceKeyDecision: Equatable {
@@ -894,8 +1101,13 @@ struct LauncherSpaceKeyRouter {
 
 @available(macOS 26.0, *)
 struct LauncherWindowDismissalPolicy {
-    static func shouldHideOnResignKey(mode: LauncherMode, isPinned: Bool, isShowingSettings: Bool = false) -> Bool {
-        if isShowingSettings {
+    static func shouldHideOnResignKey(
+        mode: LauncherMode,
+        isPinned: Bool,
+        isShowingSettings: Bool = false,
+        isShowingHelp: Bool = false
+    ) -> Bool {
+        if isShowingSettings || isShowingHelp {
             return true
         }
         return !isPinned && mode != .files
@@ -916,7 +1128,8 @@ extension LiquidGlassLauncherWindowController: NSWindowDelegate {
               LauncherWindowDismissalPolicy.shouldHideOnResignKey(
                   mode: model.mode,
                   isPinned: model.isPinned,
-                  isShowingSettings: model.isShowingSettings
+                  isShowingSettings: model.isShowingSettings,
+                  isShowingHelp: model.isShowingHelp
               ) else {
             return
         }

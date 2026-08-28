@@ -52,13 +52,17 @@ struct FileSystemClient {
         return nil
     }
 
-    func entries(in directory: URL, sort: FileBrowserSort) throws -> [FileBrowserEntry] {
+    func entries(in directory: URL, sort: FileBrowserSort, foldersFirst: Bool = false) throws -> [FileBrowserEntry] {
         let resourceKeys: Set<URLResourceKey> = [
             .isDirectoryKey,
             .isPackageKey,
             .isSymbolicLinkKey,
             .isAliasFileKey,
             .isHiddenKey,
+            .isVolumeKey,
+            .volumeIsEjectableKey,
+            .volumeIsRemovableKey,
+            .volumeURLKey,
             .fileSizeKey,
             .creationDateKey,
             .contentModificationDateKey
@@ -78,15 +82,17 @@ struct FileSystemClient {
                     size: values.fileSize.map(Int64.init),
                     createdAt: values.creationDate,
                     modifiedAt: values.contentModificationDate,
-                    isHidden: values.isHidden ?? url.lastPathComponent.hasPrefix(".")
+                    isHidden: values.isHidden ?? url.lastPathComponent.hasPrefix("."),
+                    isMount: isMount(url: url, values: values),
+                    canUnmount: canUnmount(values: values)
                 )
             }
-        return Self.sorted(entries, by: sort)
+        return Self.sorted(entries, by: sort, foldersFirst: foldersFirst)
     }
 
-    static func sorted(_ entries: [FileBrowserEntry], by sort: FileBrowserSort) -> [FileBrowserEntry] {
+    static func sorted(_ entries: [FileBrowserEntry], by sort: FileBrowserSort, foldersFirst: Bool = false) -> [FileBrowserEntry] {
         entries.sorted { lhs, rhs in
-            compare(lhs, rhs, sort: sort)
+            compare(lhs, rhs, sort: sort, foldersFirst: foldersFirst)
         }
     }
 
@@ -103,9 +109,29 @@ struct FileSystemClient {
         return .file
     }
 
-    private static func compare(_ lhs: FileBrowserEntry, _ rhs: FileBrowserEntry, sort: FileBrowserSort) -> Bool {
-        if lhs.kind == .directory, rhs.kind != .directory { return true }
-        if lhs.kind != .directory, rhs.kind == .directory { return false }
+    private func isMount(url: URL, values: URLResourceValues) -> Bool {
+        if values.isVolume == true {
+            return true
+        }
+
+        guard let volumeURL = values.volume else { return false }
+        return volumeURL.standardizedFileURL.path == url.standardizedFileURL.path
+    }
+
+    private func canUnmount(values: URLResourceValues) -> Bool {
+        values.volumeIsEjectable == true || values.volumeIsRemovable == true
+    }
+
+    private static func compare(
+        _ lhs: FileBrowserEntry,
+        _ rhs: FileBrowserEntry,
+        sort: FileBrowserSort,
+        foldersFirst: Bool
+    ) -> Bool {
+        if foldersFirst {
+            if lhs.kind == .directory, rhs.kind != .directory { return true }
+            if lhs.kind != .directory, rhs.kind == .directory { return false }
+        }
 
         switch sort {
         case .name:

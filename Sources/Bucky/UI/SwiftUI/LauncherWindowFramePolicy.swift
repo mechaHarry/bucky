@@ -69,18 +69,31 @@ struct LauncherWindowRepositionPolicy {
             return true
         }
 
-        return false
+        switch command {
+        case .previousMode, .nextMode:
+            return true
+        default:
+            return false
+        }
     }
 }
 
 struct LauncherWindowFocusRestorationPolicy {
     static func shouldRestoreAfterAppActivation(
-        mode: LauncherMode,
-        isPinned: Bool,
+        mode _: LauncherMode,
+        isPinned _: Bool,
         isPresented: Bool,
         isVisible: Bool,
         isKeyWindow: Bool
     ) -> Bool {
-        isPresented && isVisible && !isKeyWindow && (mode == .files || isPinned)
+        isPresented && isVisible && !isKeyWindow
+    }
+}
+
+struct LauncherWindowFocusClaimPolicy {
+    static let retryDelays: [Double] = [0.016, 0.04, 0.08]
+
+    static func shouldRetry(isWindowKey: Bool) -> Bool {
+        !isWindowKey
     }
 }

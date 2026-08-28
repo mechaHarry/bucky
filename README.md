@@ -54,7 +54,9 @@ This zip is a local unsigned build artifact. For broad distribution outside your
 
 Use Option+Space to open or hide the floating launcher by default. Type to filter parsed app names, use the up and down arrows to move through the list, use Command+Up and Command+Down to jump to the top or bottom, and press Return to launch the selected app.
 
-Use `Cmd+1` for Apps, `Cmd+2` for Calculator, `Cmd+3` for Dictionary, and `Cmd+4` for Files while the launcher is open. In Calculator mode, arithmetic text such as `1` or `2 + 3` is evaluated inline without opening Calculator. In Dictionary mode, lookups use fuzzy spelling and completion matches. Press Return on a calculation result to copy it, or on a dictionary result to open Dictionary at the matching word. Calculator mode includes a clear-history button; pin is available from any mode, can be toggled with Command+P while Bucky is focused, and keeps the window above other apps until unpinned.
+Use `Cmd+1` for Apps, `Cmd+2` for Calculator, `Cmd+3` for Dictionary, and `Cmd+4` for Files while the launcher is open. Use Command+Left and Command+Right to cycle launcher modes, and Command+/ to open shortcut help. Calculator and Dictionary remain separate modes: arithmetic text such as `1` or `2 + 3` is evaluated inline in Calculator without opening Calculator, while Dictionary lookups use fuzzy spelling and completion matches. Press Return on a calculation result to copy it, or on a dictionary result to open Dictionary at the matching word. Calculator mode includes a clear-history button; pin is available from any mode, can be toggled with Command+P while Bucky is focused, and keeps the window above other apps until unpinned.
+
+Files mode shows mounted volumes alongside folders and files, and supports folders-first sorting when you want directories grouped ahead of other entries.
 
 Bucky now uses the SwiftUI-native Liquid Glass launcher with a glass window surface, per-row glass effects, glass buttons, and animated state transitions. macOS 26 is required; the previous AppKit launcher has been removed.
 

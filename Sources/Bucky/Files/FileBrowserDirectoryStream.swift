@@ -5,6 +5,7 @@ protocol FileBrowserDirectoryStreaming {
     func loadEntries(
         in directory: URL,
         sort: FileBrowserSort,
+        foldersFirst: Bool,
         completion: @escaping (Result<[FileBrowserEntry], Error>) -> Void
     )
 }
@@ -39,6 +40,7 @@ final class FileBrowserDirectoryStream: FileBrowserDirectoryStreaming {
     func loadEntries(
         in directory: URL,
         sort: FileBrowserSort,
+        foldersFirst: Bool,
         completion: @escaping (Result<[FileBrowserEntry], Error>) -> Void
     ) {
         let fileSystem = DirectoryStreamFileSystemBox(fileSystem: fileSystem)
@@ -49,7 +51,7 @@ final class FileBrowserDirectoryStream: FileBrowserDirectoryStreaming {
                     to: directory,
                     bookmarkData: bookmarkData
                 ) {
-                    try fileSystem.entries(in: directory, sort: sort)
+                    try fileSystem.entries(in: directory, sort: sort, foldersFirst: foldersFirst)
                 }
             }
 
@@ -67,7 +69,7 @@ private struct DirectoryStreamFileSystemBox: @unchecked Sendable {
         self.fileSystem = fileSystem
     }
 
-    func entries(in directory: URL, sort: FileBrowserSort) throws -> [FileBrowserEntry] {
-        try fileSystem.entries(in: directory, sort: sort)
+    func entries(in directory: URL, sort: FileBrowserSort, foldersFirst: Bool) throws -> [FileBrowserEntry] {
+        try fileSystem.entries(in: directory, sort: sort, foldersFirst: foldersFirst)
     }
 }

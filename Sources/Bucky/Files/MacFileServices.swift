@@ -8,6 +8,7 @@ enum MacFileServicesError: LocalizedError {
     case cannotOpen(URL)
     case invalidName(String)
     case targetAlreadyExists(URL)
+    case cannotUnmount(URL)
 
     var errorDescription: String? {
         switch self {
@@ -19,6 +20,8 @@ enum MacFileServicesError: LocalizedError {
             return "Invalid file name: \(name)"
         case let .targetAlreadyExists(url):
             return "A file already exists at: \(url.path)"
+        case let .cannotUnmount(url):
+            return "Could not unmount: \(url.path)"
         }
     }
 }
@@ -86,6 +89,14 @@ struct MacFileServices: FileBrowserNativeServicing {
         for url in urls {
             var resultingURL: NSURL?
             try fileManager.trashItem(at: url, resultingItemURL: &resultingURL)
+        }
+    }
+
+    func unmount(_ url: URL) throws {
+        do {
+            try NSWorkspace.shared.unmountAndEjectDevice(at: url)
+        } catch {
+            throw MacFileServicesError.cannotUnmount(url)
         }
     }
 

@@ -65,7 +65,7 @@ struct FileBrowserView: View {
         .onChange(of: model.entries.map(\.url)) { _, _ in
             preloadFileIcons()
         }
-        .onChange(of: model.pinnedDirectories) { _, _ in
+        .onChange(of: model.sidebarDirectories) { _, _ in
             preloadFileIcons()
         }
         .onChange(of: model.wobbleEvent?.id) { _, id in
@@ -99,14 +99,14 @@ struct FileBrowserView: View {
 
     private var pinnedRail: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if model.pinnedDirectories.isEmpty {
-                placeholder("Pinned items will appear here")
+            if model.sidebarDirectories.isEmpty {
+                placeholder("Mounts and pins will appear here")
             } else {
                 LauncherResultList(
                     scrollTargetID: $pinnedScrollTargetID,
                     reconstructionID: pinnedReconstructionIdentity
                 ) {
-                    ForEach(Array(model.pinnedDirectories.enumerated()), id: \.element) { index, url in
+                    ForEach(Array(model.sidebarDirectories.enumerated()), id: \.element) { index, url in
                         FileBrowserPinnedRow(
                             url: url,
                             isSelected: model.focusState == .pinnedItems && index == model.focusedPinnedIndex,
@@ -174,34 +174,72 @@ struct FileBrowserView: View {
     }
 
     private var actionOverlay: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            FileBrowserActionSelectionSummary(
-                urls: model.activeSelectionURLs,
-                model: model
+        GeometryReader { proxy in
+            actionOverlayPane(
+                maxHeight: max(0, proxy.size.height - FileBrowserActionPaneLayoutPolicy.outerPadding * 2)
             )
+            .padding(FileBrowserActionPaneLayoutPolicy.outerPadding)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+        }
+    }
 
-            Divider()
-                .opacity(0.42)
-
-            VStack(alignment: .leading, spacing: 5) {
-                ForEach(Array(model.focusableActions.enumerated()), id: \.element) { index, action in
-                    ActionRow(
-                        action: action,
-                        isFocused: index == model.focusedActionIndex
+    private func actionOverlayPane(maxHeight: CGFloat) -> some View {
+        ScrollViewReader { actionScrollProxy in
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: 12) {
+                    FileBrowserActionSelectionSummary(
+                        urls: model.activeSelectionURLs,
+                        model: model
                     )
+
+                    Divider()
+                        .opacity(0.42)
+
+                    VStack(alignment: .leading, spacing: 5) {
+                        ForEach(Array(model.focusableActions.enumerated()), id: \.element) { index, action in
+                            ActionRow(
+                                action: action,
+                                isFocused: index == model.focusedActionIndex
+                            )
+                            .id(index)
+                        }
+                    }
                 }
+                .padding(FileBrowserActionPaneLayoutPolicy.padding)
+                .frame(width: FileBrowserActionPaneLayoutPolicy.width)
+            }
+            .scrollIndicators(.hidden)
+            .frame(width: FileBrowserActionPaneLayoutPolicy.width)
+            .frame(maxHeight: maxHeight)
+            .clipped()
+            .glassEffect(.regular.interactive(false), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(Color(nsColor: .separatorColor).opacity(0.28), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.24), radius: 24, x: 0, y: 14)
+            .onAppear {
+                scrollFocusedAction(in: actionScrollProxy, animated: false)
+            }
+            .onChange(of: model.focusedActionIndex) { _, _ in
+                scrollFocusedAction(in: actionScrollProxy, animated: true)
+            }
+            .onChange(of: model.focusState) { _, _ in
+                scrollFocusedAction(in: actionScrollProxy, animated: false)
             }
         }
-        .padding(FileBrowserActionPaneLayoutPolicy.padding)
-        .frame(width: FileBrowserActionPaneLayoutPolicy.width)
-        .clipped()
-        .glassEffect(.regular.interactive(false), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.28), lineWidth: 1)
+    }
+
+    private func scrollFocusedAction(in actionScrollProxy: ScrollViewProxy, animated: Bool) {
+        guard model.focusState == .previewActions else { return }
+
+        if animated {
+            withAnimation(.easeInOut(duration: 0.14)) {
+                actionScrollProxy.scrollTo(model.focusedActionIndex, anchor: .center)
+            }
+        } else {
+            actionScrollProxy.scrollTo(model.focusedActionIndex, anchor: .center)
         }
-        .shadow(color: .black.opacity(0.24), radius: 24, x: 0, y: 14)
-        .padding(18)
     }
 
     private var transferHint: some View {
@@ -242,6 +280,12 @@ struct FileBrowserView: View {
                 message: step == 1
                     ? "Return continues. \(urls.count) item\(urls.count == 1 ? "" : "s") will be moved to Trash, never permanently deleted."
                     : "Return moves the selected item\(urls.count == 1 ? "" : "s") to Trash. Escape cancels."
+            )
+            .transition(.scale(scale: 0.97).combined(with: .opacity))
+        case let .confirming(.unmount(url)):
+            ConfirmationOverlay(
+                title: "Unmount \(displayName(for: url))?",
+                message: "Return asks macOS to unmount this volume. Escape cancels."
             )
             .transition(.scale(scale: 0.97).combined(with: .opacity))
         case let .confirming(.conflict(_, _, conflicts)):
@@ -285,13 +329,13 @@ struct FileBrowserView: View {
     }
 
     private var pinnedReconstructionIdentity: AnyHashable {
-        AnyHashable(model.pinnedDirectories.map(\.path).joined(separator: "\u{1F}"))
+        AnyHashable(model.sidebarDirectories.map(\.path).joined(separator: "\u{1F}"))
     }
 
     private func preloadFileIcons() {
         let urls = FileIconPreloadPolicy.preloadURLs(
             entries: model.entries,
-            pinnedDirectories: model.pinnedDirectories
+            pinnedDirectories: model.sidebarDirectories
         )
         guard !urls.isEmpty else { return }
 
@@ -1453,6 +1497,8 @@ private extension FileBrowserAction {
             return "Move"
         case .moveToTrash:
             return "Move to Trash"
+        case .unmount:
+            return "Unmount"
         }
     }
 
@@ -1472,6 +1518,8 @@ private extension FileBrowserAction {
             return "arrow.right.square"
         case .moveToTrash:
             return "trash"
+        case .unmount:
+            return "eject"
         }
     }
 }

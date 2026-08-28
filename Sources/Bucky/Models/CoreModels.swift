@@ -97,6 +97,14 @@ enum LauncherMode: Int, CaseIterable {
         self.init(rawValue: commandNumber)
     }
 
+    var previousMode: LauncherMode {
+        adjacentMode(offset: -1)
+    }
+
+    var nextMode: LauncherMode {
+        adjacentMode(offset: 1)
+    }
+
     var placeholder: String {
         switch self {
         case .applications:
@@ -112,5 +120,38 @@ enum LauncherMode: Int, CaseIterable {
 
     var acceptsTextInput: Bool {
         self != .files
+    }
+
+    var shortTitle: String {
+        switch self {
+        case .applications:
+            return "Apps"
+        case .calculator:
+            return "Calculator"
+        case .dictionary:
+            return "Dictionary"
+        case .files:
+            return "Files"
+        }
+    }
+
+    var helpSystemImage: String {
+        switch self {
+        case .applications:
+            return "square.grid.2x2"
+        case .calculator:
+            return "123.rectangle.fill"
+        case .dictionary:
+            return "text.book.closed"
+        case .files:
+            return "folder"
+        }
+    }
+
+    private func adjacentMode(offset: Int) -> LauncherMode {
+        guard let index = Self.ordered.firstIndex(of: self) else { return self }
+        let count = Self.ordered.count
+        let nextIndex = (index + offset + count) % count
+        return Self.ordered[nextIndex]
     }
 }

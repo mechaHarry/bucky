@@ -18,6 +18,8 @@ struct FileBrowserEntry: Identifiable, Hashable {
     let createdAt: Date?
     let modifiedAt: Date?
     let isHidden: Bool
+    let isMount: Bool
+    let canUnmount: Bool
 
     init(
         url: URL,
@@ -25,7 +27,9 @@ struct FileBrowserEntry: Identifiable, Hashable {
         size: Int64?,
         createdAt: Date?,
         modifiedAt: Date?,
-        isHidden: Bool
+        isHidden: Bool,
+        isMount: Bool = false,
+        canUnmount: Bool = false
     ) {
         self.id = url
         self.url = url
@@ -35,6 +39,8 @@ struct FileBrowserEntry: Identifiable, Hashable {
         self.createdAt = createdAt
         self.modifiedAt = modifiedAt
         self.isHidden = isHidden
+        self.isMount = isMount
+        self.canUnmount = canUnmount
     }
 }
 
@@ -49,6 +55,7 @@ struct FileBrowserPersistedState: Codable, Equatable {
     var pinnedDirectories: [URL]
     var lastDirectory: URL?
     var sort: FileBrowserSort
+    var foldersFirst: Bool
     var traversalChain: [URL]
     var rememberedSelections: [FileBrowserRememberedSelection]
     var directoryBookmarks: [FileBrowserDirectoryBookmark]
@@ -57,6 +64,7 @@ struct FileBrowserPersistedState: Codable, Equatable {
         pinnedDirectories: [],
         lastDirectory: nil,
         sort: .name,
+        foldersFirst: false,
         traversalChain: [],
         rememberedSelections: [],
         directoryBookmarks: []
@@ -66,6 +74,7 @@ struct FileBrowserPersistedState: Codable, Equatable {
         pinnedDirectories: [URL],
         lastDirectory: URL?,
         sort: FileBrowserSort,
+        foldersFirst: Bool = false,
         traversalChain: [URL],
         rememberedSelections: [FileBrowserRememberedSelection] = [],
         directoryBookmarks: [FileBrowserDirectoryBookmark] = []
@@ -73,6 +82,7 @@ struct FileBrowserPersistedState: Codable, Equatable {
         self.pinnedDirectories = pinnedDirectories
         self.lastDirectory = lastDirectory
         self.sort = sort
+        self.foldersFirst = foldersFirst
         self.traversalChain = traversalChain
         self.rememberedSelections = rememberedSelections
         self.directoryBookmarks = directoryBookmarks
@@ -82,6 +92,7 @@ struct FileBrowserPersistedState: Codable, Equatable {
         case pinnedDirectories
         case lastDirectory
         case sort
+        case foldersFirst
         case traversalChain
         case rememberedSelections
         case directoryBookmarks
@@ -92,6 +103,7 @@ struct FileBrowserPersistedState: Codable, Equatable {
         pinnedDirectories = try container.decodeIfPresent([URL].self, forKey: .pinnedDirectories) ?? []
         lastDirectory = try container.decodeIfPresent(URL.self, forKey: .lastDirectory)
         sort = try container.decodeIfPresent(FileBrowserSort.self, forKey: .sort) ?? .name
+        foldersFirst = try container.decodeIfPresent(Bool.self, forKey: .foldersFirst) ?? false
         traversalChain = try container.decodeIfPresent([URL].self, forKey: .traversalChain) ?? []
         rememberedSelections = try container.decodeIfPresent(
             [FileBrowserRememberedSelection].self,
@@ -141,7 +153,7 @@ protocol FileSystemClientProtocol {
     func parentURL(for url: URL) -> URL?
     func isDirectory(_ url: URL) -> Bool
     func resolvedDirectoryURL(for url: URL) -> URL?
-    func entries(in directory: URL, sort: FileBrowserSort) throws -> [FileBrowserEntry]
+    func entries(in directory: URL, sort: FileBrowserSort, foldersFirst: Bool) throws -> [FileBrowserEntry]
 }
 
 extension FileSystemClient: FileSystemClientProtocol {}
@@ -163,6 +175,7 @@ protocol FileBrowserNativeServicing {
     func copy(_ urls: [URL], to destinationDirectory: URL, conflict: FileBrowserConflictResolution) throws
     func move(_ urls: [URL], to destinationDirectory: URL, conflict: FileBrowserConflictResolution) throws
     func trash(_ urls: [URL]) throws
+    func unmount(_ url: URL) throws
     func rename(_ url: URL, to proposedName: String) throws -> URL
     func batchRename(_ urls: [URL], baseName: String) throws -> [URL]
     func conflictingDestinations(for urls: [URL], in destinationDirectory: URL) -> [FileBrowserConflict]
@@ -195,6 +208,7 @@ enum FileBrowserAction: String, CaseIterable, Equatable {
     case copy
     case move
     case moveToTrash
+    case unmount
 }
 
 enum FileBrowserActionIntent: Equatable {
@@ -234,6 +248,7 @@ enum FileBrowserTransfer: Equatable {
 enum FileBrowserConfirmation: Equatable {
     case transfer(FileBrowserTransfer, destination: URL)
     case trash([URL], step: Int)
+    case unmount(URL)
     case conflict(FileBrowserTransfer, destination: URL, conflicts: [FileBrowserConflict])
 }
 
@@ -375,6 +390,7 @@ struct FileBrowserRowFocusIndicatorPolicy {
 struct FileBrowserActionPaneLayoutPolicy {
     static let width: CGFloat = 268
     static let padding: CGFloat = 14
+    static let outerPadding: CGFloat = 18
     static let cardStackHeight: CGFloat = 58
     static let selectionRowHeight: CGFloat = 18
     static let maximumVisibleSelectionRows = 4
@@ -477,6 +493,12 @@ struct FileBrowserDragPolicy {
 
 struct FileBrowserIconPolicy {
     static func systemSymbolOverride(for url: URL) -> String? {
-        url.lastPathComponent == ".Trash" ? "trash" : nil
+        if url.lastPathComponent == ".Trash" {
+            return "trash"
+        }
+        if url.standardizedFileURL.path == "/Volumes" {
+            return "externaldrive"
+        }
+        return nil
     }
 }
