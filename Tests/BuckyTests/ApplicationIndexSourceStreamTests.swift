@@ -45,7 +45,7 @@ final class ApplicationIndexSourceStreamTests: XCTestCase {
     func testSourceStreamUsesBackgroundUtilityQueuePolicy() {
         XCTAssertEqual(
             ApplicationIndexSourceStreamPolicy.queueLabel,
-            "com.bucky.bucky.application-index-source-stream"
+            "local.bucky.application-index-source-stream"
         )
         XCTAssertEqual(ApplicationIndexSourceStreamPolicy.queueQoS, .utility)
     }

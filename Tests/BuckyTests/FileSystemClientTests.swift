@@ -80,7 +80,7 @@ final class FileSystemClientTests: XCTestCase {
     func testParentURLStopsAtRoot() {
         let client = FileSystemClient()
 
-        XCTAssertEqual(client.parentURL(for: URL(fileURLWithPath: "/Users/test")), URL(fileURLWithPath: "/Users"))
+        XCTAssertEqual(client.parentURL(for: TestFixtures.userHome), TestFixtures.userRoot)
         XCTAssertNil(client.parentURL(for: URL(fileURLWithPath: "/")))
     }
 
@@ -97,8 +97,8 @@ final class FileSystemClientTests: XCTestCase {
     }
 
     func testIsDirectoryFollowsSymbolicLinksToDirectories() throws {
-        let target = temporaryDirectory.appendingPathComponent("SampleCloudTarget", isDirectory: true)
-        let link = temporaryDirectory.appendingPathComponent("Sample Cloud Target")
+        let target = TestFixtures.sampleCloudTargetDirectory(in: temporaryDirectory)
+        let link = TestFixtures.sampleCloudTargetLink(in: temporaryDirectory)
         try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
 
@@ -106,8 +106,8 @@ final class FileSystemClientTests: XCTestCase {
     }
 
     func testResolvedDirectoryURLFollowsSymbolicLinksToDirectoryTargets() throws {
-        let target = temporaryDirectory.appendingPathComponent("SampleCloudTarget", isDirectory: true)
-        let link = temporaryDirectory.appendingPathComponent("Sample Cloud Target")
+        let target = TestFixtures.sampleCloudTargetDirectory(in: temporaryDirectory)
+        let link = TestFixtures.sampleCloudTargetLink(in: temporaryDirectory)
         try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
 

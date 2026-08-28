@@ -78,7 +78,7 @@ final class FileBrowserPreviewPolicyTests: XCTestCase {
     @MainActor
     @available(macOS 26.0, *)
     func testPreviewActionsKeepFocusedRowCenteredInsideBoundedScrollPane() {
-        let home = URL(fileURLWithPath: "/Users/test")
+        let home = TestFixtures.userHome
         let entry = FileBrowserEntry(
             url: home.appendingPathComponent("alpha.txt"),
             kind: .file,
@@ -194,7 +194,7 @@ final class FileBrowserPreviewPolicyTests: XCTestCase {
     }
 
     func testSelectedRowDragUsesAllSelectedURLs() {
-        let home = URL(fileURLWithPath: "/Users/test")
+        let home = TestFixtures.userHome
         let one = home.appendingPathComponent("one.txt")
         let two = home.appendingPathComponent("two.txt")
 
@@ -205,7 +205,7 @@ final class FileBrowserPreviewPolicyTests: XCTestCase {
     }
 
     func testUnselectedRowDragUsesOnlyDraggedRow() {
-        let home = URL(fileURLWithPath: "/Users/test")
+        let home = TestFixtures.userHome
         let one = home.appendingPathComponent("one.txt")
         let two = home.appendingPathComponent("two.txt")
         let three = home.appendingPathComponent("three.txt")
@@ -217,7 +217,7 @@ final class FileBrowserPreviewPolicyTests: XCTestCase {
     }
 
     func testSelectedRowDragPreservesSelectionsFromOtherDirectories() {
-        let home = URL(fileURLWithPath: "/Users/test")
+        let home = TestFixtures.userHome
         let other = URL(fileURLWithPath: "/Users/other")
         let one = home.appendingPathComponent("one.txt")
         let remote = other.appendingPathComponent("remote.txt")

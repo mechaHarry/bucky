@@ -398,7 +398,7 @@ final class LauncherModeRoutingTests: XCTestCase {
             fileBrowserModelFactory: {
                 activationCount += 1
                 return FileBrowserModel(
-                    fileSystem: StubFileSystemClient(home: URL(fileURLWithPath: "/Users/test"), entriesByDirectory: [:]),
+                    fileSystem: StubFileSystemClient(home: TestFixtures.userHome, entriesByDirectory: [:]),
                     store: InMemoryFileBrowserStore(state: .defaultValue),
                     directoryStream: ImmediateDirectoryStream()
                 )
@@ -484,7 +484,7 @@ final class LauncherModeRoutingTests: XCTestCase {
             fileBrowserModelFactory: {
                 activationCount += 1
                 return FileBrowserModel(
-                    fileSystem: StubFileSystemClient(home: URL(fileURLWithPath: "/Users/test"), entriesByDirectory: [:]),
+                    fileSystem: StubFileSystemClient(home: TestFixtures.userHome, entriesByDirectory: [:]),
                     store: InMemoryFileBrowserStore(state: .defaultValue),
                     directoryStream: ImmediateDirectoryStream()
                 )
@@ -524,7 +524,7 @@ final class LauncherModeRoutingTests: XCTestCase {
             exclusionStore: ExclusionStore(),
             calculationHistoryStore: CalculationHistoryStore(),
             fileBrowserModel: FileBrowserModel(
-                fileSystem: StubFileSystemClient(home: URL(fileURLWithPath: "/Users/test"), entriesByDirectory: [:]),
+                fileSystem: StubFileSystemClient(home: TestFixtures.userHome, entriesByDirectory: [:]),
                 store: InMemoryFileBrowserStore(state: .defaultValue),
                 directoryStream: ImmediateDirectoryStream()
             )
@@ -576,7 +576,7 @@ final class LauncherModeRoutingTests: XCTestCase {
             exclusionStore: ExclusionStore(),
             calculationHistoryStore: CalculationHistoryStore(),
             fileBrowserModel: FileBrowserModel(
-                fileSystem: StubFileSystemClient(home: URL(fileURLWithPath: "/Users/test"), entriesByDirectory: [:]),
+                fileSystem: StubFileSystemClient(home: TestFixtures.userHome, entriesByDirectory: [:]),
                 store: InMemoryFileBrowserStore(state: .defaultValue),
                 directoryStream: ImmediateDirectoryStream()
             )
@@ -697,7 +697,7 @@ final class LauncherModeRoutingTests: XCTestCase {
             exclusionStore: ExclusionStore(),
             calculationHistoryStore: CalculationHistoryStore(),
             fileBrowserModel: FileBrowserModel(
-                fileSystem: StubFileSystemClient(home: URL(fileURLWithPath: "/Users/test"), entriesByDirectory: [:]),
+                fileSystem: StubFileSystemClient(home: TestFixtures.userHome, entriesByDirectory: [:]),
                 store: InMemoryFileBrowserStore(state: .defaultValue),
                 directoryStream: ImmediateDirectoryStream()
             )
@@ -731,7 +731,7 @@ final class LauncherModeRoutingTests: XCTestCase {
             exclusionStore: ExclusionStore(),
             calculationHistoryStore: calculationHistoryStore,
             fileBrowserModel: FileBrowserModel(
-                fileSystem: StubFileSystemClient(home: URL(fileURLWithPath: "/Users/test"), entriesByDirectory: [:]),
+                fileSystem: StubFileSystemClient(home: TestFixtures.userHome, entriesByDirectory: [:]),
                 store: InMemoryFileBrowserStore(state: .defaultValue),
                 directoryStream: ImmediateDirectoryStream()
             )
@@ -877,7 +877,7 @@ final class LauncherModeRoutingTests: XCTestCase {
             dictionaryLookup: dictionaryLookup,
             dictionaryOpenHandler: { _ in },
             fileBrowserModel: FileBrowserModel(
-                fileSystem: StubFileSystemClient(home: URL(fileURLWithPath: "/Users/test"), entriesByDirectory: [:]),
+                fileSystem: StubFileSystemClient(home: TestFixtures.userHome, entriesByDirectory: [:]),
                 store: InMemoryFileBrowserStore(state: .defaultValue),
                 directoryStream: ImmediateDirectoryStream()
             )
@@ -927,7 +927,7 @@ final class LauncherModeRoutingTests: XCTestCase {
         entries names: [String],
         fileServices: FileBrowserNativeServicing = RecordingFileBrowserServices()
     ) -> LiquidGlassLauncherModel {
-        let home = URL(fileURLWithPath: "/Users/test")
+        let home = TestFixtures.userHome
         let entries = names.map { name in
             FileBrowserEntry(
                 url: home.appendingPathComponent(name),

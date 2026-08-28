@@ -6,7 +6,7 @@ import Combine
 @MainActor
 final class FileBrowserModelTests: XCTestCase {
     func testStartsAtPersistedDirectoryWhenAvailable() {
-        let directory = URL(fileURLWithPath: "/Users/test")
+        let directory = TestFixtures.userHome
         let model = makeModel(persisted: FileBrowserPersistedState(
             pinnedDirectories: [],
             lastDirectory: directory,
@@ -19,13 +19,13 @@ final class FileBrowserModelTests: XCTestCase {
     }
 
     func testStartsAtHomeWhenPersistedDirectoryIsMissing() {
-        let model = makeModel(persisted: .defaultValue, home: URL(fileURLWithPath: "/Users/test"))
+        let model = makeModel(persisted: .defaultValue, home: TestFixtures.userHome)
 
-        XCTAssertEqual(model.currentDirectory, URL(fileURLWithPath: "/Users/test"))
+        XCTAssertEqual(model.currentDirectory, TestFixtures.userHome)
     }
 
     func testStartsAtConfiguredDefaultDirectoryBeforeHomeWhenPersistedDirectoryIsMissing() {
-        let home = URL(fileURLWithPath: "/Users/test")
+        let home = TestFixtures.userHome
         let documents = home.appendingPathComponent("Documents", isDirectory: true)
         let client = StubFileSystemClient(home: home, entriesByDirectory: [
             documents: entries(["notes.txt"], in: documents)
@@ -260,35 +260,47 @@ final class FileBrowserModelTests: XCTestCase {
     }
 
     func testFirstCharacterCyclingIgnoresCaseAndLeadingSymbols() {
-        let model = makeModel(entries: entries(["alpha.txt", "_Sample", "Sample", "Sample"]))
+        let sampleTarget = TestFixtures.sampleCloudTargetName
+        let model = makeModel(entries: entries([
+            "alpha.txt",
+            "_\(sampleTarget)",
+            sampleTarget,
+            sampleTarget.lowercased()
+        ]))
 
-        model.handle(.alphaNumeric("c"))
-        XCTAssertEqual(model.selectedEntry?.name, "_Sample")
+        model.handle(.alphaNumeric("s"))
+        XCTAssertEqual(model.selectedEntry?.name, "_\(sampleTarget)")
 
-        model.handle(.alphaNumeric("c"))
-        XCTAssertEqual(model.selectedEntry?.name, "Sample")
+        model.handle(.alphaNumeric("s"))
+        XCTAssertEqual(model.selectedEntry?.name, sampleTarget)
 
-        model.handle(.alphaNumeric("c"))
-        XCTAssertEqual(model.selectedEntry?.name, "Sample")
+        model.handle(.alphaNumeric("s"))
+        XCTAssertEqual(model.selectedEntry?.name, sampleTarget.lowercased())
 
-        model.handle(.alphaNumeric("c"))
-        XCTAssertEqual(model.selectedEntry?.name, "_Sample")
+        model.handle(.alphaNumeric("s"))
+        XCTAssertEqual(model.selectedEntry?.name, "_\(sampleTarget)")
     }
 
     func testShiftFirstCharacterCyclingMovesToPreviousMatch() {
-        let model = makeModel(entries: entries(["alpha.txt", "_Sample", "Sample", "Sample"]))
+        let sampleTarget = TestFixtures.sampleCloudTargetName
+        let model = makeModel(entries: entries([
+            "alpha.txt",
+            "_\(sampleTarget)",
+            sampleTarget,
+            sampleTarget.lowercased()
+        ]))
 
         model.handle(.bottom)
-        XCTAssertEqual(model.selectedEntry?.name, "Sample")
+        XCTAssertEqual(model.selectedEntry?.name, sampleTarget.lowercased())
 
-        model.handle(.shiftAlphaNumeric("c"))
-        XCTAssertEqual(model.selectedEntry?.name, "Sample")
+        model.handle(.shiftAlphaNumeric("s"))
+        XCTAssertEqual(model.selectedEntry?.name, sampleTarget)
 
-        model.handle(.shiftAlphaNumeric("c"))
-        XCTAssertEqual(model.selectedEntry?.name, "_Sample")
+        model.handle(.shiftAlphaNumeric("s"))
+        XCTAssertEqual(model.selectedEntry?.name, "_\(sampleTarget)")
 
-        model.handle(.shiftAlphaNumeric("c"))
-        XCTAssertEqual(model.selectedEntry?.name, "Sample")
+        model.handle(.shiftAlphaNumeric("s"))
+        XCTAssertEqual(model.selectedEntry?.name, sampleTarget.lowercased())
     }
 
     func testAlphaNumericInputIsIgnoredWhileRenaming() {
@@ -334,12 +346,12 @@ final class FileBrowserModelTests: XCTestCase {
     }
 
     func testRightEntersSymbolicLinkThatResolvesToDirectory() {
-        let home = URL(fileURLWithPath: "/Users/test")
-        let link = home.appendingPathComponent("Sample Cloud Target")
+        let home = TestFixtures.userHome
+        let link = TestFixtures.sampleCloudTargetLink(in: home)
         let linkedDirectory = home
             .appendingPathComponent("Library", isDirectory: true)
             .appendingPathComponent("CloudStorage", isDirectory: true)
-            .appendingPathComponent("SampleCloudTarget", isDirectory: true)
+            .appendingPathComponent(TestFixtures.sampleCloudTargetName, isDirectory: true)
         let child = linkedDirectory.appendingPathComponent("Reports", isDirectory: true)
         let client = StubFileSystemClient(home: home, entriesByDirectory: [
             home: [symbolicLinkEntry(link)],
@@ -1439,7 +1451,7 @@ final class FileBrowserModelTests: XCTestCase {
     private func makeModel(
         entries: [FileBrowserEntry] = [],
         persisted: FileBrowserPersistedState = .defaultValue,
-        home: URL = URL(fileURLWithPath: "/Users/test"),
+        home: URL = TestFixtures.userHome,
         fileServices: FileBrowserNativeServicing = RecordingFileBrowserServices()
     ) -> FileBrowserModel {
         let client = StubFileSystemClient(home: home, entriesByDirectory: [home: entries])
@@ -1454,7 +1466,7 @@ final class FileBrowserModelTests: XCTestCase {
 
     private func makeModel(
         persisted: FileBrowserPersistedState = .defaultValue,
-        home: URL = URL(fileURLWithPath: "/Users/test"),
+        home: URL = TestFixtures.userHome,
         entriesByDirectory: [URL: [FileBrowserEntry]],
         fileServices: FileBrowserNativeServicing = RecordingFileBrowserServices()
     ) -> FileBrowserModel {
@@ -1469,7 +1481,7 @@ final class FileBrowserModelTests: XCTestCase {
     }
 
     private func entries(_ names: [String]) -> [FileBrowserEntry] {
-        entries(names, in: URL(fileURLWithPath: "/Users/test"))
+        entries(names, in: TestFixtures.userHome)
     }
 
     private func entries(_ names: [String], in directory: URL) -> [FileBrowserEntry] {

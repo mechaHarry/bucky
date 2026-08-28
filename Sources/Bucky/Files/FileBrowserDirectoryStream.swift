@@ -30,7 +30,7 @@ final class FileBrowserDirectoryStream: FileBrowserDirectoryStreaming {
     init(
         fileSystem: FileSystemClientProtocol,
         accessStore: FileBrowserPersisting? = nil,
-        queue: DispatchQueue = DispatchQueue(label: "com.mechaHarry.bucky.file-browser.directory-stream", qos: .userInitiated)
+        queue: DispatchQueue = DispatchQueue(label: "local.bucky.file-browser.directory-stream", qos: .userInitiated)
     ) {
         self.fileSystem = fileSystem
         self.accessStore = accessStore

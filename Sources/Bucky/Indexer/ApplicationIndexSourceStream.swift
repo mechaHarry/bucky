@@ -51,7 +51,7 @@ struct ApplicationIndexWatchPolicy {
 }
 
 struct ApplicationIndexSourceStreamPolicy {
-    static let queueLabel = "com.mechaHarry.bucky.application-index-source-stream"
+    static let queueLabel = "local.bucky.application-index-source-stream"
     static let queueQoS: DispatchQoS = .utility
 }
 

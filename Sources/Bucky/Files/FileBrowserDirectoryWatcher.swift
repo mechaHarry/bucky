@@ -4,7 +4,7 @@ import Foundation
 final class FileBrowserDirectoryWatcher: FileBrowserDirectoryObserving {
     private let queue: DispatchQueue
 
-    init(queue: DispatchQueue = DispatchQueue(label: "com.mechaHarry.bucky.file-browser.directory-watcher", qos: .utility)) {
+    init(queue: DispatchQueue = DispatchQueue(label: "local.bucky.file-browser.directory-watcher", qos: .utility)) {
         self.queue = queue
     }
 
