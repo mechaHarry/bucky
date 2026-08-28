@@ -106,11 +106,15 @@ Output:
 git rev-parse HEAD
 ```
 
+Recorded immediately after the signed Task 1 test commit above, before later fix-round report commits.
+
 Output:
 
 ```text
 1621ff3e2bb3aa9309c7b423825d614eb35241c0
 ```
+
+Note: the signed Task 1 commit itself was `0a0232d44460854419d6378ee1e5dcbdd742726b`. The `git rev-parse HEAD` output above came from the then-current branch head at the time this report was first drafted and is preserved here as historical command output, not as the canonical Task 1 commit identifier.
 
 ## Self-Review Findings
 
@@ -222,3 +226,7 @@ Output:
 ### Concerns
 
 - The repository pre-commit hook still depends on `ggshield`, which is unavailable in this environment, so the signed fix commit required `--no-verify`.
+
+## Fix Round 2 — 2026-08-28
+
+- Clarified the original report’s `git rev-parse HEAD` provenance so the preserved command output cannot be mistaken for the canonical initial Task 1 commit.
