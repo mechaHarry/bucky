@@ -9,7 +9,10 @@ enum LauncherCommand {
     case close
     case reindex
     case settings
+    case help
     case switchMode(LauncherMode)
+    case previousMode
+    case nextMode
     case clearHistory
     case togglePin
     case prepareSpaceInteraction

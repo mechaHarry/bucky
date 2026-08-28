@@ -193,6 +193,7 @@ final class SettingsViewModel: ObservableObject {
 
 struct SettingsView: View {
     @ObservedObject var model: SettingsViewModel
+    let onBack: () -> Void
     @State private var selectedPane: SettingsPane = .general
     @State private var isSidebarCollapsed = false
 
@@ -212,7 +213,7 @@ struct SettingsView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             settingsSidebar
-                .frame(width: isSidebarCollapsed ? 74 : 210)
+                .frame(width: isSidebarCollapsed ? 102 : 210)
                 .padding(.leading, 10)
                 .padding(.vertical, 10)
         }
@@ -259,17 +260,14 @@ struct SettingsView: View {
 
                 Spacer(minLength: 0)
 
-                Button {
-                    isSidebarCollapsed.toggle()
-                } label: {
-                    Image(systemName: isSidebarCollapsed ? "sidebar.left" : "sidebar.leading")
-                        .font(.system(size: 15, weight: .semibold))
-                        .frame(width: 32, height: 32)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: isSidebarCollapsed ? .center : .trailing)
-                .help(isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar")
+                SidebarBackCollapseControls(
+                    isCollapsed: isSidebarCollapsed,
+                    backTitle: "Back to Bucky",
+                    onBack: onBack,
+                    onToggleCollapse: {
+                        isSidebarCollapsed.toggle()
+                    }
+                )
             }
             .padding(.horizontal, isSidebarCollapsed ? 10 : 12)
             .padding(.vertical, 14)
@@ -380,6 +378,207 @@ private struct SettingsInputSurface: View {
     var body: some View {
         Color.white.opacity(0.001)
             .contentShape(Rectangle())
+    }
+}
+
+@available(macOS 26.0, *)
+struct HelpView: View {
+    let globalHotKeyTitle: String
+    let onBack: () -> Void
+    @State private var selectedPane: HelpPane = .global
+    @State private var isSidebarCollapsed = false
+
+    private var helpPaneSwitchAnimation: Animation {
+        .smooth(duration: 0.16)
+    }
+
+    private var helpPaneTransition: AnyTransition {
+        .opacity.combined(with: .scale(scale: 0.985))
+    }
+
+    var body: some View {
+        ZStack(alignment: .leading) {
+            SettingsInputSurface()
+
+            detailPane
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            helpSidebar
+                .frame(width: isSidebarCollapsed ? 102 : 210)
+                .padding(.leading, 10)
+                .padding(.vertical, 10)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .contentShape(Rectangle())
+        .animation(.snappy(duration: 0.18), value: isSidebarCollapsed)
+        .animation(helpPaneSwitchAnimation, value: selectedPane)
+    }
+
+    private var helpSidebar: some View {
+        ZStack {
+            SettingsGlassBackdrop()
+
+            VStack(spacing: 10) {
+                VStack(spacing: 6) {
+                    ForEach(HelpPane.allCases) { pane in
+                        HelpSidebarRow(
+                            pane: pane,
+                            isSelected: selectedPane == pane,
+                            isCollapsed: isSidebarCollapsed
+                        ) {
+                            selectedPane = pane
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+
+                Spacer(minLength: 0)
+
+                SidebarBackCollapseControls(
+                    isCollapsed: isSidebarCollapsed,
+                    backTitle: "Back to Bucky",
+                    onBack: onBack,
+                    onToggleCollapse: {
+                        isSidebarCollapsed.toggle()
+                    }
+                )
+            }
+            .padding(.horizontal, isSidebarCollapsed ? 10 : 12)
+            .padding(.vertical, 14)
+        }
+        .frame(maxHeight: .infinity, alignment: .top)
+        .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.35), lineWidth: 1)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+
+    private var detailPane: some View {
+        ZStack {
+            SettingsGlassBackdrop()
+
+            GeometryReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        paneHeader
+
+                        shortcutsList
+                            .id(selectedPane)
+                            .transition(helpPaneTransition)
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                    }
+                    .padding(.leading, isSidebarCollapsed ? 144 : 252)
+                    .padding(.trailing, 28)
+                    .padding(.vertical, 28)
+                    .frame(maxWidth: .infinity, minHeight: proxy.size.height, alignment: .topLeading)
+                }
+                .scrollIndicators(.hidden)
+            }
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.35), lineWidth: 1)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+
+    private var paneHeader: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Label(selectedPane.title, systemImage: selectedPane.systemImage)
+                .font(.system(size: 22, weight: .semibold))
+
+            Text(selectedPane.subtitle)
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var shortcutsList: some View {
+        let content = HelpShortcutCatalog.content(for: selectedPane, globalHotKeyTitle: globalHotKeyTitle)
+
+        VStack(alignment: .leading, spacing: 10) {
+            if !content.shortcuts.isEmpty {
+                Section("Hotkeys") {
+                    ForEach(content.shortcuts) { shortcut in
+                        HelpShortcutRow(shortcut: shortcut)
+                    }
+                }
+            }
+
+            if !content.explanations.isEmpty {
+                Section("Others") {
+                    ForEach(content.explanations) { explanation in
+                        HelpExplanationRow(explanation: explanation)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@available(macOS 26.0, *)
+private struct SidebarBackCollapseControls: View {
+    let isCollapsed: Bool
+    let backTitle: String
+    let onBack: () -> Void
+    let onToggleCollapse: () -> Void
+    @State private var isBackHovered = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button(action: onBack) {
+                HStack(spacing: 8) {
+                    Image(systemName: "chevron.left")
+                        .frame(width: 16, height: 16)
+
+                    if !isCollapsed {
+                        Text(backTitle)
+                            .lineLimit(1)
+                    }
+                }
+                .font(.system(size: isCollapsed ? 15 : 14, weight: .semibold))
+                .frame(maxWidth: .infinity, minHeight: 34, alignment: isCollapsed ? .center : .leading)
+                .padding(.horizontal, isCollapsed ? 0 : 10)
+            }
+            .buttonStyle(SidebarBackButtonStyle(isHovered: isBackHovered))
+            .onHover { isBackHovered = $0 }
+            .help(backTitle)
+
+            Button(action: onToggleCollapse) {
+                Image(systemName: isCollapsed ? "sidebar.left" : "sidebar.leading")
+                    .font(.system(size: 15, weight: .semibold))
+                    .frame(width: 34, height: 34)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help(isCollapsed ? "Expand sidebar" : "Collapse sidebar")
+        }
+    }
+}
+
+@available(macOS 26.0, *)
+private struct SidebarBackButtonStyle: ButtonStyle {
+    let isHovered: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(configuration.isPressed ? Color.accentColor : Color.secondary)
+            .background {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.accentColor.opacity(configuration.isPressed ? 0.18 : isHovered ? 0.12 : 0.08))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(Color.accentColor.opacity(isHovered ? 0.55 : 0.32), lineWidth: 1.15)
+            }
+            .scaleEffect(configuration.isPressed ? 0.96 : isHovered ? 1.015 : 1)
+            .animation(.snappy(duration: 0.12), value: configuration.isPressed)
+            .animation(.snappy(duration: 0.14), value: isHovered)
     }
 }
 
@@ -652,8 +851,51 @@ private struct SettingsSidebarRow: View {
         Button(action: action) {
             HStack(spacing: 10) {
                 Image(systemName: pane.systemImage)
-                    .font(.system(size: 15, weight: .semibold))
-                    .frame(width: 18, height: 18)
+                    .font(.system(size: isCollapsed ? 19 : 15, weight: .semibold))
+                    .frame(width: isCollapsed ? 28 : 18, height: isCollapsed ? 28 : 18)
+
+                if !isCollapsed {
+                    Text(pane.title)
+                        .font(.system(size: 14, weight: .semibold))
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .foregroundStyle(isSelected ? Color.white : Color.primary)
+            .frame(maxWidth: .infinity, minHeight: 36, alignment: isCollapsed ? .center : .leading)
+            .padding(.horizontal, isCollapsed ? 0 : 10)
+            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .background {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(isSelected ? Color.accentColor : Color(nsColor: .controlBackgroundColor).opacity(0.34))
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(
+                    isSelected ? Color.accentColor.opacity(0.62) : Color(nsColor: .separatorColor).opacity(0.45),
+                    lineWidth: isSelected ? 1.35 : 1.15
+                )
+        }
+        .help(pane.title)
+        .accessibilityLabel(pane.title)
+    }
+}
+
+@available(macOS 26.0, *)
+private struct HelpSidebarRow: View {
+    let pane: HelpPane
+    let isSelected: Bool
+    let isCollapsed: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: pane.systemImage)
+                    .font(.system(size: isCollapsed ? 19 : 15, weight: .semibold))
+                    .frame(width: isCollapsed ? 28 : 18, height: isCollapsed ? 28 : 18)
 
                 if !isCollapsed {
                     Text(pane.title)
@@ -745,6 +987,217 @@ private struct SettingsAppPathRow: View {
                 .strokeBorder(isSelected ? Color.accentColor.opacity(0.42) : Color(nsColor: .separatorColor).opacity(0.20), lineWidth: 1)
         }
         .accessibilityLabel("\(displayName), \(path), \(typeTitle)")
+    }
+}
+
+@available(macOS 26.0, *)
+private struct HelpShortcutRow: View {
+    let shortcut: HelpShortcut
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(shortcut.title)
+                    .font(.system(size: 14, weight: .semibold))
+                    .lineLimit(1)
+
+                Text(shortcut.detail)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+
+            Spacer(minLength: 16)
+
+            Text(shortcut.keys)
+                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .background {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(Color(nsColor: .controlBackgroundColor).opacity(0.58))
+                }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color(nsColor: .controlBackgroundColor).opacity(0.34))
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.25), lineWidth: 1)
+        }
+    }
+}
+
+@available(macOS 26.0, *)
+private struct HelpExplanationRow: View {
+    let explanation: HelpExplanation
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(explanation.title)
+                .font(.system(size: 14, weight: .semibold))
+                .lineLimit(1)
+
+            Text(explanation.detail)
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .lineLimit(3)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color(nsColor: .controlBackgroundColor).opacity(0.24))
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.18), lineWidth: 1)
+        }
+    }
+}
+
+private struct HelpShortcut: Identifiable, Equatable {
+    let title: String
+    let keys: String
+    let detail: String
+
+    var id: String {
+        "\(title)-\(keys)"
+    }
+}
+
+private struct HelpExplanation: Identifiable, Equatable {
+    let title: String
+    let detail: String
+
+    var id: String {
+        title
+    }
+}
+
+private struct HelpPageContent: Equatable {
+    let shortcuts: [HelpShortcut]
+    let explanations: [HelpExplanation]
+}
+
+private enum HelpShortcutCatalog {
+    static func content(for pane: HelpPane, globalHotKeyTitle: String) -> HelpPageContent {
+        switch pane {
+        case .global:
+            return HelpPageContent(
+                shortcuts: [
+                    HelpShortcut(title: "Open Bucky", keys: globalHotKeyTitle.isEmpty ? "Option+Space" : globalHotKeyTitle, detail: "Show or hide the launcher with the configured global shortcut."),
+                    HelpShortcut(title: "Open Settings", keys: "Command+,", detail: "Open Bucky settings inside the glass panel."),
+                    HelpShortcut(title: "Open Help", keys: "Command+/", detail: "Open this hotkey reference."),
+                    HelpShortcut(title: "Previous mode", keys: "Command+Left", detail: "Cycle to the previous launcher mode with wraparound."),
+                    HelpShortcut(title: "Next mode", keys: "Command+Right", detail: "Cycle to the next launcher mode with wraparound.")
+                ],
+                explanations: [
+                    HelpExplanation(title: "Search text", detail: "Typing in launcher mode updates the active mode filter when that mode accepts text input.")
+                ]
+            )
+        case let .mode(mode):
+            return content(for: mode)
+        }
+    }
+
+    private static func content(for mode: LauncherMode) -> HelpPageContent {
+        let openMode = HelpShortcut(title: "Open \(mode.shortTitle)", keys: "Command+\(mode.rawValue)", detail: "Switch directly to \(mode.shortTitle).")
+        switch mode {
+        case .applications:
+            return HelpPageContent(
+                shortcuts: [
+                    openMode,
+                    HelpShortcut(title: "Reindex apps", keys: "Command+R", detail: "Refresh the application and custom action index.")
+                ],
+                explanations: [
+                    HelpExplanation(title: "Hide result", detail: "Use the row hide affordance to remove a launch item from app search results.")
+                ]
+            )
+        case .calculator:
+            return HelpPageContent(
+                shortcuts: [
+                    openMode
+                ],
+                explanations: [
+                    HelpExplanation(title: "Copy result", detail: "Press Return on the selected calculation result to copy it."),
+                    HelpExplanation(title: "Clear history", detail: "Use the clear-history affordance to remove calculation history.")
+                ]
+            )
+        case .dictionary:
+            return HelpPageContent(
+                shortcuts: [
+                    openMode
+                ],
+                explanations: [
+                    HelpExplanation(title: "Open definition", detail: "Press Return on a selected term to open it in Dictionary."),
+                    HelpExplanation(title: "Remove history row", detail: "Use the row remove affordance to delete a saved dictionary lookup.")
+                ]
+            )
+        case .files:
+            return HelpPageContent(
+                shortcuts: [
+                    openMode,
+                    HelpShortcut(title: "Move selection", keys: "Arrow keys", detail: "Navigate file rows and directories."),
+                    HelpShortcut(title: "Select item", keys: "Space", detail: "Select or deselect the focused file row."),
+                    HelpShortcut(title: "Range select", keys: "Shift+Space", detail: "Extend selection across file rows."),
+                    HelpShortcut(title: "Preview selected file", keys: "Hold Space", detail: "Hold Space to show the native preview, then release to dismiss it."),
+                    HelpShortcut(title: "History", keys: "Command+[ / ]", detail: "Move backward or forward through visited directories.")
+                ],
+                explanations: [
+                    HelpExplanation(title: "Directory entry", detail: "Use the right and left arrow navigation flow to enter and leave directories.")
+                ]
+            )
+        }
+    }
+}
+
+private enum HelpPane: Hashable, Identifiable {
+    case global
+    case mode(LauncherMode)
+
+    static let allCases: [HelpPane] = [.global] + LauncherMode.ordered.map { .mode($0) }
+
+    var id: String {
+        switch self {
+        case .global:
+            return "global"
+        case let .mode(mode):
+            return "mode-\(mode.rawValue)"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .global:
+            return "Global"
+        case let .mode(mode):
+            return mode.shortTitle
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .global:
+            return "Hotkeys that work across the open Bucky panel."
+        case let .mode(mode):
+            return "Hotkeys for \(mode.shortTitle)."
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .global:
+            return "globe"
+        case let .mode(mode):
+            return mode.helpSystemImage
+        }
     }
 }
 

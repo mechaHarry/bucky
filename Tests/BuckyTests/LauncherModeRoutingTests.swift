@@ -20,6 +20,15 @@ final class LauncherModeRoutingTests: XCTestCase {
         XCTAssertNil(LauncherMode(commandNumber: 5))
     }
 
+    func testModeCycleWrapsThroughOrderedModes() {
+        XCTAssertEqual(LauncherMode.applications.previousMode, .files)
+        XCTAssertEqual(LauncherMode.applications.nextMode, .calculator)
+        XCTAssertEqual(LauncherMode.calculator.nextMode, .dictionary)
+        XCTAssertEqual(LauncherMode.dictionary.nextMode, .files)
+        XCTAssertEqual(LauncherMode.files.nextMode, .applications)
+        XCTAssertEqual(LauncherMode.files.previousMode, .dictionary)
+    }
+
     func testModePlaceholdersAreSeparated() {
         XCTAssertEqual(LauncherMode.applications.placeholder, "Search Apps Here")
         XCTAssertEqual(LauncherMode.calculator.placeholder, "Perform Calculations Here")
@@ -212,7 +221,7 @@ final class LauncherModeRoutingTests: XCTestCase {
         ))
     }
 
-    func testFilesModeRestoresFocusWhenAppReactivatesAfterPermissionPrompt() {
+    func testPresentedVisibleLauncherRestoresFocusWhenAppReactivatesWithoutKeyWindow() {
         XCTAssertTrue(LauncherWindowFocusRestorationPolicy.shouldRestoreAfterAppActivation(
             mode: .files,
             isPinned: false,
@@ -220,7 +229,7 @@ final class LauncherModeRoutingTests: XCTestCase {
             isVisible: true,
             isKeyWindow: false
         ))
-        XCTAssertFalse(LauncherWindowFocusRestorationPolicy.shouldRestoreAfterAppActivation(
+        XCTAssertTrue(LauncherWindowFocusRestorationPolicy.shouldRestoreAfterAppActivation(
             mode: .applications,
             isPinned: false,
             isPresented: true,
@@ -234,6 +243,32 @@ final class LauncherModeRoutingTests: XCTestCase {
             isVisible: true,
             isKeyWindow: true
         ))
+    }
+
+    func testLauncherFocusClaimsKeyWindowWithoutForegroundActivation() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
+
+        XCTAssertTrue(source.contains("private func activateAndFocusWindow()"))
+        XCTAssertTrue(source.contains("window.orderFrontRegardless()\n        window.makeKeyAndOrderFront(nil)"))
+        XCTAssertFalse(source.contains("NSRunningApplication.current.activate"))
+        XCTAssertFalse(source.contains("NSApp.activate()"))
+        XCTAssertFalse(source.contains("NSApp.activate(ignoringOtherApps: true)"))
+    }
+
+    func testLauncherFocusClaimRetriesAreBoundedAndStopAfterFocusIsOwned() {
+        XCTAssertEqual(LauncherWindowFocusClaimPolicy.retryDelays, [0.016, 0.04, 0.08])
+        XCTAssertTrue(LauncherWindowFocusClaimPolicy.shouldRetry(isWindowKey: false))
+        XCTAssertFalse(LauncherWindowFocusClaimPolicy.shouldRetry(isWindowKey: true))
+    }
+
+    func testLauncherWindowUsesKeyCapableNonactivatingPanel() throws {
+        let panelSource = try source(named: "Sources/Bucky/UI/Shared/BuckyPanelWindow.swift")
+        let controllerSource = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
+
+        XCTAssertTrue(panelSource.contains("final class BuckyPanelWindow: NSPanel"))
+        XCTAssertTrue(panelSource.contains("override var canBecomeKey: Bool { true }"))
+        XCTAssertTrue(controllerSource.contains("styleMask: [.borderless, .resizable, .nonactivatingPanel]"))
+        XCTAssertTrue(controllerSource.contains("window.becomesKeyOnlyIfNeeded = false"))
     }
 
     @available(macOS 26.0, *)
@@ -278,6 +313,19 @@ final class LauncherModeRoutingTests: XCTestCase {
         XCTAssertFalse(LauncherWindowRepositionPolicy.shouldReposition(after: .down))
         XCTAssertFalse(LauncherWindowRepositionPolicy.shouldReposition(after: .up))
         XCTAssertTrue(LauncherWindowRepositionPolicy.shouldReposition(after: .switchMode(.files)))
+        XCTAssertTrue(LauncherWindowRepositionPolicy.shouldReposition(after: .previousMode))
+        XCTAssertTrue(LauncherWindowRepositionPolicy.shouldReposition(after: .nextMode))
+    }
+
+    func testCommandArrowRoutingCyclesModesWhenLauncherIsActive() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
+
+        XCTAssertTrue(source.contains("if event.isCommandLeftArrow"))
+        XCTAssertTrue(source.contains("return self.handleLauncherCommand(.previousMode) ? nil : event"))
+        XCTAssertTrue(source.contains("if event.isCommandRightArrow"))
+        XCTAssertTrue(source.contains("return self.handleLauncherCommand(.nextMode) ? nil : event"))
+        XCTAssertTrue(source.contains("return handleLauncherCommand(.previousMode)"))
+        XCTAssertTrue(source.contains("return handleLauncherCommand(.nextMode)"))
     }
 
     func testHotKeyDoesNotAddExtraMainQueueHopWhenAlreadyOnMainThread() throws {
@@ -294,7 +342,7 @@ final class LauncherModeRoutingTests: XCTestCase {
         let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
 
         XCTAssertTrue(source.contains("transaction.disablesAnimations = true"))
-        XCTAssertTrue(source.contains("withTransaction(transaction) {\n                model.isPresented = true\n            }\n            finishShow(transitionID: visibilityTransitionID)"))
+        XCTAssertTrue(source.contains("withTransaction(transaction) {\n                model.isPresented = true\n            }\n            animateWindowOpen(generation: generation)"))
         XCTAssertFalse(source.contains("scheduleApplicationReindexIfNeeded"))
         XCTAssertTrue(source.contains("startApplicationIndexSourceStream()"))
         XCTAssertFalse(source.contains("withAnimation(presentationAnimation, completionCriteria: .removed) {\n                model.isPresented = true"))
@@ -305,10 +353,72 @@ final class LauncherModeRoutingTests: XCTestCase {
     func testHideFadesWholeWindowBeforeRemovingSwiftUIContent() throws {
         let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
 
-        XCTAssertTrue(source.contains("NSAnimationContext.runAnimationGroup"))
-        XCTAssertTrue(source.contains("window.animator().alphaValue = 0"))
-        XCTAssertTrue(source.contains("transaction.disablesAnimations = true\n                withTransaction(transaction) {\n                    self.model.isPresented = false\n                }"))
+        XCTAssertTrue(source.contains("visibilityTransitionCoordinator.request(.hide)"))
+        XCTAssertTrue(source.contains("private func startVisibilityAnimation()"))
+        XCTAssertTrue(source.contains("_ = visibilityTransitionCoordinator.startAnimation()"))
+        XCTAssertTrue(source.contains("private func completeHidePresentation()"))
+        XCTAssertTrue(source.contains("model.isPresented = false"))
         XCTAssertFalse(source.contains("withAnimation(presentationAnimation, completionCriteria: .removed) {\n            model.isPresented = false"))
+    }
+
+    @available(macOS 26.0, *)
+    func testFinishHideClearsSettingsAndHelpPanelState() throws {
+        let controller = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
+        let model = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherModel.swift")
+
+        XCTAssertTrue(controller.contains("private func completeHidePresentation()"))
+        XCTAssertTrue(controller.contains("model.resetPanelVisibilityAfterHide()"))
+        XCTAssertTrue(model.contains("func resetPanelVisibilityAfterHide()"))
+    }
+
+    @available(macOS 26.0, *)
+    func testHotKeyShowFadesWholeWindowAfterNonAnimatedContentMaterialization() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
+
+        XCTAssertTrue(source.contains("let priorPhase = visibilityTransitionCoordinator.phase"))
+        XCTAssertTrue(source.contains("LauncherWindowShowTransitionPolicy.decision("))
+        XCTAssertTrue(source.contains("showDecision == .replaceAnimation"))
+        XCTAssertTrue(source.contains("window.alphaValue = 0"))
+        XCTAssertTrue(source.contains("withTransaction(transaction) {\n                model.isPresented = true\n            }\n            animateWindowOpen(generation: generation)"))
+        XCTAssertTrue(source.contains("windowOpenAnimationScheduler.schedule("))
+        XCTAssertTrue(source.contains("startAnimation: { [weak self] completion in"))
+        XCTAssertTrue(source.contains("visibilityTransitionCoordinator.startAnimation(completion: completion)"))
+        XCTAssertTrue(source.contains("completionAction: { [weak self] in"))
+        XCTAssertTrue(source.contains("generation: generation"))
+        XCTAssertTrue(source.contains("intent: .show"))
+        XCTAssertTrue(source.contains("phase: .showing"))
+        XCTAssertFalse(source.contains("completionAction: {}"))
+    }
+
+    @available(macOS 26.0, *)
+    func testReturningFromPanelDuringHideReplacesTransitionGeneration() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
+
+        XCTAssertTrue(source.contains("private func showLauncherFromPanel()"))
+        XCTAssertTrue(source.contains("let priorPhase = visibilityTransitionCoordinator.phase"))
+        XCTAssertTrue(source.contains("let isMaterialized = window.isVisible && model.isPresented"))
+        XCTAssertTrue(source.contains("let showDecision = LauncherWindowShowTransitionPolicy.decision(\n            priorPhase: priorPhase,\n            isMaterialized: isMaterialized\n        )"))
+        XCTAssertTrue(source.contains("let generation = visibilityTransitionCoordinator.request(.show)\n        model.showLauncherSurface()"))
+        XCTAssertTrue(source.contains("if showDecision == .replaceAnimation {\n            animateWindowOpen(generation: generation)\n        } else {\n            visibilityTransitionCoordinator.complete("))
+        XCTAssertTrue(source.contains("generation: generation,\n                intent: .show,\n                phase: .showing"))
+        XCTAssertTrue(source.contains("model.resetPanelVisibilityAfterHide()"))
+    }
+
+    @available(macOS 26.0, *)
+    func testWindowOpenCloseAnimationUsesConfiguredPresentationPolicy() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/LauncherWindowVisibilityTransitionCoordinator.swift")
+
+        XCTAssertTrue(source.contains("enum LauncherWindowPresentationAnimationPolicy"))
+        XCTAssertTrue(source.contains("static func duration(for timing: LauncherAnimationTiming) -> TimeInterval"))
+        XCTAssertTrue(source.contains("case .smooth:\n            return 0.20"))
+        XCTAssertTrue(source.contains("case .snappy:\n            return 0.10"))
+        XCTAssertTrue(source.contains("static func timingFunction(for timing: LauncherAnimationTiming) -> CAMediaTimingFunction"))
+        XCTAssertTrue(source.contains("case .smooth:\n            return CAMediaTimingFunction(name: .easeInEaseOut)"))
+        XCTAssertTrue(source.contains("case .snappy:\n            return CAMediaTimingFunction(name: .easeOut)"))
+        XCTAssertTrue(source.contains("let timing = animationTiming()"))
+        XCTAssertTrue(source.contains("let duration = LauncherWindowPresentationAnimationPolicy.duration(for: timing)"))
+        XCTAssertTrue(source.contains("let timingFunction = LauncherWindowPresentationAnimationPolicy.timingFunction(for: timing)"))
+        XCTAssertFalse(source.contains("static let duration: TimeInterval = 0.12"))
     }
 
     @available(macOS 26.0, *)
@@ -323,12 +433,23 @@ final class LauncherModeRoutingTests: XCTestCase {
     }
 
     @available(macOS 26.0, *)
+    func testOptionPinnedFocusHandlingRemainsScopedToFilesModeInMonitorPaths() throws {
+        let source = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
+
+        XCTAssertTrue(source.contains("if event.type == .flagsChanged, self.model.mode == .files {\n                return self.handleFileModifierEvent(event)\n            }"))
+        XCTAssertEqual(
+            source.components(separatedBy: "fileFocusState: self.model.mode == .files ? self.fileBrowserFocusState : nil").count - 1,
+            3
+        )
+    }
+
+    @available(macOS 26.0, *)
     func testTextInputModesCaptureTypedCharactersDuringShowAnimation() throws {
         let controller = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
         let model = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherModel.swift")
         let utilities = try source(named: "Sources/Bucky/UI/Shared/Utilities.swift")
 
-        XCTAssertTrue(controller.contains("self.visibilityState == .showing,\n                   self.model.mode.acceptsTextInput,\n                   let character = event.launcherTextInputCharacter"))
+        XCTAssertTrue(controller.contains("self.visibilityTransitionCoordinator.phase == .showing,\n                   self.model.mode.acceptsTextInput,\n                   let character = event.launcherTextInputCharacter"))
         XCTAssertTrue(controller.contains("self.model.insertTextInput(character)"))
         XCTAssertTrue(model.contains("func insertTextInput(_ character: Character)"))
         XCTAssertTrue(model.contains("query.append(character)\n        queryDidChange()"))
@@ -521,6 +642,54 @@ final class LauncherModeRoutingTests: XCTestCase {
         XCTAssertEqual(model.query, "2+2")
         _ = model.handle(command: .switchMode(.dictionary))
         XCTAssertEqual(model.query, "hello")
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testResetPanelVisibilityAfterHideClearsBothPanelFlags() {
+        let model = LiquidGlassLauncherModel(
+            settingsStore: SettingsStore(),
+            inclusionStore: InclusionStore(),
+            exclusionStore: ExclusionStore(),
+            calculationHistoryStore: CalculationHistoryStore()
+        )
+
+        model.isShowingSettings = true
+        model.isShowingHelp = true
+
+        XCTAssertTrue(model.isShowingSettings)
+        XCTAssertTrue(model.isShowingHelp)
+
+        model.resetPanelVisibilityAfterHide()
+
+        XCTAssertFalse(model.isShowingSettings)
+        XCTAssertFalse(model.isShowingHelp)
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testModeCycleCommandsUseDoublyLinkedModeOrder() {
+        let model = LiquidGlassLauncherModel(
+            settingsStore: SettingsStore(),
+            inclusionStore: InclusionStore(),
+            exclusionStore: ExclusionStore(),
+            calculationHistoryStore: CalculationHistoryStore(),
+            fileBrowserModel: FileBrowserModel(
+                fileSystem: StubFileSystemClient(home: URL(fileURLWithPath: "/Users/test"), entriesByDirectory: [:]),
+                store: InMemoryFileBrowserStore(state: .defaultValue),
+                directoryStream: ImmediateDirectoryStream()
+            )
+        )
+
+        model.show(mode: .applications)
+        _ = model.handle(command: .previousMode)
+        XCTAssertEqual(model.mode, .files)
+
+        _ = model.handle(command: .nextMode)
+        XCTAssertEqual(model.mode, .applications)
+
+        _ = model.handle(command: .nextMode)
+        XCTAssertEqual(model.mode, .calculator)
     }
 
     @MainActor
