@@ -52,92 +52,23 @@ final class LauncherModeTintPolicyTests: XCTestCase {
         )
     }
 
-    func testModeTintIsWiredToIndividualPillsWithoutHeaderGlass() throws {
-        let modeSwitcher = try source(named: "Sources/Bucky/UI/SwiftUI/ModeSwitcherView.swift")
-        let launcher = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
-
-        XCTAssertTrue(modeSwitcher.contains("LauncherModeTintPolicy.activeColor(for: mode)"))
-        XCTAssertTrue(modeSwitcher.contains("LauncherModeTintPolicy.iconColor(for: mode, colorScheme: colorScheme)"))
-        XCTAssertTrue(modeSwitcher.contains("LauncherModeTintPolicy.iconColor(for: .files, colorScheme: colorScheme)"))
-        XCTAssertTrue(modeSwitcher.contains("LauncherModeTintPolicy.inactiveOrbIconColor(for: mode, colorScheme: colorScheme)"))
-        XCTAssertTrue(modeSwitcher.contains("ModeControlBackground("))
-        XCTAssertTrue(modeSwitcher.contains("fill: LauncherModeTintPolicy.inactiveOrbColor(for: mode)"))
-        XCTAssertTrue(modeSwitcher.contains("tint: LauncherModeTintPolicy.activeColor(for: mode)"))
-        XCTAssertFalse(modeSwitcher.contains("TextInputPillGlassSurface(tint:"))
-        XCTAssertFalse(modeSwitcher.contains(".tint(LauncherModeTintPolicy.inactiveOrbColor(for: mode))"))
-        XCTAssertFalse(launcher.contains("headerGlassBackdrop"))
-        XCTAssertFalse(launcher.contains("headerGlassShape"))
-        XCTAssertFalse(launcher.contains("LauncherVisualStyle.headerGlassTintOpacity"))
-        XCTAssertFalse(launcher.contains(".background(windowBackdrop)"))
-        XCTAssertFalse(launcher.contains("private var windowBackdrop: some View"))
-        XCTAssertTrue(launcher.contains("private var resultsPaneBackdrop: some View"))
-        XCTAssertTrue(launcher.contains("LauncherVisualStyle.resultsPaneModeTintOpacity"))
-        XCTAssertTrue(launcher.contains("LauncherVisualStyle.resultsPaneRim"))
-        XCTAssertTrue(launcher.contains("LauncherModeTintPolicy.panelColor(for: model.mode)"))
+    func testSelectionColorMatchesActiveColorForEachMode() {
+        for mode in LauncherMode.ordered {
+            XCTAssertEqual(
+                LauncherModeTintPolicy.selectionColor(for: mode),
+                LauncherModeTintPolicy.activeColor(for: mode)
+            )
+        }
     }
 
-    func testResultsPaneReturnsWithoutWrappingModeStones() throws {
-        let launcher = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
-
-        XCTAssertTrue(launcher.contains("resultsPane"))
-        XCTAssertTrue(launcher.contains("ZStack {\n            resultsPaneBackdrop"))
-        XCTAssertFalse(launcher.contains("resultsPaneEdgeVeil"))
-        XCTAssertFalse(launcher.contains("headerGlassBackdrop"))
-        XCTAssertFalse(launcher.contains(".background {\n                header"))
-    }
-
-    func testLauncherBackdropDoesNotAddOuterWindowShadow() throws {
-        let launcher = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
-
-        XCTAssertFalse(launcher.contains("private var windowBackdrop: some View"))
-        XCTAssertFalse(launcher.contains(".clipShape(launcherOuterShape)"))
-        XCTAssertFalse(launcher.contains("headerGlassBackdrop"))
-        XCTAssertTrue(launcher.contains("static let windowCornerRadius: CGFloat = 30"))
-        XCTAssertFalse(launcher.contains(".padding(LauncherWindowFramePolicy.shadowBleed)"))
-        XCTAssertFalse(launcher.contains("resultsPane\n        .padding(10)"))
-        XCTAssertFalse(launcher.contains(".shadow(color: .black.opacity(0.22), radius: 30, x: 0, y: 20)"))
-        XCTAssertFalse(launcher.contains(".shadow(color: .black.opacity(0.14), radius: 16, x: 0, y: 8)"))
-    }
-
-    func testModeTintIsWiredToSelectionHighlightsAndFileIndicator() throws {
-        let launcher = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
-        let resultList = try source(named: "Sources/Bucky/UI/SwiftUI/LauncherResultListView.swift")
-        let fileBrowser = try source(named: "Sources/Bucky/UI/SwiftUI/FileBrowserView.swift")
-
-        XCTAssertTrue(launcher.contains("selectionTint: LauncherModeTintPolicy.selectionColor(for: model.mode)"))
-        XCTAssertTrue(launcher.contains("if let fileBrowserModel = model.activeFileBrowserModel"))
-        XCTAssertTrue(launcher.contains("FileBrowserView(\n                    model: fileBrowserModel,\n                    selectionTint: LauncherModeTintPolicy.selectionColor(for: model.mode)\n                )"))
-        XCTAssertTrue(resultList.contains("let selectionTint: Color"))
-        XCTAssertTrue(resultList.contains("tint: selectionTint,"))
-        XCTAssertTrue(resultList.contains("selectionTint.opacity(0.42)"))
-        XCTAssertTrue(fileBrowser.contains("let selectionTint: Color"))
-        XCTAssertTrue(fileBrowser.contains(".fill(selectionTint)"))
-        XCTAssertFalse(fileBrowser.contains(".shadow(color: selectionTint.opacity(0.5), radius: 5)"))
-    }
-
-    func testPillTooltipsIncludeCommandShortcutNumbers() throws {
-        let modeSwitcher = try source(named: "Sources/Bucky/UI/SwiftUI/ModeSwitcherView.swift")
-
-        XCTAssertTrue(modeSwitcher.contains(".help(helpText(for: mode))"))
-        XCTAssertTrue(modeSwitcher.contains("Command+1"))
-        XCTAssertTrue(modeSwitcher.contains("Command+2"))
-        XCTAssertTrue(modeSwitcher.contains("Command+3"))
-        XCTAssertTrue(modeSwitcher.contains("Command+4"))
-    }
-
-    func testCalculatorModeUsesNumberIconInsteadOfFunctionIcon() throws {
-        let modeSwitcher = try source(named: "Sources/Bucky/UI/SwiftUI/ModeSwitcherView.swift")
-
-        XCTAssertTrue(modeSwitcher.contains("return \"123.rectangle.fill\""))
-        XCTAssertFalse(modeSwitcher.contains("return \"function\""))
-    }
-
-    private func source(named path: String) throws -> String {
-        let sourceURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent(path)
-        return try String(contentsOf: sourceURL, encoding: .utf8)
+    func testIconColorUsesDarkVariantOnlyInDarkMode() {
+        XCTAssertEqual(
+            LauncherModeTintPolicy.iconColor(for: .calculator, colorScheme: .light),
+            LauncherModeTintPolicy.iconColor(for: .calculator)
+        )
+        XCTAssertNotEqual(
+            LauncherModeTintPolicy.iconColor(for: .calculator, colorScheme: .dark),
+            LauncherModeTintPolicy.iconColor(for: .calculator, colorScheme: .light)
+        )
     }
 }

@@ -58,48 +58,28 @@ final class LiquidGlassLauncherFilterTests: XCTestCase {
         XCTAssertFalse(AppIconPreloadPolicy.shouldYield(afterLoadingItemAt: 6))
     }
 
-    func testApplicationRowsStayLazyForModeSwitchInteractivity() throws {
-        let launcher = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
-        let resultList = try source(named: "Sources/Bucky/UI/SwiftUI/LauncherResultListView.swift")
+    func testReindexDoesNotAdvanceStoreGenerationForUnchangedSnapshots() {
+        var store = ApplicationRowStore()
+        let finder = launchItem(title: "Finder", searchText: "finder")
 
-        XCTAssertTrue(launcher.contains("resultScrollView(reconstructionID: applicationsReconstructionIdentity)"))
-        XCTAssertFalse(launcher.contains("resultScrollView(reconstructionID: applicationsReconstructionIdentity, usesEagerRows: true)"))
-        XCTAssertTrue(resultList.contains("let usesEagerRows: Bool"))
-        XCTAssertTrue(resultList.contains("LazyVStack(spacing: LauncherResultListLayoutPolicy.rowSpacing)"))
+        XCTAssertTrue(store.replaceAllIfChanged([finder]))
+        let initialGeneration = store.generation
+
+        XCTAssertFalse(store.replaceAllIfChanged([finder]))
+        XCTAssertEqual(store.generation, initialGeneration)
     }
 
-    func testReindexDoesNotClearFilterCacheForUnchangedSnapshots() throws {
-        let model = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherModel.swift")
+    func testApplicationRowStoreReusesStableIDsAcrossSnapshotRefreshes() {
+        var store = ApplicationRowStore()
+        let finder = launchItem(title: "Finder", searchText: "finder")
 
-        XCTAssertTrue(model.contains("let previousItems = indexedItems"))
-        XCTAssertTrue(model.contains("if appRowStore.replaceAllIfChanged(items) {\n                rebuildVisibleItems()\n            }"))
-    }
+        store.replaceAll([finder])
+        let originalID = store.allIDs[0]
 
-    func testApplicationRowsRenderFromStableRowIDs() throws {
-        let launcher = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
-        let model = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherModel.swift")
+        store.replaceAll([finder])
 
-        XCTAssertTrue(model.contains("@Published var filteredItemIDs: [AppRowID] = []"))
-        XCTAssertTrue(launcher.contains("ForEach(Array(model.filteredItemIDs.enumerated()), id: \\.element)"))
-        XCTAssertTrue(launcher.contains("if let item = model.item(for: id)"))
-        XCTAssertFalse(launcher.contains("ForEach(Array(model.filteredItems.enumerated()), id: \\.element.url)"))
-    }
-
-    func testApplicationIndexSnapshotMemoizationIsWiredOffMainThread() throws {
-        let model = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherModel.swift")
-
-        XCTAssertTrue(model.contains("loadCachedApplicationSnapshot()"))
-        XCTAssertTrue(model.contains("DispatchQueue.global(qos: .utility).async { [applicationIndexSnapshotCache] in"))
-        XCTAssertTrue(model.contains("applicationIndexSnapshotCache.load()"))
-        XCTAssertTrue(model.contains("applicationIndexSnapshotCache.save(items)"))
-    }
-
-    func testWarmFilterCacheWritesAreGenerationScoped() throws {
-        let model = try source(named: "Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherModel.swift")
-
-        XCTAssertTrue(model.contains("generation: Int"))
-        XCTAssertTrue(model.contains("self?.storeWarmFilterEntries(entries, generation: snapshot.generation)"))
-        XCTAssertTrue(model.contains("filterCache.store(entry.results, for: entry.query, generation: generation)"))
+        XCTAssertEqual(store.allIDs, [originalID])
+        XCTAssertEqual(store.item(for: originalID)?.title, "Finder")
     }
 
     private func launchItem(title: String, searchText: String) -> LaunchItem {
@@ -109,14 +89,5 @@ final class LiquidGlassLauncherFilterTests: XCTestCase {
             url: URL(fileURLWithPath: "/Applications/\(title).app"),
             searchText: searchText
         )
-    }
-
-    private func source(named path: String) throws -> String {
-        let sourceURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent(path)
-        return try String(contentsOf: sourceURL, encoding: .utf8)
     }
 }

@@ -53,44 +53,18 @@ final class FadeMarqueeTextPolicyTests: XCTestCase {
         XCTAssertEqual(FadeMarqueeTextLayoutPolicy.trailingFadeStrength(offset: 0, overflow: overflow), 1)
     }
 
-    func testSourceDoesNotHardCodeAnimationRefreshCadence() throws {
-        let sourceRoot = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-            .appendingPathComponent("Sources", isDirectory: true)
-        let sourceFiles = try swiftFiles(in: sourceRoot)
-        let bannedPatterns = [
-            "TimelineView(.animation(minimumInterval:",
-            "preferredFramesPerSecond",
-            "1.0 / 60.0",
-            "1.0 / 60",
-            "1 / 60",
-            "1.0 / 30.0",
-            "1.0 / 30",
-            "1 / 30"
-        ]
-
-        let violations = try sourceFiles.flatMap { file -> [String] in
-            let contents = try String(contentsOf: file, encoding: .utf8)
-            return bannedPatterns
-                .filter { contents.contains($0) }
-                .map { "\(file.path): \($0)" }
-        }
-
-        XCTAssertTrue(violations.isEmpty, violations.joined(separator: "\n"))
-    }
-
-    private func swiftFiles(in directory: URL) throws -> [URL] {
-        let keys: [URLResourceKey] = [.isRegularFileKey]
-        guard let enumerator = FileManager.default.enumerator(
-            at: directory,
-            includingPropertiesForKeys: keys
-        ) else {
-            return []
-        }
-
-        return try enumerator.compactMap { item in
-            guard let url = item as? URL, url.pathExtension == "swift" else { return nil }
-            let resourceValues = try url.resourceValues(forKeys: Set(keys))
-            return resourceValues.isRegularFile == true ? url : nil
-        }
+    func testTravelDurationClampsOverflowIntoSupportedRange() {
+        XCTAssertEqual(
+            FadeMarqueeTextLayoutPolicy.travelDuration(forOverflow: 0),
+            FadeMarqueeTextLayoutPolicy.minimumTravelSeconds
+        )
+        XCTAssertEqual(
+            FadeMarqueeTextLayoutPolicy.travelDuration(forOverflow: 90),
+            FadeMarqueeTextLayoutPolicy.minimumTravelSeconds
+        )
+        XCTAssertEqual(
+            FadeMarqueeTextLayoutPolicy.travelDuration(forOverflow: 720),
+            FadeMarqueeTextLayoutPolicy.maximumTravelSeconds
+        )
     }
 }

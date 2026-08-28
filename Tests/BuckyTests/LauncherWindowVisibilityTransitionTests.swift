@@ -381,28 +381,44 @@ final class LauncherWindowVisibilityTransitionTests: XCTestCase {
         XCTAssertEqual(didHideCount, 1)
     }
 
-    func testAppKitAlphaDriverWeaklyOwnsWindow() throws {
-        let source = try String(
-            contentsOf: URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-                .appendingPathComponent("Sources/Bucky/UI/SwiftUI/LauncherWindowAlphaAnimationDriver.swift"),
-            encoding: .utf8
-        )
+    func testAppKitAlphaDriverDoesNotRetainReleasedWindow() {
+        weak var weakWindow: NSWindow?
+        let driver = autoreleasepool { () -> AppKitLauncherWindowAlphaAnimationDriver in
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 120, height: 80),
+                styleMask: [.borderless],
+                backing: .buffered,
+                defer: false
+            )
+            weakWindow = window
+            window.alphaValue = 0.6
+            return AppKitLauncherWindowAlphaAnimationDriver(window: window)
+        }
 
-        XCTAssertTrue(source.contains("private weak var window: NSWindow?"))
+        XCTAssertNil(weakWindow)
+        XCTAssertEqual(driver.alphaValue, 0)
+        XCTAssertFalse(driver.animate(
+            to: 1,
+            duration: 0.1,
+            timingFunction: CAMediaTimingFunction(name: .easeOut),
+            completion: {}
+        ))
     }
 
-    func testAppKitAlphaDriverUsesNativeZeroDurationCancellation() throws {
-        let source = try String(
-            contentsOf: URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-                .appendingPathComponent("Sources/Bucky/UI/SwiftUI/LauncherWindowAlphaAnimationDriver.swift"),
-            encoding: .utf8
+    func testAppKitAlphaDriverCancelAndNormalizePreservesCurrentAlpha() {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 120, height: 80),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
         )
+        window.alphaValue = 0.35
+        let driver = AppKitLauncherWindowAlphaAnimationDriver(window: window)
 
-        XCTAssertTrue(source.contains("NSAnimationContext.runAnimationGroup"))
-        XCTAssertTrue(source.contains("context.duration = 0"))
-        XCTAssertTrue(source.contains("let currentAlpha = window.alphaValue"))
-        XCTAssertTrue(source.contains("window.animator().alphaValue = currentAlpha"))
-        XCTAssertTrue(source.contains("window.animator().alphaValue = alpha"))
+        driver.cancelAndNormalize()
+
+        XCTAssertEqual(driver.alphaValue, 0.35)
+        XCTAssertEqual(window.alphaValue, 0.35)
     }
 
     func testCoordinatorTeardownDoesNotRetainOwnerOrInvokeCompletion() {

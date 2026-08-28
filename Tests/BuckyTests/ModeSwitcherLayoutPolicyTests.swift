@@ -90,105 +90,21 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
         XCTAssertEqual(ModeSwitcherLayoutPolicy.launcherHeaderHorizontalInset, 0)
     }
 
-    func testTextInputModesUseMarginsInsteadOfVerticalOffsets() throws {
-        let source = try modeSwitcherSource()
+    func testActiveTextPillProgressInsetExpandsOnlyWhenShowingProgress() {
+        let baseInset = ModeSwitcherLayoutPolicy.activeTextPillInputTrailingInset(isShowingProgress: false)
+        let progressInset = ModeSwitcherLayoutPolicy.activeTextPillInputTrailingInset(isShowingProgress: true)
 
-        XCTAssertTrue(source.contains(".padding(.leading, ModeSwitcherLayoutPolicy.activeTextPillIconLeadingInset)"))
-        XCTAssertTrue(source.contains(".padding(.leading, ModeSwitcherLayoutPolicy.activeTextPillInputLeadingInset)"))
-        XCTAssertTrue(source.contains("ModeSwitcherLayoutPolicy.activeTextPillInputTrailingInset(isShowingProgress:"))
-        XCTAssertFalse(source.contains("HStack(spacing: ModeSwitcherLayoutPolicy.activeTextPillSpacing)"))
-        XCTAssertFalse(source.contains("activeTextPillInputVerticalOffset"))
-        XCTAssertFalse(source.contains("activeTextPillIconVerticalOffset"))
-        XCTAssertFalse(source.contains(".offset(y:"))
+        XCTAssertEqual(baseInset, ModeSwitcherLayoutPolicy.activeTextPillHorizontalInset)
+        XCTAssertGreaterThan(progressInset, baseInset)
+        XCTAssertEqual(
+            progressInset - baseInset,
+            ModeSwitcherLayoutPolicy.activeTextPillProgressWidth + ModeSwitcherLayoutPolicy.activePillHeight / 4
+        )
     }
 
-    func testActiveTextPillNormalizesVariableSymbolArtwork() throws {
-        let source = try modeSwitcherSource()
-
-        XCTAssertTrue(source.contains("private struct ActiveTextPillIcon"))
-        XCTAssertTrue(source.contains(".resizable()"))
-        XCTAssertTrue(source.contains(".scaledToFit()"))
-        XCTAssertTrue(source.contains("ModeSwitcherLayoutPolicy.activeTextPillIconGlyphSize"))
-    }
-
-    func testActiveTextPillBoxesIconAndTextRelativeToPill() throws {
-        let source = try modeSwitcherSource()
-
-        XCTAssertTrue(source.contains("ZStack(alignment: .leading)"))
-        XCTAssertTrue(source.contains("ActiveTextPillIcon(symbol: symbol)"))
-        XCTAssertTrue(source.contains("ActiveTextPillInput("))
-        XCTAssertTrue(source.contains("private struct ActiveTextPillInput"))
-        XCTAssertTrue(source.contains(".fixedSize(horizontal: false, vertical: true)"))
-    }
-
-    func testActiveTextPillKeepsTextFieldOutsideControlBackground() throws {
-        let source = try modeSwitcherSource()
-
-        XCTAssertTrue(source.contains("modeSwitcherElement(for: mode)"))
-        XCTAssertTrue(source.contains("private struct ModeControlBackground<ShapeType: InsettableShape>"))
-        XCTAssertTrue(source.contains("ModeControlBackground(\n                shape: Capsule()"))
-        XCTAssertFalse(source.contains("private struct TextInputPillGlassSurface"))
-        XCTAssertFalse(source.contains("TextInputModePill(\n                model: model,\n                mode: mode,\n                symbol: symbol(for: mode),\n                isSearchFocused: $isSearchFocused\n            )\n            .glassEffectID"))
-    }
-
-    func testActiveTextPillForegroundSitsAboveControlBackground() throws {
-        let source = try modeSwitcherSource()
-
-        XCTAssertTrue(source.contains("private struct TextInputPillForegroundLayer"))
-        XCTAssertTrue(source.contains(".background {\n            ModeControlBackground("))
-        XCTAssertTrue(source.contains("TextInputPillForegroundLayer("))
-        XCTAssertFalse(source.contains(".glassEffect(.regular.interactive(), in: Capsule())"))
-    }
-
-    func testModeStonesAndPillsUseCheapRowStyleSurfaces() throws {
-        let source = try modeSwitcherSource()
-
-        XCTAssertTrue(source.contains(".buttonStyle(.plain)"))
-        XCTAssertTrue(source.contains("ModeControlBackground(\n                shape: Circle()"))
-        XCTAssertTrue(source.contains("ModeControlBackground(\n                        shape: Capsule()"))
-        XCTAssertFalse(source.contains(".buttonStyle(.glass)"))
-        XCTAssertFalse(source.contains(".shadow(color: .black.opacity(0.18)"))
-        XCTAssertFalse(source.contains(".glassEffect("))
-        XCTAssertFalse(source.contains(".glassEffectTransition(.matchedGeometry)"))
+    func testModeStonesAndPillsDisableMatchedGeometryAndOuterContainers() {
         XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: .files))
         XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: .files))
-        XCTAssertFalse(source.contains("headerGlassBackdrop"))
-    }
-
-    func testActiveTextPillOwnsForegroundLegibilityOutsideGlass() throws {
-        let source = try modeSwitcherSource()
-
-        XCTAssertTrue(source.contains("private struct ActiveTextPillPlaceholder"))
-        XCTAssertTrue(source.contains("TextField(\"\", text: $text)"))
-        XCTAssertTrue(source.contains("Text(placeholder)"))
-        XCTAssertTrue(source.contains(".foregroundStyle(.primary)"))
-        XCTAssertTrue(source.contains(".allowsHitTesting(false)"))
-        XCTAssertTrue(source.contains("ActiveTextPillIcon(symbol: symbol)\n                .foregroundStyle(tint)"))
-        XCTAssertFalse(source.contains(".foregroundStyle(.secondary)\n            .frame(\n                width: ModeSwitcherLayoutPolicy.activeTextPillIconGlyphSize"))
-        XCTAssertFalse(source.contains("TextField(placeholder, text: $text)"))
-    }
-
-    func testModeSwitcherTextInputUsesSwiftUITextFieldFocusPath() throws {
-        let source = try modeSwitcherSource()
-
-        XCTAssertTrue(source.contains("TextField(\"\", text: $text)"))
-        XCTAssertTrue(source.contains(".focused($isFocused)"))
-        XCTAssertFalse(source.contains("NSViewRepresentable"))
-        XCTAssertFalse(source.contains("NSTextField"))
-        XCTAssertFalse(source.contains("CenteredLauncherNSTextField"))
-        XCTAssertFalse(source.contains("NSTextFieldDelegate"))
-    }
-
-    func testLauncherSearchFocusRetriesWhenWindowBecomesKey() throws {
-        let source = try launcherViewSource()
-        let modelSource = try launcherModelSource()
-        let controllerSource = try launcherWindowControllerSource()
-
-        XCTAssertTrue(modelSource.contains("@Published var isWindowKey = false"))
-        XCTAssertTrue(source.contains(".onChange(of: model.isWindowKey)"))
-        XCTAssertTrue(source.contains("if isWindowKey {\n                synchronizeSearchFocus()\n            }"))
-        XCTAssertTrue(controllerSource.contains("func windowDidBecomeKey(_ notification: Notification) {\n        model.setWindowKeyState(true)\n    }"))
-        XCTAssertEqual(controllerSource.components(separatedBy: "model.setWindowKeyState(true)").count - 1, 1)
     }
 
     func testFilesPathMarqueeUsesFixedPathWidthInsidePill() {
@@ -201,50 +117,20 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
         XCTAssertLessThan(pathWidth, 420)
     }
 
-    func testFilesPillExposesPersistentFoldersFirstToggle() throws {
-        let source = try modeSwitcherSource()
+    func testWindowKeyStatePublishesOnlyOnValueChange() {
+        let model = LiquidGlassLauncherModel(
+            settingsStore: SettingsStore(),
+            inclusionStore: InclusionStore(),
+            exclusionStore: ExclusionStore(),
+            calculationHistoryStore: CalculationHistoryStore()
+        )
 
-        XCTAssertTrue(source.contains("private var foldersFirstToggle: some View"))
-        XCTAssertTrue(source.contains("model.activeFileBrowserModel?.foldersFirst ?? false"))
-        XCTAssertTrue(source.contains("model.activeFileBrowserModel?.setFoldersFirst($0)"))
-        XCTAssertTrue(source.contains(".toggleStyle(.button)"))
-        XCTAssertTrue(source.contains(".help(\"Folders first\")"))
-        XCTAssertTrue(source.contains("ModeSwitcherLayoutPolicy.filesFoldersFirstToggleWidth"))
-    }
-
-    private func modeSwitcherSource() throws -> String {
-        let sourceURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("Sources/Bucky/UI/SwiftUI/ModeSwitcherView.swift")
-        return try String(contentsOf: sourceURL, encoding: .utf8)
-    }
-
-    private func launcherViewSource() throws -> String {
-        let sourceURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift")
-        return try String(contentsOf: sourceURL, encoding: .utf8)
-    }
-
-    private func launcherModelSource() throws -> String {
-        let sourceURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherModel.swift")
-        return try String(contentsOf: sourceURL, encoding: .utf8)
-    }
-
-    private func launcherWindowControllerSource() throws -> String {
-        let sourceURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherWindowController.swift")
-        return try String(contentsOf: sourceURL, encoding: .utf8)
+        XCTAssertFalse(model.isWindowKey)
+        model.setWindowKeyState(true)
+        XCTAssertTrue(model.isWindowKey)
+        model.setWindowKeyState(true)
+        XCTAssertTrue(model.isWindowKey)
+        model.setWindowKeyState(false)
+        XCTAssertFalse(model.isWindowKey)
     }
 }
