@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import XCTest
 @testable import Bucky
 
@@ -74,12 +75,77 @@ final class FileBrowserPreviewPolicyTests: XCTestCase {
         XCTAssertEqual(rows.remainingCount, 2)
     }
 
-    func testActionPaneOuterPaddingLeavesScrollableContentHeightNonNegative() {
-        XCTAssertEqual(
-            FileBrowserActionPaneLayoutPolicy.contentWidth,
-            FileBrowserActionPaneLayoutPolicy.width - FileBrowserActionPaneLayoutPolicy.padding * 2
+    @MainActor
+    @available(macOS 26.0, *)
+    func testPreviewActionsKeepFocusedRowCenteredInsideBoundedScrollPane() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let entry = FileBrowserEntry(
+            url: home.appendingPathComponent("alpha.txt"),
+            kind: .file,
+            size: 1,
+            createdAt: nil,
+            modifiedAt: nil,
+            isHidden: false
         )
-        XCTAssertGreaterThan(FileBrowserActionPaneLayoutPolicy.outerPadding, 0)
+        let fileSystem = StubFileSystemClient(home: home, entriesByDirectory: [home: [entry]])
+        let model = FileBrowserModel(
+            fileSystem: fileSystem,
+            store: InMemoryFileBrowserStore(state: .defaultValue),
+            directoryStream: ImmediateDirectoryStream(fileSystem: fileSystem),
+            fileServices: RecordingFileBrowserServices()
+        )
+        let host = NSHostingView(rootView: FileBrowserView(model: model))
+        host.frame = CGRect(x: 0, y: 0, width: 720, height: 200)
+
+        let window = NSWindow(
+            contentRect: host.frame,
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = host
+        window.makeKeyAndOrderFront(nil)
+        defer { window.orderOut(nil) }
+
+        model.handle(.open)
+        pumpMainRunLoop()
+
+        guard let actionScrollView = findActionScrollView(in: host) else {
+            return XCTFail("Expected preview actions scroll view")
+        }
+
+        XCTAssertLessThanOrEqual(
+            actionScrollView.frame.height,
+            host.frame.height - FileBrowserActionPaneLayoutPolicy.outerPadding * 2 + 0.5
+        )
+        XCTAssertGreaterThan(actionScrollView.frame.height, 0)
+
+        let initialOriginY = actionScrollView.contentView.bounds.origin.y
+
+        for _ in 0..<3 {
+            model.handle(.down)
+        }
+        pumpMainRunLoop()
+
+        let centeredScrollOriginY = actionScrollView.contentView.bounds.origin.y
+        let maxOriginY = max(
+            0,
+            actionScrollView.documentView!.frame.height - actionScrollView.contentView.bounds.height
+        )
+
+        XCTAssertGreaterThan(initialOriginY, 0)
+        XCTAssertGreaterThan(centeredScrollOriginY, initialOriginY + 1)
+        XCTAssertLessThan(centeredScrollOriginY, maxOriginY - 1)
+
+        while model.focusableActions.indices.contains(model.focusedActionIndex + 1) {
+            model.handle(.down)
+        }
+        pumpMainRunLoop()
+
+        let finalOriginY = actionScrollView.contentView.bounds.origin.y
+
+        XCTAssertGreaterThan(finalOriginY, centeredScrollOriginY + 1)
+        XCTAssertLessThan(finalOriginY, maxOriginY - 1)
     }
 
     func testCodePreviewThemeUsesDarkBackgroundAndLightText() {
@@ -238,4 +304,24 @@ private extension NSColor {
         let color = usingColorSpace(.deviceRGB) ?? self
         return 0.299 * color.redComponent + 0.587 * color.greenComponent + 0.114 * color.blueComponent
     }
+}
+
+@available(macOS 26.0, *)
+private func findActionScrollView(in root: NSView) -> NSScrollView? {
+    if let scrollView = root as? NSScrollView,
+       abs(scrollView.frame.width - FileBrowserActionPaneLayoutPolicy.width) < 1 {
+        return scrollView
+    }
+
+    for subview in root.subviews {
+        if let match = findActionScrollView(in: subview) {
+            return match
+        }
+    }
+
+    return nil
+}
+
+private func pumpMainRunLoop() {
+    RunLoop.current.run(until: Date().addingTimeInterval(0.05))
 }
