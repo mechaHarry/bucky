@@ -2,11 +2,10 @@ import XCTest
 @testable import Bucky
 
 final class LauncherModeTintPolicyTests: XCTestCase {
-    func testModeTintPaletteUsesBrightStoneColors() {
-        XCTAssertEqual(LauncherModeTintPolicy.tint(for: .applications).activeHex, 0x266EF6)
-        XCTAssertEqual(LauncherModeTintPolicy.tint(for: .calculator).activeHex, 0xFFD300)
-        XCTAssertEqual(LauncherModeTintPolicy.tint(for: .dictionary).activeHex, 0xE429F2)
-        XCTAssertEqual(LauncherModeTintPolicy.tint(for: .files).activeHex, 0xFF0130)
+    func testModeTintPaletteMatchesStoneCatalog() {
+        for mode in LauncherMode.ordered {
+            XCTAssertEqual(LauncherModeTintPolicy.tint(for: mode), mode.stoneDefinition.tint)
+        }
     }
 
     func testCalculatorModeUsesContrastingIconInk() {
@@ -34,13 +33,6 @@ final class LauncherModeTintPolicyTests: XCTestCase {
             LauncherModeTintPolicy.tint(for: .files).iconHex,
             LauncherModeTintPolicy.tint(for: .files).activeHex
         )
-    }
-
-    func testModeTintPaletteUsesDarkPanelCompanions() {
-        XCTAssertEqual(LauncherModeTintPolicy.tint(for: .applications).panelHex, 0x08578A)
-        XCTAssertEqual(LauncherModeTintPolicy.tint(for: .calculator).panelHex, 0xFFC239)
-        XCTAssertEqual(LauncherModeTintPolicy.tint(for: .dictionary).panelHex, 0xBF00FF)
-        XCTAssertEqual(LauncherModeTintPolicy.tint(for: .files).panelHex, 0xC60404)
     }
 
     func testInactiveOrbGlassTintIsSofterThanIconTint() {

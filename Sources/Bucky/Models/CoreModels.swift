@@ -138,6 +138,14 @@ enum LauncherMode: Int, CaseIterable {
         stoneDefinition.presentation.systemImage
     }
 
+    var shortcutNumber: Int {
+        stoneDefinition.shortcutNumber
+    }
+
+    var shortcutDisplayText: String {
+        "Command+\(shortcutNumber)"
+    }
+
     var stoneID: StoneID {
         switch self {
         case .applications:

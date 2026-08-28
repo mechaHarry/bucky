@@ -1108,7 +1108,11 @@ private enum HelpShortcutCatalog {
     }
 
     private static func content(for mode: LauncherMode) -> HelpPageContent {
-        let openMode = HelpShortcut(title: "Open \(mode.shortTitle)", keys: "Command+\(mode.rawValue)", detail: "Switch directly to \(mode.shortTitle).")
+        let openMode = HelpShortcut(
+            title: "Open \(mode.shortTitle)",
+            keys: mode.shortcutDisplayText,
+            detail: "Switch directly to \(mode.shortTitle)."
+        )
         switch mode {
         case .applications:
             return HelpPageContent(

@@ -1,31 +1,10 @@
 import SwiftUI
 
-struct LauncherModeTint: Equatable {
-    let activeHex: Int
-    let panelHex: Int
-    let iconHex: Int
-    let darkModeIconHex: Int
-
-    init(activeHex: Int, panelHex: Int, iconHex: Int? = nil, darkModeIconHex: Int? = nil) {
-        self.activeHex = activeHex
-        self.panelHex = panelHex
-        self.iconHex = iconHex ?? activeHex
-        self.darkModeIconHex = darkModeIconHex ?? iconHex ?? activeHex
-    }
-}
+typealias LauncherModeTint = StoneTint
 
 enum LauncherModeTintPolicy {
     static func tint(for mode: LauncherMode) -> LauncherModeTint {
-        switch mode {
-        case .applications:
-            return LauncherModeTint(activeHex: 0x266EF6, panelHex: 0x08578A, iconHex: 0x0B3D91, darkModeIconHex: 0x9CC7FF)
-        case .calculator:
-            return LauncherModeTint(activeHex: 0xFFD300, panelHex: 0xFFC239, iconHex: 0x3A2B00, darkModeIconHex: 0xFFF0A3)
-        case .dictionary:
-            return LauncherModeTint(activeHex: 0xE429F2, panelHex: 0xBF00FF, iconHex: 0x6E1977, darkModeIconHex: 0xF5B8FF)
-        case .files:
-            return LauncherModeTint(activeHex: 0xFF0130, panelHex: 0xC60404, iconHex: 0x7A0018, darkModeIconHex: 0xFFA6B8)
-        }
+        mode.stoneDefinition.tint
     }
 
     static func activeColor(for mode: LauncherMode) -> Color {

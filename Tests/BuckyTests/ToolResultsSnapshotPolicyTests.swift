@@ -16,32 +16,22 @@ final class ToolResultsSnapshotPolicyTests: XCTestCase {
         )
     }
 
-    func testDictionaryQueriesUseDeferredSnapshotUpdate() {
-        XCTAssertEqual(
-            ToolResultsSnapshotPolicy.update(for: .dictionary, query: "hello"),
-            .deferred(delayNanoseconds: ToolResultsSnapshotPolicy.dictionaryLookupDelayNanoseconds)
-        )
+    func testNonBlankQueriesUseCatalogUpdatePolicies() {
+        for mode in LauncherMode.ordered {
+            XCTAssertEqual(
+                ToolResultsSnapshotPolicy.update(for: mode, query: "hello"),
+                mode.stoneDefinition.updatePolicy
+            )
+        }
     }
 
-    func testBlankDictionaryQueriesUpdateImmediately() {
-        XCTAssertEqual(
-            ToolResultsSnapshotPolicy.update(for: .dictionary, query: "   "),
-            .immediate
-        )
-    }
-
-    func testApplicationQueriesUseDeferredSnapshotUpdate() {
-        XCTAssertEqual(
-            ToolResultsSnapshotPolicy.update(for: .applications, query: "hello"),
-            .deferred(delayNanoseconds: ToolResultsSnapshotPolicy.applicationFilterDelayNanoseconds)
-        )
-    }
-
-    func testBlankApplicationQueriesUpdateImmediately() {
-        XCTAssertEqual(
-            ToolResultsSnapshotPolicy.update(for: .applications, query: "   "),
-            .immediate
-        )
+    func testBlankQueriesUpdateImmediatelyForEveryMode() {
+        for mode in LauncherMode.ordered {
+            XCTAssertEqual(
+                ToolResultsSnapshotPolicy.update(for: mode, query: "   "),
+                .immediate
+            )
+        }
     }
 
     func testDictionaryToolSnapshotsUseSubtleAnimation() {

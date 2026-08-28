@@ -31,10 +31,10 @@ final class LauncherModeRoutingTests: XCTestCase {
     }
 
     func testModePlaceholdersAreSeparated() {
-        XCTAssertEqual(LauncherMode.applications.placeholder, "Search Apps Here")
-        XCTAssertEqual(LauncherMode.calculator.placeholder, "Perform Calculations Here")
-        XCTAssertEqual(LauncherMode.dictionary.placeholder, "Search Dictionary Here")
-        XCTAssertEqual(LauncherMode.files.placeholder, "Browse Files")
+        XCTAssertEqual(
+            LauncherMode.ordered.map(\.placeholder),
+            StoneCatalog.orderedDefinitions.map(\.presentation.placeholder)
+        )
     }
 
     func testTextInputFocusModesExcludeFiles() {
@@ -59,6 +59,21 @@ final class LauncherModeRoutingTests: XCTestCase {
         XCTAssertEqual(LauncherMode.calculator.stoneDefinition, StoneCatalog.definition(for: .calculator))
         XCTAssertEqual(LauncherMode.dictionary.stoneDefinition, StoneCatalog.definition(for: .dictionary))
         XCTAssertEqual(LauncherMode.files.stoneDefinition, StoneCatalog.definition(for: .files))
+    }
+
+    func testSharedModeMetadataReadsFromStoneCatalog() {
+        XCTAssertEqual(
+            LauncherMode.ordered.map(\.shortTitle),
+            StoneCatalog.orderedDefinitions.map(\.presentation.title)
+        )
+        XCTAssertEqual(
+            LauncherMode.ordered.map(\.helpSystemImage),
+            StoneCatalog.orderedDefinitions.map(\.presentation.systemImage)
+        )
+        XCTAssertEqual(
+            LauncherMode.ordered.map(\.shortcutDisplayText),
+            StoneCatalog.orderedDefinitions.map { "Command+\($0.shortcutNumber)" }
+        )
     }
 
     @available(macOS 26.0, *)
@@ -733,6 +748,27 @@ final class LauncherModeRoutingTests: XCTestCase {
         XCTAssertEqual(model.selectedIndex, 0)
         XCTAssertEqual(model.selectionScrollRequest?.index, 0)
         XCTAssertEqual(model.selectionScrollRequest?.anchor, .top)
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testApplicationsModeShowsLoadingMessageWhileIndexingHasNoRowsYet() {
+        let model = LiquidGlassLauncherModel(
+            settingsStore: SettingsStore(),
+            inclusionStore: InclusionStore(),
+            exclusionStore: ExclusionStore(),
+            calculationHistoryStore: CalculationHistoryStore(),
+            fileBrowserModel: FileBrowserModel(
+                fileSystem: StubFileSystemClient(home: TestFixtures.userHome, entriesByDirectory: [:]),
+                store: InMemoryFileBrowserStore(state: .defaultValue),
+                directoryStream: ImmediateDirectoryStream()
+            )
+        )
+
+        model.show(mode: .applications)
+        model.isIndexing = true
+
+        XCTAssertEqual(model.emptyMessage, "Loading apps")
     }
 
     @MainActor

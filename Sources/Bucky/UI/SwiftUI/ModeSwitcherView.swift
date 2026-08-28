@@ -32,7 +32,7 @@ struct ModeSwitcherView: View {
         Button {
             _ = model.handle(command: .switchMode(mode))
         } label: {
-            Image(systemName: symbol(for: mode))
+            Image(systemName: mode.helpSystemImage)
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(LauncherModeTintPolicy.inactiveOrbIconColor(for: mode, colorScheme: colorScheme))
                 .frame(width: 20, height: 20)
@@ -52,15 +52,15 @@ struct ModeSwitcherView: View {
 
     @ViewBuilder
     private func activePill(for mode: LauncherMode) -> some View {
-        switch mode {
-        case .applications, .calculator, .dictionary:
+        switch mode.stoneDefinition.surface {
+        case .textInput:
             TextInputModePill(
                 model: model,
                 mode: mode,
-                symbol: symbol(for: mode),
+                symbol: mode.helpSystemImage,
                 isSearchFocused: $isSearchFocused
             )
-        case .files:
+        case .fileBrowser:
             GeometryReader { proxy in
                 let displayedPath = displayedFilePath
                 let pathWidth = ModeSwitcherLayoutPolicy.filesPathTextWidth(
@@ -68,7 +68,7 @@ struct ModeSwitcherView: View {
                     path: displayedPath
                 )
                 let modeTint = LauncherModeTintPolicy.activeColor(for: mode)
-                let iconTint = LauncherModeTintPolicy.iconColor(for: .files, colorScheme: colorScheme)
+                let iconTint = LauncherModeTintPolicy.iconColor(for: mode, colorScheme: colorScheme)
 
                 HStack(spacing: ModeSwitcherLayoutPolicy.filesContentSpacing) {
                     Button {
@@ -77,7 +77,7 @@ struct ModeSwitcherView: View {
                         }
                     } label: {
                         HStack(spacing: ModeSwitcherLayoutPolicy.filesPathIconSpacing) {
-                            Image(systemName: symbol(for: mode))
+                            Image(systemName: mode.helpSystemImage)
                                 .font(.system(size: 18, weight: .semibold))
                                 .foregroundStyle(iconTint)
                                 .frame(width: ModeSwitcherLayoutPolicy.filesPathIconWidth)
@@ -169,34 +169,12 @@ struct ModeSwitcherView: View {
         .help("Folders first")
     }
 
-    private func symbol(for mode: LauncherMode) -> String {
-        switch mode {
-        case .applications:
-            return "square.grid.2x2"
-        case .calculator:
-            return "123.rectangle.fill"
-        case .dictionary:
-            return "text.book.closed"
-        case .files:
-            return "folder"
-        }
-    }
-
     private func helpText(for mode: LauncherMode) -> String {
         "\(mode.placeholder) (\(shortcutText(for: mode)))"
     }
 
     private func shortcutText(for mode: LauncherMode) -> String {
-        switch mode {
-        case .applications:
-            return "Command+1"
-        case .calculator:
-            return "Command+2"
-        case .dictionary:
-            return "Command+3"
-        case .files:
-            return "Command+4"
-        }
+        mode.shortcutDisplayText
     }
 }
 
