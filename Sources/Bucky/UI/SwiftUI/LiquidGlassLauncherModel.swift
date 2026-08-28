@@ -418,6 +418,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     func exclude(_ item: LaunchItem) {
+        cancelPendingApplicationFilter()
         exclusionStore.exclude(item)
         rebuildVisibleItems()
         applyFilter()

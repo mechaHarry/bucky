@@ -123,6 +123,62 @@ final class StoneResultsTests: XCTestCase {
 
     @MainActor
     @available(macOS 26.0, *)
+    func testDeferredApplicationFilterCannotRepublishRowsHiddenBySameQueryExclusionRefresh() throws {
+        let temporaryDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BuckyStoneApplicationExclusionTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+
+        let alpha = LaunchItem(
+            title: "Alpha Tool",
+            subtitle: "/Applications/AlphaTool.app",
+            url: URL(fileURLWithPath: "/Applications/AlphaTool.app"),
+            searchText: "shared alpha"
+        )
+        let beta = LaunchItem(
+            title: "Beta Tool",
+            subtitle: "/Applications/BetaTool.app",
+            url: URL(fileURLWithPath: "/Applications/BetaTool.app"),
+            searchText: "shared beta"
+        )
+        let cache = ApplicationIndexSnapshotCache(
+            fileURL: temporaryDirectory.appendingPathComponent("snapshot.json")
+        )
+        cache.save([alpha, beta])
+
+        let model = LiquidGlassLauncherModel(
+            settingsStore: SettingsStore(fileURL: temporaryDirectory.appendingPathComponent("settings.json")),
+            inclusionStore: InclusionStore(fileURL: temporaryDirectory.appendingPathComponent("inclusions.json")),
+            exclusionStore: ExclusionStore(fileURL: temporaryDirectory.appendingPathComponent("exclusions.json")),
+            calculationHistoryStore: CalculationHistoryStore(),
+            dictionaryHistoryStore: DictionaryHistoryStore(
+                fileURL: temporaryDirectory.appendingPathComponent("dictionary-history.json")
+            ),
+            dictionaryLookup: { _ in [] },
+            dictionaryOpenHandler: { _ in },
+            fileBrowserModel: FileBrowserModel(
+                fileSystem: StubFileSystemClient(home: TestFixtures.userHome, entriesByDirectory: [:]),
+                store: InMemoryFileBrowserStore(state: .defaultValue),
+                directoryStream: ImmediateDirectoryStream()
+            ),
+            applicationIndexSnapshotCache: cache
+        )
+
+        waitUntil(model.resultSnapshot.rows.map(\.display) == ["Alpha Tool", "Beta Tool"])
+
+        model.query = "shared"
+        model.queryDidChange()
+        model.exclude(alpha)
+
+        XCTAssertEqual(model.resultSnapshot.rows.map(\.display), ["Beta Tool"])
+
+        RunLoop.current.run(until: Date().addingTimeInterval(0.08))
+
+        XCTAssertEqual(model.resultSnapshot.rows.map(\.display), ["Beta Tool"])
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
     func testDeferredDictionarySnapshotSuppressesStaleLookupResult() {
         let lookup = DelayedDictionaryLookup()
         let model = makeDictionaryLauncherModel(
@@ -185,6 +241,20 @@ final class StoneResultsTests: XCTestCase {
     private func temporaryDictionaryHistoryFileURL() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("BuckyDictionaryHistory-\(UUID().uuidString).json")
+    }
+
+    @MainActor
+    private func waitUntil(
+        _ condition: @autoclosure () -> Bool,
+        timeout: TimeInterval = 1,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition(), Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+        }
+        XCTAssertTrue(condition(), file: file, line: line)
     }
 
     private final class DelayedDictionaryLookup: @unchecked Sendable {

@@ -5,9 +5,8 @@ final class ExclusionStore {
     private(set) var excludedPaths = Set<String>()
     let fileURL: URL
 
-    init() {
-        fileURL = BuckyPaths.appSupportDirectory
-            .appendingPathComponent("exclusions.json")
+    init(fileURL: URL = BuckyPaths.appSupportDirectory.appendingPathComponent("exclusions.json")) {
+        self.fileURL = fileURL
         load()
     }
 
@@ -47,7 +46,7 @@ final class ExclusionStore {
     private func save() {
         do {
             try fileManager.createDirectory(
-                at: BuckyPaths.appSupportDirectory,
+                at: fileURL.deletingLastPathComponent(),
                 withIntermediateDirectories: true
             )
             let file = ExclusionsFile(excludedPaths: excludedPaths.sorted())
@@ -65,9 +64,8 @@ final class InclusionStore {
     private(set) var includedPaths = Set<String>()
     let fileURL: URL
 
-    init() {
-        fileURL = BuckyPaths.appSupportDirectory
-            .appendingPathComponent("inclusions.json")
+    init(fileURL: URL = BuckyPaths.appSupportDirectory.appendingPathComponent("inclusions.json")) {
+        self.fileURL = fileURL
         load()
     }
 
@@ -105,7 +103,7 @@ final class InclusionStore {
     private func save() {
         do {
             try fileManager.createDirectory(
-                at: BuckyPaths.appSupportDirectory,
+                at: fileURL.deletingLastPathComponent(),
                 withIntermediateDirectories: true
             )
             let file = InclusionsFile(includedPaths: includedPaths.sorted())
