@@ -172,13 +172,15 @@ actor IconCache {
         }
 
         if load.waiterIDs.isEmpty {
-            inFlightLoads.removeValue(forKey: key)
             pendingLoadKeys.removeAll { $0 == key }
             load.task?.cancel()
 
             if load.isActive {
-                activeLoadCount = max(0, activeLoadCount - 1)
+                inFlightLoads[key] = load
+                return
             }
+
+            inFlightLoads.removeValue(forKey: key)
             scheduleLoadsAfterCancellationCleanup()
             return
         }

@@ -156,7 +156,7 @@ final class IconCacheTests: XCTestCase {
         XCTAssertEqual(finalInFlightLoadCount, 0)
     }
 
-    func testLastWaiterCancellationReleasesCapacityWhenLoaderIgnoresCancellation() async {
+    func testLastWaiterCancellationKeepsCapacityOccupiedUntilNonCooperativeLoaderCompletes() async {
         let recorder = GatedIconLoadRecorder()
         let cache = IconCache(
             countLimit: 4,
@@ -175,10 +175,12 @@ final class IconCacheTests: XCTestCase {
 
         let queuedTask = Task { await cache.icon(for: queuedURL) }
         let queuedLoadStarted = await recorder.waitUntilLoadStarts(for: queuedURL.path, maxYieldCount: 200)
+        XCTAssertFalse(queuedLoadStarted)
+
         await recorder.releaseAll()
+        await recorder.waitUntilLoadStarts(for: queuedURL.path)
         _ = await queuedTask.value
 
-        XCTAssertTrue(queuedLoadStarted)
         let cancelledLoadCount = await recorder.loadCount(for: cancelledURL.path)
         let queuedLoadCount = await recorder.loadCount(for: queuedURL.path)
         XCTAssertEqual(cancelledLoadCount, 1)

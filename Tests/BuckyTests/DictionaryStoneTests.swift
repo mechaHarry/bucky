@@ -134,7 +134,7 @@ final class DictionaryStoneTests: XCTestCase {
     }
 
     @MainActor
-    func testNewerAsyncQueryWinsWhenOlderLookupCompletesLater() async {
+    func testNewerAsyncQueryWaitsForNonCooperativeLookupBeforeStarting() async {
         let lookup = ControllableDictionaryLookup()
         let stone = DictionaryStone(
             historyStore: makeStore(),
@@ -147,13 +147,18 @@ final class DictionaryStoneTests: XCTestCase {
 
         XCTAssertEqual(stone.snapshot(for: "apple"), .loading(message: "Searching Dictionary"))
         let newTask = Task { await stone.lookupResults(for: "apple") }
+        for _ in 0..<100 {
+            await Task.yield()
+        }
+
+        XCTAssertEqual(lookup.startedQueries, ["app"])
+
+        lookup.finish(query: "app")
+        let oldSnapshot = await oldTask.value
         await waitUntil(lookup.startedQueries == ["app", "apple"])
 
         lookup.finish(query: "apple")
         let newSnapshot = await newTask.value
-
-        lookup.finish(query: "app")
-        let oldSnapshot = await oldTask.value
 
         XCTAssertEqual(newSnapshot.rows.map(\.display), ["apple"])
         XCTAssertEqual(oldSnapshot, .loading(message: "Searching Dictionary"))
@@ -188,23 +193,23 @@ final class DictionaryStoneTests: XCTestCase {
 
         XCTAssertEqual(stone.snapshot(for: "apple"), .loading(message: "Searching Dictionary"))
         let newTask = Task { await stone.lookupResults(for: "apple") }
-        await waitUntil(lookup.startedQueries == ["app", "apple"])
-
-        let staleLookupCompleted = Completion()
-        let staleTask = Task {
-            let snapshot = await stone.lookupResults(for: "app")
-            staleLookupCompleted.finish()
-            return snapshot
+        for _ in 0..<100 {
+            await Task.yield()
         }
 
-        await waitUntil(staleLookupCompleted.isFinished || lookup.startedQueries.count > 2)
+        XCTAssertEqual(lookup.startedQueries, ["app"])
 
-        lookup.finish(query: "apple")
-        let newSnapshot = await newTask.value
+        let staleTask = Task {
+            await stone.lookupResults(for: "app")
+        }
 
         lookup.finish(query: "app")
         let oldSnapshot = await oldTask.value
         let staleSnapshot = await staleTask.value
+        await waitUntil(lookup.startedQueries == ["app", "apple"])
+
+        lookup.finish(query: "apple")
+        let newSnapshot = await newTask.value
 
         XCTAssertEqual(lookup.startedQueries, ["app", "apple"])
         XCTAssertEqual(newSnapshot.rows.map(\.display), ["apple"])

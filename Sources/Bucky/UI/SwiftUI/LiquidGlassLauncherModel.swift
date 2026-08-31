@@ -34,8 +34,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private let exclusionStore: ExclusionStore
     private let calculationHistoryStore: CalculationHistoryStore
     private let dictionaryHistoryStore: DictionaryHistoryStore
-    private let dictionaryStone: DictionaryStone
-    private let dictionaryOpenHandler: @MainActor (String) -> Void
+    private let textStoneProviders: StoneProviderRegistry
     private let fileBrowserModelFactory: () -> FileBrowserModel
     private let applicationIndexSnapshotCache: ApplicationIndexSnapshotCache
     private var appRowStore = ApplicationRowStore()
@@ -43,16 +42,16 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private var filterCache = ApplicationFilterCache()
     private var applicationQuery = ""
     private var calculatorQuery = ""
-    private var dictionaryQuery = ""
-    private var dictionaryResultSnapshot: StoneResultSnapshot = .loaded(rows: [])
+    private var textStoneQueries: [StoneID: String] = [:]
+    private var textStoneResultSnapshots: [StoneID: StoneResultSnapshot] = [:]
     private var needsReindexAfterCurrent = false
     private var pendingCalculationHistoryTimer: Timer?
     private var pendingCalculationHistoryExpression: String?
     private var pendingCalculationHistoryResult: String?
     private var pendingApplicationFilterTask: Task<Void, Never>?
     private var applicationFilterRequestGate = StoneResultRequestGate()
-    private var pendingDictionaryLookupTask: Task<Void, Never>?
-    private var dictionaryLookupRequestGate = StoneResultRequestGate()
+    private var pendingTextStoneUpdateTasks: [StoneID: Task<Void, Never>] = [:]
+    private var textStoneRequestGates: [StoneID: StoneResultRequestGate] = [:]
     private var pendingModeSnapshotTask: Task<Void, Never>?
     private var modeSnapshotGeneration = 0
     private var warmCacheTask: Task<Void, Never>?
@@ -66,6 +65,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         dictionaryHistoryStore: DictionaryHistoryStore = DictionaryHistoryStore(),
         dictionaryLookup: @escaping @Sendable (String) -> [DictionaryResult] = { DictionaryLookup.results(for: $0) },
         dictionaryOpenHandler: @escaping @MainActor (String) -> Void = LiquidGlassLauncherModel.openDictionaryTerm,
+        textStoneProviders: [any TextStoneProvider] = [],
         fileBrowserModel: FileBrowserModel? = nil,
         fileBrowserModelFactory: (() -> FileBrowserModel)? = nil,
         applicationIndexSnapshotCache: ApplicationIndexSnapshotCache = ApplicationIndexSnapshotCache()
@@ -75,11 +75,12 @@ final class LiquidGlassLauncherModel: ObservableObject {
         self.exclusionStore = exclusionStore
         self.calculationHistoryStore = calculationHistoryStore
         self.dictionaryHistoryStore = dictionaryHistoryStore
-        self.dictionaryStone = DictionaryStone(
+        let dictionaryStone = DictionaryStone(
             historyStore: dictionaryHistoryStore,
-            lookup: dictionaryLookup
+            lookup: dictionaryLookup,
+            openHandler: dictionaryOpenHandler
         )
-        self.dictionaryOpenHandler = dictionaryOpenHandler
+        self.textStoneProviders = StoneProviderRegistry(providers: [dictionaryStone] + textStoneProviders)
         self.applicationIndexSnapshotCache = applicationIndexSnapshotCache
         self.activatedFileBrowserModel = fileBrowserModel
         self.fileBrowserModelFactory = fileBrowserModelFactory ?? {
@@ -93,7 +94,9 @@ final class LiquidGlassLauncherModel: ObservableObject {
 
     deinit {
         pendingApplicationFilterTask?.cancel()
-        pendingDictionaryLookupTask?.cancel()
+        for task in pendingTextStoneUpdateTasks.values {
+            task.cancel()
+        }
         pendingModeSnapshotTask?.cancel()
         warmCacheTask?.cancel()
     }
@@ -123,14 +126,13 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     var resultCount: Int {
-        switch mode {
-        case .applications, .calculator, .dictionary:
-            return resultSnapshot.rows.count
-        case .files:
+        if mode == .files {
             return MainActor.assumeIsolated {
                 fileBrowserModel.entries.count
             }
         }
+
+        return resultSnapshot.rows.count
     }
 
     var canClearHistory: Bool {
@@ -149,8 +151,11 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     var resultSnapshot: StoneResultSnapshot {
-        switch mode {
-        case .applications:
+        if let snapshot = textStoneResultSnapshots[mode.stoneID] {
+            return snapshot
+        }
+
+        if mode == .applications {
             if filteredItemIDs.isEmpty {
                 if isIndexing && appRowStore.isEmpty {
                     return .loading(message: "Loading apps")
@@ -161,16 +166,20 @@ final class LiquidGlassLauncherModel: ObservableObject {
                 guard let item = appRowStore.item(for: id) else { return nil }
                 return StoneResultRow.application(id: id, item: item)
             })
-        case .calculator:
+        }
+
+        if mode == .calculator {
             if toolItems.isEmpty {
                 return .empty(message: inputIsBlank ? "No calculation history" : "No tool results")
             }
             return toolResultSnapshot()
-        case .dictionary:
-            return dictionaryResultSnapshot
-        case .files:
+        }
+
+        if mode == .files {
             return .loaded(rows: MainActor.assumeIsolated { fileBrowserModel.entries.map(StoneResultRow.file) })
         }
+
+        return .loaded(rows: [])
     }
 
     func resultRow(at index: Int) -> StoneResultRow? {
@@ -188,7 +197,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         isShowingHelp = false
         applicationQuery = ""
         calculatorQuery = ""
-        dictionaryQuery = ""
+        textStoneQueries.removeAll()
         self.mode = mode
         query = storedQuery(for: mode)
         selectedIndex = 0
@@ -442,7 +451,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     func activate(_ row: StoneResultRow) {
-        perform(row.primaryActivation, for: row)
+        let activation = textStoneProviders.activation(for: mode.stoneID, row: row) ?? row.primaryActivation
+        perform(activation, for: row)
     }
 
     func performAccessoryActivation(for row: StoneResultRow) {
@@ -457,10 +467,33 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     private func cancelPendingDictionaryLookup() {
-        dictionaryLookupRequestGate.cancel()
-        dictionaryStone.cancelLookup()
-        pendingDictionaryLookupTask?.cancel()
-        pendingDictionaryLookupTask = nil
+        for stoneID in textStoneProviders.registeredStoneIDs {
+            cancelPendingTextStoneUpdate(for: stoneID)
+        }
+    }
+
+    private func cancelPendingTextStoneUpdate(for stoneID: StoneID) {
+        var requestGate = textStoneRequestGates[stoneID] ?? StoneResultRequestGate()
+        requestGate.cancel()
+        textStoneRequestGates[stoneID] = requestGate
+        textStoneProviders.cancel(for: stoneID)
+        pendingTextStoneUpdateTasks[stoneID]?.cancel()
+        pendingTextStoneUpdateTasks[stoneID] = nil
+    }
+
+    private func beginTextStoneRequest(for stoneID: StoneID, query: String) -> StoneResultRequestGate.Token {
+        var requestGate = textStoneRequestGates[stoneID] ?? StoneResultRequestGate()
+        let token = requestGate.begin(query: query)
+        textStoneRequestGates[stoneID] = requestGate
+        return token
+    }
+
+    private func acceptsTextStoneRequest(
+        _ token: StoneResultRequestGate.Token,
+        for stoneID: StoneID,
+        query: String
+    ) -> Bool {
+        textStoneRequestGates[stoneID]?.accepts(token, currentQuery: query) == true
     }
 
     private func cancelPendingApplicationFilter() {
@@ -486,6 +519,11 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     private func applyCurrentMode(preservePreviousOnEmpty: Bool = false) {
+        if textStoneProviders.provider(for: mode.stoneID) != nil {
+            applyToolsResults()
+            return
+        }
+
         switch mode {
         case .applications:
             cancelPendingCalculationHistory()
@@ -494,7 +532,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
                 rebuildVisibleItems()
             }
             applyApplicationFilter(preservePreviousOnEmpty: preservePreviousOnEmpty)
-        case .calculator, .dictionary:
+        case .calculator:
             applyToolsResults()
         case .files:
             cancelPendingCalculationHistory()
@@ -503,6 +541,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
             selectedIndex = MainActor.assumeIsolated {
                 fileBrowserModel.selectedIndex
             }
+        default:
+            return
         }
     }
 
@@ -656,14 +696,27 @@ final class LiquidGlassLauncherModel: ObservableObject {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         cancelPendingCalculationHistory()
 
+        if let provider = textStoneProviders.provider(for: mode.stoneID) {
+            let stoneID = provider.definition.id
+            cancelPendingTextStoneUpdate(for: stoneID)
+            toolItems = []
+
+            switch ToolResultsSnapshotPolicy.update(for: mode, query: query) {
+            case .immediate:
+                applyTextStoneSnapshot(provider.snapshot(for: trimmedQuery), for: stoneID)
+            case let .deferred(delayNanoseconds):
+                applyDeferredTextStoneResults(
+                    for: provider,
+                    query: trimmedQuery,
+                    delayNanoseconds: delayNanoseconds
+                )
+            }
+            return
+        }
+
         switch ToolResultsSnapshotPolicy.update(for: mode, query: query) {
         case .immediate:
             cancelPendingDictionaryLookup()
-            if mode == .dictionary {
-                toolItems = []
-                applyDictionarySnapshot(dictionaryStone.snapshot(for: trimmedQuery))
-                return
-            }
             applyToolResultsSnapshot(
                 makeToolItems(for: trimmedQuery, scheduleHistory: scheduleHistory),
                 selectLiveCalculation: scheduleHistory
@@ -680,14 +733,23 @@ final class LiquidGlassLauncherModel: ObservableObject {
         for trimmedQuery: String,
         delayNanoseconds: UInt64
     ) {
-        guard mode == .dictionary else { return }
+        guard let provider = textStoneProviders.provider(for: mode.stoneID) else { return }
+        applyDeferredTextStoneResults(
+            for: provider,
+            query: trimmedQuery,
+            delayNanoseconds: delayNanoseconds
+        )
+    }
 
-        let token = dictionaryLookupRequestGate.begin(query: trimmedQuery)
-        let dictionaryStone = dictionaryStone
-        toolItems = []
-        applyDictionarySnapshot(dictionaryStone.snapshot(for: trimmedQuery))
-        pendingDictionaryLookupTask?.cancel()
-        pendingDictionaryLookupTask = Task { [weak self] in
+    private func applyDeferredTextStoneResults(
+        for provider: any TextStoneProvider,
+        query: String,
+        delayNanoseconds: UInt64
+    ) {
+        let stoneID = provider.definition.id
+        let token = beginTextStoneRequest(for: stoneID, query: query)
+        applyTextStoneSnapshot(provider.snapshot(for: query), for: stoneID)
+        pendingTextStoneUpdateTasks[stoneID] = Task { [weak self, provider] in
             do {
                 try await Task.sleep(nanoseconds: delayNanoseconds)
             } catch {
@@ -696,17 +758,11 @@ final class LiquidGlassLauncherModel: ObservableObject {
 
             guard !Task.isCancelled else { return }
 
-            let snapshot = await dictionaryStone.lookupResults(for: trimmedQuery)
+            let snapshot = await provider.updateSnapshot(for: query)
 
             guard !Task.isCancelled else { return }
 
-            await MainActor.run { [weak self] in
-                self?.applyDictionaryLookupResults(
-                    snapshot,
-                    query: trimmedQuery,
-                    token: token
-                )
-            }
+            self?.applyTextStoneUpdate(snapshot, for: stoneID, query: query, token: token)
         }
     }
 
@@ -755,27 +811,32 @@ final class LiquidGlassLauncherModel: ObservableObject {
                     )
                 ] + calculationHistoryItems()
             }
-        case .dictionary:
+        default:
             return []
         }
     }
 
-    private func applyDictionaryLookupResults(
+    private func applyTextStoneUpdate(
         _ snapshot: StoneResultSnapshot,
+        for stoneID: StoneID,
         query: String,
         token: StoneResultRequestGate.Token
     ) {
-        guard mode == .dictionary,
-              dictionaryLookupRequestGate.accepts(token, currentQuery: self.query.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+        guard mode.stoneID == stoneID,
+              acceptsTextStoneRequest(
+                token,
+                for: stoneID,
+                query: self.query.trimmingCharacters(in: .whitespacesAndNewlines)
+              ) else {
             return
         }
 
-        pendingDictionaryLookupTask = nil
-        applyDictionarySnapshot(snapshot)
+        pendingTextStoneUpdateTasks[stoneID] = nil
+        applyTextStoneSnapshot(snapshot, for: stoneID)
     }
 
-    private func applyDictionarySnapshot(_ snapshot: StoneResultSnapshot) {
-        dictionaryResultSnapshot = snapshot
+    private func applyTextStoneSnapshot(_ snapshot: StoneResultSnapshot, for stoneID: StoneID) {
+        textStoneResultSnapshots[stoneID] = snapshot
         clampSelection()
     }
 
@@ -850,27 +911,36 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     private func storeCurrentQuery() {
+        if textStoneProviders.provider(for: mode.stoneID) != nil {
+            textStoneQueries[mode.stoneID] = query
+            return
+        }
+
         switch mode {
         case .applications:
             applicationQuery = query
         case .calculator:
             calculatorQuery = query
-        case .dictionary:
-            dictionaryQuery = query
         case .files:
             break
+        default:
+            return
         }
     }
 
     private func storedQuery(for mode: LauncherMode) -> String {
+        if textStoneProviders.provider(for: mode.stoneID) != nil {
+            return textStoneQueries[mode.stoneID] ?? ""
+        }
+
         switch mode {
         case .applications:
             return applicationQuery
         case .calculator:
             return calculatorQuery
-        case .dictionary:
-            return dictionaryQuery
         case .files:
+            return ""
+        default:
             return ""
         }
     }
@@ -891,13 +961,18 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     private func publishLightweightModeSnapshot(for mode: LauncherMode) {
+        if textStoneProviders.provider(for: mode.stoneID) != nil {
+            textStoneResultSnapshots[mode.stoneID] = .loaded(rows: [])
+            return
+        }
+
         switch mode {
         case .applications:
             break
         case .calculator, .files:
             toolItems = []
-        case .dictionary:
-            dictionaryResultSnapshot = .loaded(rows: [])
+        default:
+            break
         }
     }
 
@@ -1037,7 +1112,22 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     private func perform(_ activation: StoneActivation, for row: StoneResultRow) {
-        let activatedDictionaryHistory = row.kind == .dictionaryHistory
+        switch textStoneProviders.perform(activation, for: mode.stoneID, row: row) {
+        case let .handled(shouldRefresh, resetSelection, shouldHide):
+            if shouldRefresh, inputIsBlank {
+                applyToolsResults(scheduleHistory: false)
+            }
+            if resetSelection {
+                selectedIndex = 0
+                requestSelectionScroll(anchor: .top)
+            }
+            if shouldHide, !isPinned {
+                hideAction?()
+            }
+            return
+        case .unhandled:
+            break
+        }
 
         switch activation {
         case let .copy(value):
@@ -1046,14 +1136,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
             }
             copyToPasteboard(value)
         case let .open(target):
-            if row.kind == .dictionary || row.kind == .dictionaryHistory {
-                dictionaryHistoryStore.add(term: row.display)
-                openDictionary(term: row.display)
-            } else {
-                launch(target)
-            }
-        case let .removeHistory(rowID):
-            removeHistory(rowID)
+            launch(target)
+        case .removeHistory:
             return
         case .none:
             return
@@ -1063,29 +1147,9 @@ final class LiquidGlassLauncherModel: ObservableObject {
             hideAction?()
         }
 
-        if mode == .dictionary, inputIsBlank {
-            applyToolsResults(scheduleHistory: false)
-            if activatedDictionaryHistory {
-                selectedIndex = 0
-                requestSelectionScroll(anchor: .top)
-            }
-        }
-
         if row.kind != .application, !isPinned {
             hideAction?()
         }
-    }
-
-    private func removeHistory(_ rowID: StoneResultRow.ID) {
-        guard case let .tool(kind, _) = rowID,
-              kind == .dictionaryHistory,
-              let row = resultSnapshot.rows.first(where: { $0.id == rowID }) else {
-            return
-        }
-
-        cancelPendingDictionaryLookup()
-        dictionaryHistoryStore.remove(term: row.display)
-        applyToolsResults(scheduleHistory: false)
     }
 
     private func copyToPasteboard(_ value: String?) {
@@ -1093,10 +1157,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(value, forType: .string)
-    }
-
-    private func openDictionary(term: String) {
-        dictionaryOpenHandler(term)
     }
 
     private static func openDictionaryTerm(_ term: String) {

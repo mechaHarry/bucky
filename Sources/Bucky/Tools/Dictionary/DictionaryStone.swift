@@ -1,17 +1,28 @@
 import Foundation
 
 @MainActor
-final class DictionaryStone {
+final class DictionaryStone: TextStoneProvider {
     typealias Lookup = @Sendable (String) -> [DictionaryResult]
 
     private let historyStore: DictionaryHistoryStore
     private let lookup: Lookup
+    private let openHandler: @MainActor (String) -> Void
     private var requestGate = StoneResultRequestGate()
     private var activeRequest: StoneResultRequestGate.Token?
+    private var activeLookup: ActiveLookup?
 
-    init(historyStore: DictionaryHistoryStore, lookup: @escaping Lookup) {
+    init(
+        historyStore: DictionaryHistoryStore,
+        lookup: @escaping Lookup,
+        openHandler: @escaping @MainActor (String) -> Void = { _ in }
+    ) {
         self.historyStore = historyStore
         self.lookup = lookup
+        self.openHandler = openHandler
+    }
+
+    var definition: StoneDefinition {
+        StoneCatalog.definition(for: .dictionary)
     }
 
     func snapshot(for query: String) -> StoneResultSnapshot {
@@ -37,10 +48,7 @@ final class DictionaryStone {
             return .loading(message: "Searching Dictionary")
         }
 
-        let lookup = lookup
-        let results = await Task.detached(priority: .userInitiated) {
-            lookup(trimmedQuery)
-        }.value
+        let results = await results(for: trimmedQuery)
 
         guard !Task.isCancelled,
               requestGate.accepts(token, currentQuery: trimmedQuery) else {
@@ -51,6 +59,10 @@ final class DictionaryStone {
     }
 
     func cancelLookup() {
+        cancel()
+    }
+
+    func cancel() {
         requestGate.cancel()
         activeRequest = nil
     }
@@ -61,6 +73,28 @@ final class DictionaryStone {
             return Self.dictionaryActivation(for: row.display)
         case .application, .calculation, .calculationHistory, .message, .file:
             return .none
+        }
+    }
+
+    func updateSnapshot(for query: String) async -> StoneResultSnapshot {
+        await lookupResults(for: query)
+    }
+
+    func perform(_ activation: StoneActivation, for row: StoneResultRow) -> TextStoneActivationResult {
+        switch activation {
+        case .open where row.kind == .dictionary || row.kind == .dictionaryHistory:
+            historyStore.add(term: row.display)
+            openHandler(row.display)
+            return .handled(
+                shouldRefresh: true,
+                resetSelection: row.kind == .dictionaryHistory,
+                shouldHide: true
+            )
+        case let .removeHistory(rowID) where row.kind == .dictionaryHistory && rowID == row.id:
+            historyStore.remove(term: row.display)
+            return .handled(shouldRefresh: true, resetSelection: true, shouldHide: false)
+        case .copy, .open, .removeHistory, .none:
+            return .unhandled
         }
     }
 
@@ -129,6 +163,41 @@ final class DictionaryStone {
         )
     }
 
+    private func results(for query: String) async -> [DictionaryResult] {
+        while let activeLookup {
+            let results = await activeLookup.task.value
+            if self.activeLookup?.id == activeLookup.id {
+                self.activeLookup = nil
+            }
+
+            guard !Task.isCancelled else { return [] }
+
+            guard let activeRequest,
+                  requestGate.accepts(activeRequest, currentQuery: query) else {
+                return results
+            }
+        }
+
+        guard !Task.isCancelled,
+              let activeRequest,
+              requestGate.accepts(activeRequest, currentQuery: query) else {
+            return []
+        }
+
+        let lookup = lookup
+        let nextLookup = ActiveLookup(task: Task.detached(priority: .userInitiated) {
+            lookup(query)
+        })
+        activeLookup = nextLookup
+        let results = await nextLookup.task.value
+
+        if activeLookup?.id == nextLookup.id {
+            activeLookup = nil
+        }
+
+        return results
+    }
+
     private static func dictionaryActivation(for term: String) -> StoneActivation {
         guard let escapedTerm = term.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
               let url = URL(string: "dict://\(escapedTerm)") else {
@@ -151,4 +220,9 @@ final class DictionaryStone {
         formatter.timeStyle = .short
         return formatter
     }()
+}
+
+private struct ActiveLookup {
+    let id = UUID()
+    let task: Task<[DictionaryResult], Never>
 }

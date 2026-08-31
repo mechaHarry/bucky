@@ -2,6 +2,35 @@ import XCTest
 @testable import Bucky
 
 final class StoneResultsTests: XCTestCase {
+    @MainActor
+    @available(macOS 26.0, *)
+    func testRegisteredTextStoneProviderDrivesTextModeSnapshot() {
+        let provider = LauncherTestTextStoneProvider(
+            definition: StoneCatalog.definition(for: .calculator)
+        )
+        let model = LiquidGlassLauncherModel(
+            settingsStore: SettingsStore(),
+            inclusionStore: InclusionStore(),
+            exclusionStore: ExclusionStore(),
+            calculationHistoryStore: CalculationHistoryStore(),
+            dictionaryHistoryStore: DictionaryHistoryStore(fileURL: temporaryDictionaryHistoryFileURL()),
+            dictionaryLookup: { _ in [] },
+            dictionaryOpenHandler: { _ in },
+            textStoneProviders: [provider],
+            fileBrowserModel: FileBrowserModel(
+                fileSystem: StubFileSystemClient(home: TestFixtures.userHome, entriesByDirectory: [:]),
+                store: InMemoryFileBrowserStore(state: .defaultValue),
+                directoryStream: ImmediateDirectoryStream()
+            )
+        )
+
+        model.show(mode: .calculator)
+        model.query = "provider input"
+        model.queryDidChange()
+
+        XCTAssertEqual(model.resultSnapshot.rows.map(\.display), ["Provided result"])
+    }
+
     func testSnapshotStatesExposeRowsAndSurfaceMessages() {
         let messageRow = StoneResultRow(
             id: .tool(kind: .message, key: "message:complete"),
@@ -283,5 +312,40 @@ final class StoneResultsTests: XCTestCase {
                 )
             ]
         }
+    }
+}
+
+@MainActor
+private final class LauncherTestTextStoneProvider: TextStoneProvider {
+    let definition: StoneDefinition
+
+    init(definition: StoneDefinition) {
+        self.definition = definition
+    }
+
+    func snapshot(for query: String) -> StoneResultSnapshot {
+        .loaded(rows: [StoneResultRow(
+            id: .tool(kind: .message, key: "launcher-provider-result"),
+            display: "Provided result",
+            subtitle: query,
+            copyText: nil,
+            kind: .message,
+            primaryActivation: .none,
+            accessoryActivation: .none
+        )])
+    }
+
+    func updateSnapshot(for query: String) async -> StoneResultSnapshot {
+        snapshot(for: query)
+    }
+
+    func cancel() {}
+
+    func activation(for row: StoneResultRow) -> StoneActivation {
+        row.primaryActivation
+    }
+
+    func perform(_ activation: StoneActivation, for row: StoneResultRow) -> TextStoneActivationResult {
+        .unhandled
     }
 }
