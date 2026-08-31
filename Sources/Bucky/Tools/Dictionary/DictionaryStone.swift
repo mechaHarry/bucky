@@ -166,12 +166,17 @@ final class DictionaryStone: TextStoneProvider {
 
     private func results(for query: String) async -> [DictionaryResult] {
         while let activeLookup {
-            guard let results = await waitForResults(for: activeLookup) else { return [] }
+            let lookupToWait = activeLookup
+            guard let results = await waitForResults(for: lookupToWait) else { return [] }
 
             guard !Task.isCancelled else { return [] }
 
-            if self.activeLookup?.id == activeLookup.id {
+            if self.activeLookup?.id == lookupToWait.id {
                 self.activeLookup = nil
+            }
+
+            guard lookupToWait.query == query else {
+                continue
             }
 
             guard let activeRequest,
@@ -191,7 +196,7 @@ final class DictionaryStone: TextStoneProvider {
         let lookupTask = Task.detached(priority: .userInitiated) {
             lookup(query)
         }
-        let nextLookup = ActiveLookup(id: lookupID, task: lookupTask)
+        let nextLookup = ActiveLookup(id: lookupID, query: query, task: lookupTask)
         activeLookup = nextLookup
         Task { @MainActor [weak self, lookupTask] in
             let results = await lookupTask.value
@@ -304,12 +309,14 @@ final class DictionaryStone: TextStoneProvider {
 
 private struct ActiveLookup {
     let id: UUID
+    let query: String
     let task: Task<[DictionaryResult], Never>
     var result: [DictionaryResult]?
     var waiters: [UUID: CheckedContinuation<[DictionaryResult]?, Never>] = [:]
 
-    init(id: UUID, task: Task<[DictionaryResult], Never>) {
+    init(id: UUID, query: String, task: Task<[DictionaryResult], Never>) {
         self.id = id
+        self.query = query
         self.task = task
         result = nil
     }

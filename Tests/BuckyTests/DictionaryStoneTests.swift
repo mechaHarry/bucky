@@ -192,6 +192,39 @@ final class DictionaryStoneTests: XCTestCase {
     }
 
     @MainActor
+    func testCompletedLookupForClearedQueryIsNotReturnedForNewQuery() async {
+        let lookup = ControllableDictionaryLookup()
+        let stone = DictionaryStone(
+            historyStore: makeStore(),
+            lookup: { query in lookup.results(for: query) }
+        )
+        let oldWrapperCompletion = Completion()
+
+        XCTAssertEqual(stone.snapshot(for: "app"), .loading(message: "Searching Dictionary"))
+        let oldTask = Task {
+            defer { oldWrapperCompletion.finish() }
+            return await stone.lookupResults(for: "app")
+        }
+        await waitUntil(lookup.startedQueries == ["app"])
+
+        XCTAssertEqual(stone.snapshot(for: ""), .loaded(rows: []))
+        await waitUntil(oldWrapperCompletion.isFinished)
+        lookup.finish(query: "app")
+        await waitUntil(lookup.completedQueries == ["app"])
+        _ = await oldTask.value
+
+        XCTAssertEqual(stone.snapshot(for: "apple"), .loading(message: "Searching Dictionary"))
+        let newTask = Task { await stone.lookupResults(for: "apple") }
+        await waitUntil(lookup.startedQueries == ["app", "apple"])
+
+        lookup.finish(query: "apple")
+        let newSnapshot = await newTask.value
+
+        XCTAssertEqual(lookup.completedQueries, ["app", "apple"])
+        XCTAssertEqual(newSnapshot.rows.map(\.display), ["apple"])
+    }
+
+    @MainActor
     func testLookupResultsIgnoresQueryThatWasNotEstablishedBySnapshot() async {
         let lookup = RecordingDictionaryLookup()
         let stone = DictionaryStone(
@@ -308,11 +341,18 @@ private final class ControllableDictionaryLookup: @unchecked Sendable {
     private let lock = NSLock()
     private var completions: [String: Completion] = [:]
     private var recordedQueries: [String] = []
+    private var returnedQueries: [String] = []
 
     var startedQueries: [String] {
         lock.lock()
         defer { lock.unlock() }
         return recordedQueries
+    }
+
+    var completedQueries: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return returnedQueries
     }
 
     func results(for query: String) -> [DictionaryResult] {
@@ -322,6 +362,10 @@ private final class ControllableDictionaryLookup: @unchecked Sendable {
         lock.unlock()
 
         completion.wait()
+
+        lock.lock()
+        returnedQueries.append(query)
+        lock.unlock()
 
         return [
             DictionaryResult(
