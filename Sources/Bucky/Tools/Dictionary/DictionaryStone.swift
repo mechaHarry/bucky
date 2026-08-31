@@ -7,6 +7,7 @@ final class DictionaryStone {
     private let historyStore: DictionaryHistoryStore
     private let lookup: Lookup
     private var requestGate = StoneResultRequestGate()
+    private var activeRequest: StoneResultRequestGate.Token?
 
     init(historyStore: DictionaryHistoryStore, lookup: @escaping Lookup) {
         self.historyStore = historyStore
@@ -17,10 +18,11 @@ final class DictionaryStone {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedQuery.isEmpty else {
             requestGate.cancel()
+            activeRequest = nil
             return Self.historySnapshot(for: historyStore.words)
         }
 
-        _ = requestGate.begin(query: trimmedQuery)
+        activeRequest = requestGate.begin(query: trimmedQuery)
         return .loading(message: "Searching Dictionary")
     }
 
@@ -30,7 +32,11 @@ final class DictionaryStone {
             return snapshot(for: trimmedQuery)
         }
 
-        let token = requestGate.begin(query: trimmedQuery)
+        guard let token = activeRequest,
+              requestGate.accepts(token, currentQuery: trimmedQuery) else {
+            return .loading(message: "Searching Dictionary")
+        }
+
         let lookup = lookup
         let results = await Task.detached(priority: .userInitiated) {
             lookup(trimmedQuery)
@@ -46,6 +52,7 @@ final class DictionaryStone {
 
     func cancelLookup() {
         requestGate.cancel()
+        activeRequest = nil
     }
 
     func activation(for row: StoneResultRow) -> StoneActivation {

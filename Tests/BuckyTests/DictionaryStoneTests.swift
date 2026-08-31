@@ -61,6 +61,7 @@ final class DictionaryStoneTests: XCTestCase {
             lookup: { _ in [] }
         )
 
+        XCTAssertEqual(stone.snapshot(for: "zzzz"), .loading(message: "Searching Dictionary"))
         let snapshot = await stone.lookupResults(for: "zzzz")
 
         XCTAssertEqual(snapshot.rows.map(\.display), ["No dictionary matches"])
@@ -82,6 +83,7 @@ final class DictionaryStoneTests: XCTestCase {
             }
         )
 
+        XCTAssertEqual(stone.snapshot(for: "apple"), .loading(message: "Searching Dictionary"))
         let rows = try loadedRows(await stone.lookupResults(for: "apple"))
 
         XCTAssertEqual(rows.map(\.display), ["Apple", "Banana"])
@@ -139,9 +141,11 @@ final class DictionaryStoneTests: XCTestCase {
             lookup: { query in lookup.results(for: query) }
         )
 
+        XCTAssertEqual(stone.snapshot(for: "app"), .loading(message: "Searching Dictionary"))
         let oldTask = Task { await stone.lookupResults(for: "app") }
         await waitUntil(lookup.startedQueries == ["app"])
 
+        XCTAssertEqual(stone.snapshot(for: "apple"), .loading(message: "Searching Dictionary"))
         let newTask = Task { await stone.lookupResults(for: "apple") }
         await waitUntil(lookup.startedQueries == ["app", "apple"])
 
@@ -153,6 +157,59 @@ final class DictionaryStoneTests: XCTestCase {
 
         XCTAssertEqual(newSnapshot.rows.map(\.display), ["apple"])
         XCTAssertEqual(oldSnapshot, .loading(message: "Searching Dictionary"))
+    }
+
+    @MainActor
+    func testLookupResultsIgnoresQueryThatWasNotEstablishedBySnapshot() async {
+        let lookup = RecordingDictionaryLookup()
+        let stone = DictionaryStone(
+            historyStore: makeStore(),
+            lookup: { query in lookup.results(for: query) }
+        )
+
+        XCTAssertEqual(stone.snapshot(for: "apple"), .loading(message: "Searching Dictionary"))
+        let snapshot = await stone.lookupResults(for: "app")
+
+        XCTAssertEqual(snapshot, .loading(message: "Searching Dictionary"))
+        XCTAssertEqual(lookup.startedQueries, [])
+    }
+
+    @MainActor
+    func testStaleDelayedLookupCannotInvalidateNewerSnapshotBeforePublication() async {
+        let lookup = ControllableDictionaryLookup()
+        let stone = DictionaryStone(
+            historyStore: makeStore(),
+            lookup: { query in lookup.results(for: query) }
+        )
+
+        XCTAssertEqual(stone.snapshot(for: "app"), .loading(message: "Searching Dictionary"))
+        let oldTask = Task { await stone.lookupResults(for: "app") }
+        await waitUntil(lookup.startedQueries == ["app"])
+
+        XCTAssertEqual(stone.snapshot(for: "apple"), .loading(message: "Searching Dictionary"))
+        let newTask = Task { await stone.lookupResults(for: "apple") }
+        await waitUntil(lookup.startedQueries == ["app", "apple"])
+
+        let staleLookupCompleted = Completion()
+        let staleTask = Task {
+            let snapshot = await stone.lookupResults(for: "app")
+            staleLookupCompleted.finish()
+            return snapshot
+        }
+
+        await waitUntil(staleLookupCompleted.isFinished || lookup.startedQueries.count > 2)
+
+        lookup.finish(query: "apple")
+        let newSnapshot = await newTask.value
+
+        lookup.finish(query: "app")
+        let oldSnapshot = await oldTask.value
+        let staleSnapshot = await staleTask.value
+
+        XCTAssertEqual(lookup.startedQueries, ["app", "apple"])
+        XCTAssertEqual(newSnapshot.rows.map(\.display), ["apple"])
+        XCTAssertEqual(oldSnapshot, .loading(message: "Searching Dictionary"))
+        XCTAssertEqual(staleSnapshot, .loading(message: "Searching Dictionary"))
     }
 
     @MainActor
@@ -188,6 +245,30 @@ final class DictionaryStoneTests: XCTestCase {
             return []
         }
         return rows
+    }
+}
+
+private final class RecordingDictionaryLookup: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recordedQueries: [String] = []
+
+    var startedQueries: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return recordedQueries
+    }
+
+    func results(for query: String) -> [DictionaryResult] {
+        lock.lock()
+        recordedQueries.append(query)
+        lock.unlock()
+
+        return [
+            DictionaryResult(
+                term: query,
+                definition: "Definition for \(query)"
+            )
+        ]
     }
 }
 
@@ -237,11 +318,17 @@ private final class ControllableDictionaryLookup: @unchecked Sendable {
 
 private final class Completion: @unchecked Sendable {
     private let condition = NSCondition()
-    private var isFinished = false
+    private var finished = false
+
+    var isFinished: Bool {
+        condition.lock()
+        defer { condition.unlock() }
+        return finished
+    }
 
     func wait() {
         condition.lock()
-        while !isFinished {
+        while !finished {
             condition.wait()
         }
         condition.unlock()
@@ -249,7 +336,7 @@ private final class Completion: @unchecked Sendable {
 
     func finish() {
         condition.lock()
-        isFinished = true
+        finished = true
         condition.broadcast()
         condition.unlock()
     }
