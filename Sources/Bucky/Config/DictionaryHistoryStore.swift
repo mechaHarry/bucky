@@ -12,14 +12,15 @@ final class DictionaryHistoryStore {
     }
 
     func load() {
-        guard let data = try? Data(contentsOf: fileURL) else {
-            words = []
-            return
-        }
-
         do {
-            let file = try JSONDecoder().decode(DictionaryHistoryFile.self, from: data)
+            let file = try JSONFilePersistence.read(
+                DictionaryHistoryFile.self,
+                from: fileURL,
+                decoder: JSONFilePersistence.makeDecoder()
+            )
             words = file.words
+        } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+            words = []
         } catch {
             NSLog("Bucky could not read dictionary history at %@: %@", fileURL.path, error.localizedDescription)
             words = []
@@ -59,15 +60,12 @@ final class DictionaryHistoryStore {
 
     private func save() {
         do {
-            try fileManager.createDirectory(
-                at: fileURL.deletingLastPathComponent(),
-                withIntermediateDirectories: true
+            try JSONFilePersistence.write(
+                DictionaryHistoryFile(words: words),
+                to: fileURL,
+                fileManager: fileManager,
+                encoder: JSONFilePersistence.makeEncoder()
             )
-            let file = DictionaryHistoryFile(words: words)
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(file)
-            try data.write(to: fileURL, options: .atomic)
         } catch {
             NSLog("Bucky could not save dictionary history at %@: %@", fileURL.path, error.localizedDescription)
         }
