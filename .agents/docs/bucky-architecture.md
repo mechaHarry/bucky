@@ -111,7 +111,7 @@ Exclusions are applied after indexing and inclusions. An explicitly included app
 
 ## Stone Extension Recipe
 
-- Add the new `StoneID` case and one `StoneDefinition` entry in `StoneCatalog`. That single catalog entry owns ordering, shortcut number, placeholder text, icon, tint, accepted surface, and update policy.
+- Define a provider-owned `StoneDefinition` and register the provider through `StoneProviderRegistry`. The provider owns its `StoneID`, while its definition owns ordering, shortcut number, placeholder text, icon, tint, accepted surface, and update policy.
 - Let `LauncherMode` bridge only the shared launcher-facing metadata from the catalog. If the new Stone uses text input, it should ride the existing text-input surface; if it is non-textual, define the narrow surface boundary it needs.
 - Model result rows and activation intents separately. `StoneResultRow` carries stable row identity plus declarative `StoneActivation` values; `LiquidGlassLauncherModel.perform(_:,for:)` is the side-effect boundary that turns those intents into copy, open, or history-removal behavior.
 - Keep Stone-specific result shaping inside the Stone or its focused helper, similar to `DictionaryStone`, and feed shared result rows back through `StoneResultSnapshot` rather than embedding side effects in SwiftUI.

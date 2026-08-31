@@ -165,6 +165,33 @@ final class DictionaryStoneTests: XCTestCase {
     }
 
     @MainActor
+    func testClearingQueryReleasesPendingLookupWrapperBeforeLookupCompletes() async {
+        let lookup = ControllableDictionaryLookup()
+        let stone = DictionaryStone(
+            historyStore: makeStore(),
+            lookup: { query in lookup.results(for: query) }
+        )
+        let completion = Completion()
+
+        XCTAssertEqual(stone.snapshot(for: "app"), .loading(message: "Searching Dictionary"))
+        let task = Task {
+            _ = await stone.lookupResults(for: "app")
+            completion.finish()
+        }
+
+        await waitUntil(lookup.startedQueries == ["app"])
+        XCTAssertEqual(stone.snapshot(for: ""), .loaded(rows: []))
+        await waitUntil(completion.isFinished)
+
+        XCTAssertTrue(completion.isFinished)
+        XCTAssertEqual(lookup.startedQueries, ["app"])
+        XCTAssertFalse(lookup.isFinished(query: "app"))
+
+        lookup.finish(query: "app")
+        _ = await task.value
+    }
+
+    @MainActor
     func testLookupResultsIgnoresQueryThatWasNotEstablishedBySnapshot() async {
         let lookup = RecordingDictionaryLookup()
         let stone = DictionaryStone(
@@ -306,6 +333,10 @@ private final class ControllableDictionaryLookup: @unchecked Sendable {
 
     func finish(query: String) {
         completion(for: query).finish()
+    }
+
+    func isFinished(query: String) -> Bool {
+        completion(for: query).isFinished
     }
 
     private func completion(for query: String) -> Completion {

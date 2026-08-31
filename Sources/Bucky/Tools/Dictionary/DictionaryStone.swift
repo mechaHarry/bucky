@@ -28,11 +28,11 @@ final class DictionaryStone: TextStoneProvider {
     func snapshot(for query: String) -> StoneResultSnapshot {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedQuery.isEmpty else {
-            requestGate.cancel()
-            activeRequest = nil
+            cancel()
             return Self.historySnapshot(for: historyStore.words)
         }
 
+        cancelPendingWaiters()
         activeRequest = requestGate.begin(query: trimmedQuery)
         return .loading(message: "Searching Dictionary")
     }
@@ -65,6 +65,7 @@ final class DictionaryStone: TextStoneProvider {
     func cancel() {
         requestGate.cancel()
         activeRequest = nil
+        cancelPendingWaiters()
     }
 
     func activation(for row: StoneResultRow) -> StoneActivation {
@@ -165,12 +166,13 @@ final class DictionaryStone: TextStoneProvider {
 
     private func results(for query: String) async -> [DictionaryResult] {
         while let activeLookup {
-            let results = await activeLookup.task.value
+            guard let results = await waitForResults(for: activeLookup) else { return [] }
+
+            guard !Task.isCancelled else { return [] }
+
             if self.activeLookup?.id == activeLookup.id {
                 self.activeLookup = nil
             }
-
-            guard !Task.isCancelled else { return [] }
 
             guard let activeRequest,
                   requestGate.accepts(activeRequest, currentQuery: query) else {
@@ -185,17 +187,95 @@ final class DictionaryStone: TextStoneProvider {
         }
 
         let lookup = lookup
-        let nextLookup = ActiveLookup(task: Task.detached(priority: .userInitiated) {
+        let lookupID = UUID()
+        let lookupTask = Task.detached(priority: .userInitiated) {
             lookup(query)
-        })
+        }
+        let nextLookup = ActiveLookup(id: lookupID, task: lookupTask)
         activeLookup = nextLookup
-        let results = await nextLookup.task.value
-
-        if activeLookup?.id == nextLookup.id {
-            activeLookup = nil
+        Task { @MainActor [weak self, lookupTask] in
+            let results = await lookupTask.value
+            self?.completeLookup(id: lookupID, results: results)
         }
 
-        return results
+        return await waitForResults(for: nextLookup) ?? []
+    }
+
+    private func waitForResults(for lookup: ActiveLookup) async -> [DictionaryResult]? {
+        let waiterID = UUID()
+        return await withTaskCancellationHandler(operation: {
+            await withCheckedContinuation { continuation in
+                registerLookupWaiter(
+                    id: waiterID,
+                    lookupID: lookup.id,
+                    continuation: continuation
+                )
+            }
+        }, onCancel: {
+            Task { @MainActor [weak self] in
+                self?.cancelLookupWaiter(id: waiterID, lookupID: lookup.id)
+            }
+        })
+    }
+
+    private func registerLookupWaiter(
+        id: UUID,
+        lookupID: UUID,
+        continuation: CheckedContinuation<[DictionaryResult]?, Never>
+    ) {
+        guard !Task.isCancelled else {
+            continuation.resume(returning: nil)
+            return
+        }
+
+        guard var lookup = activeLookup, lookup.id == lookupID else {
+            continuation.resume(returning: nil)
+            return
+        }
+
+        if let results = lookup.result {
+            continuation.resume(returning: results)
+            return
+        }
+
+        lookup.waiters[id] = continuation
+        activeLookup = lookup
+    }
+
+    private func cancelLookupWaiter(id: UUID, lookupID: UUID) {
+        guard var lookup = activeLookup,
+              lookup.id == lookupID,
+              let continuation = lookup.waiters.removeValue(forKey: id) else {
+            return
+        }
+
+        activeLookup = lookup
+        continuation.resume(returning: nil)
+    }
+
+    private func completeLookup(id: UUID, results: [DictionaryResult]) {
+        guard var lookup = activeLookup, lookup.id == id else { return }
+
+        lookup.result = results
+        let waiters = lookup.waiters.values
+        lookup.waiters.removeAll()
+        activeLookup = lookup
+
+        for waiter in waiters {
+            waiter.resume(returning: results)
+        }
+    }
+
+    private func cancelPendingWaiters() {
+        guard var lookup = activeLookup else { return }
+
+        let waiters = lookup.waiters.values
+        lookup.waiters.removeAll()
+        activeLookup = lookup
+
+        for waiter in waiters {
+            waiter.resume(returning: nil)
+        }
     }
 
     private static func dictionaryActivation(for term: String) -> StoneActivation {
@@ -223,6 +303,14 @@ final class DictionaryStone: TextStoneProvider {
 }
 
 private struct ActiveLookup {
-    let id = UUID()
+    let id: UUID
     let task: Task<[DictionaryResult], Never>
+    var result: [DictionaryResult]?
+    var waiters: [UUID: CheckedContinuation<[DictionaryResult]?, Never>] = [:]
+
+    init(id: UUID, task: Task<[DictionaryResult], Never>) {
+        self.id = id
+        self.task = task
+        result = nil
+    }
 }

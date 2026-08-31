@@ -72,7 +72,8 @@ Shared launcher mode metadata lives in `StoneCatalog`, shared rows flow through 
 
 To add a new Stone:
 
-- Add one `StoneID` case and one `StoneDefinition` entry in `Sources/Bucky/Models/StoneModels.swift` for ordering, shortcut, placeholder, icon, surface, tint, and update policy.
+- Define a provider-owned `StoneDefinition` and register the provider through `StoneProviderRegistry`; the provider owns its `StoneID`, metadata, query behavior, and activation mapping.
+- Use the registry-backed launcher mode and shortcut collections so the new Stone appears in ordering, keyboard navigation, placeholders, icons, surfaces, tints, and update policy without editing a central enum or switch.
 - Keep Stone-specific query/result behavior in a focused Stone helper or boundary, then map its output into shared `StoneResultRow` and `StoneResultSnapshot` values.
 - Reuse shared activation intents where possible and extend `StoneActivation` only if the new Stone needs a genuinely new cross-cutting side effect.
 - Add focused coverage in `Tests/BuckyTests/StoneCatalogTests.swift`, `Tests/BuckyTests/LauncherModeRoutingTests.swift`, `Tests/BuckyTests/StoneResultsTests.swift`, plus Stone-specific behavior tests for the new domain.

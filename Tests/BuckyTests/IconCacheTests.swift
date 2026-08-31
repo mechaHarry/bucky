@@ -61,7 +61,7 @@ final class IconCacheTests: XCTestCase {
         let cancelledTask = Task { await cache.icon(for: url) }
         await recorder.waitUntilLoadStarts(for: url.path)
         let visibleTask = Task { await cache.icon(for: url) }
-        await yieldForTaskScheduling()
+        await waitUntilWaiterCount(2, for: url, in: cache)
 
         cancelledTask.cancel()
         let cancelledIcon = await cancelledTask.value
@@ -140,10 +140,11 @@ final class IconCacheTests: XCTestCase {
         XCTAssertEqual(runningLoadCount, 1)
 
         let cancelledTask = Task { await cache.icon(for: cancelledURL) }
-        await waitUntilInFlightLoadCount(2, in: cache)
+        await waitUntilWaiterCount(1, for: cancelledURL, in: cache)
 
         cancelledTask.cancel()
         _ = await cancelledTask.value
+        await waitUntilWaiterCount(0, for: cancelledURL, in: cache)
 
         let cancelledLoadCount = await recorder.loadCount(for: cancelledURL.path)
         let inFlightLoadCount = await cache.inFlightLoadCount()
@@ -154,6 +155,40 @@ final class IconCacheTests: XCTestCase {
         _ = await runningTask.value
         let finalInFlightLoadCount = await cache.inFlightLoadCount()
         XCTAssertEqual(finalInFlightLoadCount, 0)
+    }
+
+    func testFreshWaiterAfterLastCancellationStartsReplacementInsteadOfReceivingFallback() async {
+        let loadedIcon = Self.icon(named: "loaded")
+        let fallbackIcon = Self.icon(named: "fallback")
+        let recorder = GatedIconLoadRecorder(icon: loadedIcon)
+        let cache = IconCache(
+            countLimit: 4,
+            totalCostLimit: 1_000_000,
+            maxConcurrentLoads: 1,
+            loader: { key in await recorder.load(key: key) },
+            fallbackIcon: { _ in fallbackIcon }
+        )
+        let url = URL(fileURLWithPath: "/tmp/Replacement.app")
+
+        let cancelledTask = Task { await cache.icon(for: url) }
+        await recorder.waitUntilLoadStarts(for: url.path)
+        cancelledTask.cancel()
+        let cancelledIcon = await cancelledTask.value
+        await waitUntilWaiterCount(0, for: url, in: cache)
+
+        let freshTask = Task {
+            await cache.icon(for: url)
+        }
+        await waitUntilWaiterCount(1, for: url, in: cache)
+        await recorder.releaseAll()
+        let freshIcon = await freshTask.value
+        let loadCount = await recorder.loadCount(for: url.path)
+        let cachedIcon = await cache.cachedIcon(for: url)
+
+        XCTAssertIdentical(cancelledIcon, fallbackIcon)
+        XCTAssertIdentical(freshIcon, loadedIcon)
+        XCTAssertEqual(loadCount, 2)
+        XCTAssertIdentical(cachedIcon, loadedIcon)
     }
 
     func testLastWaiterCancellationKeepsCapacityOccupiedUntilNonCooperativeLoaderCompletes() async {
@@ -174,8 +209,9 @@ final class IconCacheTests: XCTestCase {
         _ = await cancelledTask.value
 
         let queuedTask = Task { await cache.icon(for: queuedURL) }
-        let queuedLoadStarted = await recorder.waitUntilLoadStarts(for: queuedURL.path, maxYieldCount: 200)
-        XCTAssertFalse(queuedLoadStarted)
+        await waitUntilWaiterCount(1, for: queuedURL, in: cache)
+        let queuedLoadCountBeforeRelease = await recorder.loadCount(for: queuedURL.path)
+        XCTAssertEqual(queuedLoadCountBeforeRelease, 0)
 
         await recorder.releaseAll()
         await recorder.waitUntilLoadStarts(for: queuedURL.path)
@@ -225,27 +261,19 @@ final class IconCacheTests: XCTestCase {
         NSImage(size: NSSize(width: 8, height: 8))
     }
 
-    private func waitUntilInFlightLoadCount(
+    private func waitUntilWaiterCount(
         _ expectedCount: Int,
+        for url: URL,
         in cache: IconCache,
         file: StaticString = #filePath,
         line: UInt = #line
     ) async {
-        for _ in 0..<100 {
-            let count = await cache.inFlightLoadCount()
-            if count >= expectedCount {
-                return
-            }
-            await Task.yield()
+        let deadline = Date().addingTimeInterval(1)
+        while await cache.waiterCount(for: url) != expectedCount, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 1_000_000)
         }
-
-        XCTFail("Timed out waiting for \(expectedCount) in-flight icon loads", file: file, line: line)
-    }
-
-    private func yieldForTaskScheduling() async {
-        for _ in 0..<100 {
-            await Task.yield()
-        }
+        let actualCount = await cache.waiterCount(for: url)
+        XCTAssertEqual(actualCount, expectedCount, file: file, line: line)
     }
 }
 
@@ -362,26 +390,11 @@ private actor GatedIconLoadRecorder {
     }
 
     func waitUntilLoadStarts(for key: String) async {
-        _ = await waitUntilLoadStarts(for: key, maxYieldCount: nil)
-    }
-
-    func waitUntilLoadStarts(for key: String, maxYieldCount: Int?) async -> Bool {
-        guard counts[key, default: 0] == 0 else { return true }
-
-        if let maxYieldCount {
-            for _ in 0..<maxYieldCount {
-                if counts[key, default: 0] > 0 {
-                    return true
-                }
-                await Task.yield()
-            }
-            return false
-        }
+        guard counts[key, default: 0] == 0 else { return }
 
         await withCheckedContinuation { continuation in
             loadStartWaiters[key, default: []].append(continuation)
         }
-        return true
     }
 
     func waitUntilActiveLoadCountIsAtLeast(_ minimum: Int) async {

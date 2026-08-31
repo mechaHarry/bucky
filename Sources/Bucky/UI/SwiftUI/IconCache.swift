@@ -36,6 +36,7 @@ actor IconCache {
     private var inFlightLoads: [String: InFlightLoad] = [:]
     private var pendingLoadKeys: [String] = []
     private var completedIconsByWaiterID: [UUID: NSImage] = [:]
+    private var pendingIconWaiters: [UUID: CheckedContinuation<NSImage?, Never>] = [:]
     private var activeLoadCount = 0
 
     init(
@@ -76,18 +77,9 @@ actor IconCache {
                 return cachedIcon
             }
 
-            while !Task.isCancelled {
-                if let icon = await completedIcon(for: waiterID) {
-                    return icon
-                }
-
-                try? await Task.sleep(nanoseconds: 1_000_000)
-            }
-
-            await cancelWaiter(id: waiterID, key: key)
-            return fallbackIcon(key)
+            return await waitForIcon(id: waiterID, key: key) ?? fallbackIcon(key)
         } onCancel: {
-            Task { [weak self] in
+            Task.detached { [weak self] in
                 await self?.cancelWaiter(id: waiterID, key: key)
             }
         }
@@ -95,6 +87,10 @@ actor IconCache {
 
     func inFlightLoadCount() -> Int {
         inFlightLoads.count
+    }
+
+    func waiterCount(for url: URL) -> Int {
+        inFlightLoads[cacheKey(url)]?.waiterIDs.count ?? 0
     }
 
     private func registerWaiter(id waiterID: UUID, key: String) -> NSImage? {
@@ -115,8 +111,25 @@ actor IconCache {
         return nil
     }
 
-    private func completedIcon(for waiterID: UUID) -> NSImage? {
-        completedIconsByWaiterID.removeValue(forKey: waiterID)
+    private func waitForIcon(id: UUID, key: String) async -> NSImage? {
+        await withCheckedContinuation { continuation in
+            guard !Task.isCancelled else {
+                continuation.resume(returning: nil)
+                return
+            }
+
+            if let completedIcon = completedIconsByWaiterID.removeValue(forKey: id) {
+                continuation.resume(returning: completedIcon)
+                return
+            }
+
+            guard inFlightLoads[key]?.waiterIDs.contains(id) == true else {
+                continuation.resume(returning: nil)
+                return
+            }
+
+            pendingIconWaiters[id] = continuation
+        }
     }
 
     private func scheduleAvailableLoads() {
@@ -150,12 +163,28 @@ actor IconCache {
         }
         inFlightLoads.removeValue(forKey: key)
 
+        if load.cancellationRequested, !load.waiterIDs.isEmpty {
+            let replacement = InFlightLoad(waiterIDs: load.waiterIDs)
+            inFlightLoads[key] = replacement
+            pendingLoadKeys.append(key)
+
+            if load.isActive {
+                activeLoadCount = max(0, activeLoadCount - 1)
+            }
+            scheduleLoadsAfterCancellationCleanup()
+            return
+        }
+
         if !load.waiterIDs.isEmpty {
             cache.setObject(icon, forKey: key as NSString, cost: estimatedCost(for: icon))
         }
 
         for waiterID in load.waiterIDs {
-            completedIconsByWaiterID[waiterID] = icon
+            if let continuation = pendingIconWaiters.removeValue(forKey: waiterID) {
+                continuation.resume(returning: icon)
+            } else {
+                completedIconsByWaiterID[waiterID] = icon
+            }
         }
 
         if load.isActive {
@@ -166,6 +195,9 @@ actor IconCache {
 
     private func cancelWaiter(id: UUID, key: String) {
         completedIconsByWaiterID.removeValue(forKey: id)
+        if let continuation = pendingIconWaiters.removeValue(forKey: id) {
+            continuation.resume(returning: nil)
+        }
         guard var load = inFlightLoads[key],
               load.waiterIDs.remove(id) != nil else {
             return
@@ -176,6 +208,7 @@ actor IconCache {
             load.task?.cancel()
 
             if load.isActive {
+                load.cancellationRequested = true
                 inFlightLoads[key] = load
                 return
             }
@@ -214,4 +247,9 @@ private struct InFlightLoad {
     var task: Task<Void, Never>?
     var waiterIDs: Set<UUID> = []
     var isActive = false
+    var cancellationRequested = false
+
+    init(waiterIDs: Set<UUID> = []) {
+        self.waiterIDs = waiterIDs
+    }
 }
