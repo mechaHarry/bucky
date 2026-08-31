@@ -113,7 +113,7 @@ struct LiquidGlassLauncherView: View {
     }
 
     private var helpSurface: some View {
-        HelpView(globalHotKeyTitle: settingsModel.hotKeyTitle, onBack: {
+        HelpView(globalHotKeyTitle: settingsModel.hotKeyTitle, modes: model.availableModes, onBack: {
             model.returnToLauncherAction?()
         })
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -360,15 +360,12 @@ struct LiquidGlassLauncherView: View {
     }
 
     private func resultRowID(for index: Int) -> StoneResultRow.ID? {
-        switch model.mode {
-        case .applications:
-            return model.resultRow(at: index)?.id
-        case .calculator, .dictionary:
-            return model.resultRow(at: index)?.id
-        case .files:
+        if model.mode == .files {
             guard index >= 0, index < model.fileBrowserModel.entries.count else { return nil }
             return .file(model.fileBrowserModel.entries[index].url)
         }
+
+        return model.resultRow(at: index)?.id
     }
 
     private func rowTransition(for row: StoneResultRow) -> AnyTransition {

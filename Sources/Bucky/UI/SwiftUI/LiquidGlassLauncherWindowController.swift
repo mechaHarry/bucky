@@ -539,7 +539,8 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
                 return event
             }
 
-            if let mode = event.commandNumberMode {
+            if let number = event.commandNumber,
+               let mode = self.model.mode(forCommandNumber: number) {
                 return self.handleLauncherCommand(.switchMode(mode)) ? nil : event
             }
             if event.isCommandR {
@@ -621,7 +622,8 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     }
 
     private func handleKeyEquivalent(_ event: NSEvent) -> Bool {
-        if let mode = event.commandNumberMode {
+        if let number = event.commandNumber,
+           let mode = model.mode(forCommandNumber: number) {
             return handleLauncherCommand(.switchMode(mode))
         }
         if event.isCommandR {

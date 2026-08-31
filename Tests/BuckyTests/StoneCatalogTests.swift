@@ -58,8 +58,8 @@ final class StoneCatalogTests: XCTestCase {
         )
     }
 
-    func testLookupReturnsNilForUnknownStoneIDRawValue() {
-        XCTAssertNil(StoneID(rawValue: 99))
+    func testAdditionalStoneIDDoesNotRequireStaticCatalogDefinition() {
+        XCTAssertEqual(StoneID(rawValue: 99).rawValue, 99)
         XCTAssertNil(StoneCatalog.definition(forRawValue: 99))
     }
 
@@ -68,6 +68,28 @@ final class StoneCatalogTests: XCTestCase {
         XCTAssertEqual(StoneCatalog.definition(for: .calculator).updatePolicy, .immediate)
         XCTAssertEqual(StoneCatalog.definition(for: .dictionary).updatePolicy, .deferred(delayNanoseconds: 80_000_000))
         XCTAssertEqual(StoneCatalog.definition(for: .files).updatePolicy, .immediate)
+    }
+
+    func testLauncherModeEqualityUsesStoneIdentity() {
+        let replacementDefinition = StoneDefinition(
+            id: .calculator,
+            shortcutNumber: 20,
+            presentation: StonePresentation(
+                title: "Replacement",
+                placeholder: "Enter Text Here",
+                systemImage: "text.cursor"
+            ),
+            surface: .textInput,
+            updatePolicy: .immediate,
+            tint: StoneTint(
+                activeHex: 0x102030,
+                panelHex: 0x203040,
+                iconHex: 0x304050,
+                darkModeIconHex: 0xC0D0E0
+            )
+        )
+
+        XCTAssertEqual(LauncherMode(definition: replacementDefinition), .calculator)
     }
 }
 

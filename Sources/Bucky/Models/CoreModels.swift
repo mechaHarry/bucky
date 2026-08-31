@@ -125,33 +125,50 @@ struct DictionaryResult: Hashable {
     let term: String
     let definition: String
 }
-enum LauncherMode: Int, CaseIterable {
-    case applications = 1
-    case calculator = 2
-    case dictionary = 3
-    case files = 4
+struct LauncherMode: RawRepresentable, CaseIterable, Hashable {
+    let stoneDefinition: StoneDefinition
 
-    static let ordered: [LauncherMode] = StoneCatalog.orderedDefinitions.map { LauncherMode(stoneID: $0.id) }
+    static let applications = LauncherMode(stoneID: .applications)
+    static let calculator = LauncherMode(stoneID: .calculator)
+    static let dictionary = LauncherMode(stoneID: .dictionary)
+    static let files = LauncherMode(stoneID: .files)
+    static let allCases: [LauncherMode] = [.applications, .calculator, .dictionary, .files]
+
+    static let ordered = allCases
+
+    var rawValue: Int {
+        stoneDefinition.shortcutNumber
+    }
+
+    init?(rawValue: Int) {
+        guard let definition = StoneCatalog.definition(forShortcutNumber: rawValue) else {
+            return nil
+        }
+        self.init(definition: definition)
+    }
 
     init?(commandNumber: Int) {
         guard let definition = StoneCatalog.definition(forShortcutNumber: commandNumber) else {
             return nil
         }
 
-        self = LauncherMode(stoneID: definition.id)
+        self.init(definition: definition)
     }
 
     init(stoneID: StoneID) {
-        switch stoneID {
-        case .applications:
-            self = .applications
-        case .calculator:
-            self = .calculator
-        case .dictionary:
-            self = .dictionary
-        case .files:
-            self = .files
-        }
+        self.init(definition: StoneCatalog.definition(for: stoneID))
+    }
+
+    init(definition: StoneDefinition) {
+        stoneDefinition = definition
+    }
+
+    static func == (lhs: LauncherMode, rhs: LauncherMode) -> Bool {
+        lhs.stoneID == rhs.stoneID
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(stoneID)
     }
 
     var previousMode: LauncherMode {
@@ -187,20 +204,7 @@ enum LauncherMode: Int, CaseIterable {
     }
 
     var stoneID: StoneID {
-        switch self {
-        case .applications:
-            return .applications
-        case .calculator:
-            return .calculator
-        case .dictionary:
-            return .dictionary
-        case .files:
-            return .files
-        }
-    }
-
-    var stoneDefinition: StoneDefinition {
-        StoneCatalog.definition(for: stoneID)
+        stoneDefinition.id
     }
 
     private func adjacentMode(offset: Int) -> LauncherMode {

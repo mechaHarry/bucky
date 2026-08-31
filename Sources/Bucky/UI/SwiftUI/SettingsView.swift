@@ -384,6 +384,7 @@ private struct SettingsInputSurface: View {
 @available(macOS 26.0, *)
 struct HelpView: View {
     let globalHotKeyTitle: String
+    let modes: [LauncherMode]
     let onBack: () -> Void
     @State private var selectedPane: HelpPane = .global
     @State private var isSidebarCollapsed = false
@@ -420,7 +421,7 @@ struct HelpView: View {
 
             VStack(spacing: 10) {
                 VStack(spacing: 6) {
-                    ForEach(HelpPane.allCases) { pane in
+                    ForEach([.global] + modes.map(HelpPane.mode)) { pane in
                         HelpSidebarRow(
                             pane: pane,
                             isSelected: selectedPane == pane,
@@ -1158,6 +1159,8 @@ private enum HelpShortcutCatalog {
                     HelpExplanation(title: "Directory entry", detail: "Use the right and left arrow navigation flow to enter and leave directories.")
                 ]
             )
+        default:
+            return HelpPageContent(shortcuts: [openMode], explanations: [])
         }
     }
 }
@@ -1165,8 +1168,6 @@ private enum HelpShortcutCatalog {
 private enum HelpPane: Hashable, Identifiable {
     case global
     case mode(LauncherMode)
-
-    static let allCases: [HelpPane] = [.global] + LauncherMode.ordered.map { .mode($0) }
 
     var id: String {
         switch self {

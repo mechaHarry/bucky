@@ -196,14 +196,17 @@ enum LauncherKeyRoutingPolicy {
 }
 
 extension NSEvent {
-    var commandNumberMode: LauncherMode? {
+    var commandNumber: Int? {
         let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
         guard flags == .command,
-              let charactersIgnoringModifiers,
-              let number = Int(charactersIgnoringModifiers) else {
+              let charactersIgnoringModifiers else {
             return nil
         }
-        return LauncherMode(commandNumber: number)
+        return Int(charactersIgnoringModifiers)
+    }
+
+    var commandNumberMode: LauncherMode? {
+        commandNumber.flatMap(LauncherMode.init(commandNumber:))
     }
 
     var firstAlphaNumericCharacter: Character? {

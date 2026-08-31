@@ -1,10 +1,13 @@
 import Foundation
 
-enum StoneID: Int, CaseIterable, Identifiable, Hashable {
-    case applications = 1
-    case calculator = 2
-    case dictionary = 3
-    case files = 4
+struct StoneID: RawRepresentable, CaseIterable, Identifiable, Hashable {
+    let rawValue: Int
+
+    static let applications = StoneID(rawValue: 1)
+    static let calculator = StoneID(rawValue: 2)
+    static let dictionary = StoneID(rawValue: 3)
+    static let files = StoneID(rawValue: 4)
+    static let allCases: [StoneID] = [.applications, .calculator, .dictionary, .files]
 
     var id: Self { self }
 }
@@ -73,21 +76,49 @@ enum TextStoneActivationResult: Equatable {
 @MainActor
 final class StoneProviderRegistry {
     private let providersByID: [StoneID: any TextStoneProvider]
+    let orderedDefinitions: [StoneDefinition]
 
     init(providers: [any TextStoneProvider]) {
         var providersByID: [StoneID: any TextStoneProvider] = [:]
+        var orderedDefinitions = StoneCatalog.orderedDefinitions
 
         for provider in providers {
             precondition(provider.definition.acceptsTextInput, "Text Stone provider must use a text-input definition")
             let previous = providersByID.updateValue(provider, forKey: provider.definition.id)
             precondition(previous == nil, "StoneProviderRegistry contains duplicate provider for \(provider.definition.id)")
+
+            if let index = orderedDefinitions.firstIndex(where: { $0.id == provider.definition.id }) {
+                orderedDefinitions[index] = provider.definition
+            } else {
+                orderedDefinitions.append(provider.definition)
+            }
         }
 
+        precondition(
+            Set(orderedDefinitions.map(\.id)).count == orderedDefinitions.count,
+            "StoneProviderRegistry contains duplicate Stone definitions"
+        )
+        precondition(
+            Set(orderedDefinitions.map(\.shortcutNumber)).count == orderedDefinitions.count,
+            "StoneProviderRegistry contains duplicate Stone shortcut numbers"
+        )
         self.providersByID = providersByID
+        self.orderedDefinitions = orderedDefinitions
     }
 
     var registeredStoneIDs: [StoneID] {
-        Array(providersByID.keys)
+        orderedDefinitions.map(\.id).filter { providersByID[$0] != nil }
+    }
+
+    var availableModes: [LauncherMode] {
+        orderedDefinitions.map(LauncherMode.init(definition:))
+    }
+
+    func mode(forShortcutNumber shortcutNumber: Int) -> LauncherMode? {
+        guard let definition = orderedDefinitions.first(where: { $0.shortcutNumber == shortcutNumber }) else {
+            return nil
+        }
+        return LauncherMode(definition: definition)
     }
 
     func provider(for id: StoneID) -> (any TextStoneProvider)? {
@@ -221,11 +252,7 @@ enum StoneCatalog {
     }
 
     static func definition(forRawValue rawValue: Int) -> StoneDefinition? {
-        guard let id = StoneID(rawValue: rawValue) else {
-            return nil
-        }
-
-        return definition(for: id)
+        definitionsByID[StoneID(rawValue: rawValue)]
     }
 
     static func definition(forShortcutNumber shortcutNumber: Int) -> StoneDefinition? {

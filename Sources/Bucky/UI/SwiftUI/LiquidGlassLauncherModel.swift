@@ -121,6 +121,14 @@ final class LiquidGlassLauncherModel: ObservableObject {
         activatedFileBrowserModel
     }
 
+    var availableModes: [LauncherMode] {
+        textStoneProviders.availableModes
+    }
+
+    func mode(forCommandNumber commandNumber: Int) -> LauncherMode? {
+        textStoneProviders.mode(forShortcutNumber: commandNumber)
+    }
+
     var placeholder: String {
         mode.placeholder
     }
@@ -300,9 +308,9 @@ final class LiquidGlassLauncherModel: ObservableObject {
         case let .switchMode(nextMode):
             return switchMode(nextMode)
         case .previousMode:
-            return switchMode(mode.previousMode)
+            return switchMode(adjacentAvailableMode(offset: -1))
         case .nextMode:
-            return switchMode(mode.nextMode)
+            return switchMode(adjacentAvailableMode(offset: 1))
         case .clearHistory:
             clearHistory()
         case .togglePin:
@@ -321,7 +329,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
 
     func reindex() {
         cancelPendingApplicationFilter()
-        cancelPendingDictionaryLookup()
+        cancelPendingTextStoneUpdates()
         guard !isIndexing else {
             needsReindexAfterCurrent = true
             return
@@ -445,7 +453,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     func clearHistory() {
-        cancelPendingDictionaryLookup()
+        cancelPendingTextStoneUpdates()
         calculationHistoryStore.clear()
         applyToolsResults(scheduleHistory: false)
     }
@@ -466,7 +474,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         pendingCalculationHistoryResult = nil
     }
 
-    private func cancelPendingDictionaryLookup() {
+    private func cancelPendingTextStoneUpdates() {
         for stoneID in textStoneProviders.registeredStoneIDs {
             cancelPendingTextStoneUpdate(for: stoneID)
         }
@@ -527,7 +535,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         switch mode {
         case .applications:
             cancelPendingCalculationHistory()
-            cancelPendingDictionaryLookup()
+            cancelPendingTextStoneUpdates()
             if appRowStore.visibleIDs.isEmpty, !appRowStore.isEmpty {
                 rebuildVisibleItems()
             }
@@ -536,7 +544,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
             applyToolsResults()
         case .files:
             cancelPendingCalculationHistory()
-            cancelPendingDictionaryLookup()
+            cancelPendingTextStoneUpdates()
             toolItems = []
             selectedIndex = MainActor.assumeIsolated {
                 fileBrowserModel.selectedIndex
@@ -716,7 +724,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
 
         switch ToolResultsSnapshotPolicy.update(for: mode, query: query) {
         case .immediate:
-            cancelPendingDictionaryLookup()
+            cancelPendingTextStoneUpdates()
             applyToolResultsSnapshot(
                 makeToolItems(for: trimmedQuery, scheduleHistory: scheduleHistory),
                 selectLiveCalculation: scheduleHistory
@@ -906,7 +914,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
 
         query = ""
         storeCurrentQuery()
-        cancelPendingDictionaryLookup()
+        cancelPendingTextStoneUpdates()
         applyCurrentMode()
     }
 
@@ -949,7 +957,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         if mode != nextMode {
             modeWillSwitchAction?(mode, nextMode)
         }
-        cancelPendingDictionaryLookup()
+        cancelPendingTextStoneUpdates()
         cancelPendingApplicationFilter()
         storeCurrentQuery()
         mode = nextMode
@@ -958,6 +966,12 @@ final class LiquidGlassLauncherModel: ObservableObject {
         publishLightweightModeSnapshot(for: nextMode)
         scheduleModeSnapshot(for: nextMode)
         return true
+    }
+
+    private func adjacentAvailableMode(offset: Int) -> LauncherMode {
+        guard let index = availableModes.firstIndex(of: mode) else { return mode }
+        let nextIndex = (index + offset + availableModes.count) % availableModes.count
+        return availableModes[nextIndex]
     }
 
     private func publishLightweightModeSnapshot(for mode: LauncherMode) {
@@ -1060,18 +1074,15 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     private func activateSelected() {
-        switch mode {
-        case .applications:
-            guard let row = resultRow(at: selectedIndex) else { return }
-            activate(row)
-        case .calculator, .dictionary:
-            guard let row = resultRow(at: selectedIndex) else { return }
-            activate(row)
-        case .files:
+        if mode == .files {
             MainActor.assumeIsolated {
                 fileBrowserModel.handle(.open)
             }
+            return
         }
+
+        guard let row = resultRow(at: selectedIndex) else { return }
+        activate(row)
     }
 
     private func launch(_ item: LaunchItem) {

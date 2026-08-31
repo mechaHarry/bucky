@@ -12,7 +12,7 @@ struct ModeSwitcherView: View {
 
     private var modeSwitcherContent: some View {
         HStack(spacing: 10) {
-            ForEach(LauncherMode.ordered, id: \.self) { mode in
+            ForEach(model.availableModes, id: \.self) { mode in
                 modeSwitcherElement(for: mode)
             }
         }

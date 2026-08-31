@@ -4,6 +4,71 @@ import XCTest
 final class StoneResultsTests: XCTestCase {
     @MainActor
     @available(macOS 26.0, *)
+    func testAdditionalTextStoneProviderParticipatesInLauncherBehavior() throws {
+        let provider = AdditionalTextStoneProvider()
+        let model = LiquidGlassLauncherModel(
+            settingsStore: SettingsStore(),
+            inclusionStore: InclusionStore(),
+            exclusionStore: ExclusionStore(),
+            calculationHistoryStore: CalculationHistoryStore(),
+            dictionaryHistoryStore: DictionaryHistoryStore(fileURL: temporaryDictionaryHistoryFileURL()),
+            dictionaryLookup: { _ in [] },
+            dictionaryOpenHandler: { _ in },
+            textStoneProviders: [provider],
+            fileBrowserModel: FileBrowserModel(
+                fileSystem: StubFileSystemClient(home: TestFixtures.userHome, entriesByDirectory: [:]),
+                store: InMemoryFileBrowserStore(state: .defaultValue),
+                directoryStream: ImmediateDirectoryStream()
+            )
+        )
+
+        XCTAssertEqual(
+            model.availableModes.map(\.stoneID),
+            [.applications, .calculator, .dictionary, .files, provider.definition.id]
+        )
+        let mode = try XCTUnwrap(model.availableModes.last)
+        XCTAssertEqual(mode.shortTitle, "Notes")
+        XCTAssertEqual(mode.placeholder, "Search Notes Here")
+        XCTAssertEqual(mode.helpSystemImage, "note.text")
+        XCTAssertEqual(mode.shortcutDisplayText, "Command+5")
+        XCTAssertEqual(mode.stoneDefinition.updatePolicy, .deferred(delayNanoseconds: 5_000_000))
+        XCTAssertEqual(mode.stoneDefinition.tint, provider.definition.tint)
+        XCTAssertEqual(model.mode(forCommandNumber: 5), mode)
+
+        _ = model.handle(command: .previousMode)
+        XCTAssertEqual(model.mode, mode)
+        _ = model.handle(command: .nextMode)
+        XCTAssertEqual(model.mode, .applications)
+
+        _ = model.handle(command: .switchMode(mode))
+        model.query = "first"
+        model.queryDidChange()
+
+        XCTAssertEqual(model.resultSnapshot, .loading(message: "Preparing first"))
+        waitUntil(model.resultSnapshot.rows.map(\.display) == ["Note: first"])
+        XCTAssertEqual(provider.updatedQueries.last, "first")
+
+        _ = model.handle(command: .switchMode(.calculator))
+        _ = model.handle(command: .switchMode(mode))
+        XCTAssertEqual(model.query, "first")
+
+        model.query = "cancelled"
+        model.queryDidChange()
+        _ = model.handle(command: .switchMode(.applications))
+        XCTAssertGreaterThan(provider.cancelCount, 0)
+
+        _ = model.handle(command: .switchMode(mode))
+        model.query = "activate"
+        model.queryDidChange()
+        waitUntil(model.resultSnapshot.rows.map(\.display) == ["Note: activate"])
+        let row = try XCTUnwrap(model.resultSnapshot.rows.first)
+        model.activate(row)
+
+        XCTAssertEqual(provider.performedActivations, [.copy("activate")])
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
     func testRegisteredTextStoneProviderDrivesTextModeSnapshot() {
         let provider = LauncherTestTextStoneProvider(
             definition: StoneCatalog.definition(for: .calculator)
@@ -347,5 +412,59 @@ private final class LauncherTestTextStoneProvider: TextStoneProvider {
 
     func perform(_ activation: StoneActivation, for row: StoneResultRow) -> TextStoneActivationResult {
         .unhandled
+    }
+}
+
+@MainActor
+private final class AdditionalTextStoneProvider: TextStoneProvider {
+    let definition = StoneDefinition(
+        id: StoneID(rawValue: 50),
+        shortcutNumber: 5,
+        presentation: StonePresentation(
+            title: "Notes",
+            placeholder: "Search Notes Here",
+            systemImage: "note.text"
+        ),
+        surface: .textInput,
+        updatePolicy: .deferred(delayNanoseconds: 5_000_000),
+        tint: StoneTint(
+            activeHex: 0x406080,
+            panelHex: 0x304860,
+            iconHex: 0x203040,
+            darkModeIconHex: 0xB0C0D0
+        )
+    )
+    private(set) var updatedQueries: [String] = []
+    private(set) var cancelCount = 0
+    private(set) var performedActivations: [StoneActivation] = []
+
+    func snapshot(for query: String) -> StoneResultSnapshot {
+        .loading(message: "Preparing \(query)")
+    }
+
+    func updateSnapshot(for query: String) async -> StoneResultSnapshot {
+        updatedQueries.append(query)
+        return .loaded(rows: [StoneResultRow(
+            id: .tool(kind: .message, key: "notes:\(query)"),
+            display: "Note: \(query)",
+            subtitle: "Neutral text provider",
+            copyText: query,
+            kind: .message,
+            primaryActivation: .none,
+            accessoryActivation: .none
+        )])
+    }
+
+    func cancel() {
+        cancelCount += 1
+    }
+
+    func activation(for row: StoneResultRow) -> StoneActivation {
+        .copy(row.copyText ?? "")
+    }
+
+    func perform(_ activation: StoneActivation, for row: StoneResultRow) -> TextStoneActivationResult {
+        performedActivations.append(activation)
+        return .handled(shouldRefresh: false, resetSelection: false, shouldHide: false)
     }
 }
