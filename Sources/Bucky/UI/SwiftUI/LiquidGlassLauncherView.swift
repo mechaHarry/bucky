@@ -474,11 +474,7 @@ struct LiquidGlassLauncherView: View {
 
             for (index, url) in urls.enumerated() {
                 if Task.isCancelled { return }
-                _ = await withTaskCancellationHandler(operation: {
-                    await IconCache.applications.icon(for: url)
-                }, onCancel: {
-                    Task { await IconCache.applications.cancelLoad(for: url) }
-                })
+                _ = await IconCache.applications.icon(for: url)
                 if index == AppIconPreloadPolicy.initialVisibleLimit - 1 {
                     try? await Task.sleep(nanoseconds: AppIconPreloadPolicy.tailDelayNanoseconds)
                 }
@@ -600,11 +596,7 @@ private struct ApplicationIconView: View {
         }
 
         icon = nil
-        let loadedIcon = await withTaskCancellationHandler(operation: {
-            await IconCache.applications.icon(for: url)
-        }, onCancel: {
-            Task { await IconCache.applications.cancelLoad(for: url) }
-        })
+        let loadedIcon = await IconCache.applications.icon(for: url)
 
         guard !Task.isCancelled else { return }
         icon = loadedIcon

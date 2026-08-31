@@ -45,6 +45,36 @@ final class IconCacheTests: XCTestCase {
         XCTAssertEqual(loadCount, 1)
     }
 
+    func testCancellingOneSameKeyWaiterKeepsOtherWaiterOnLoadedIcon() async {
+        let loadedIcon = Self.icon(named: "loaded")
+        let fallbackIcon = Self.icon(named: "fallback")
+        let recorder = GatedIconLoadRecorder(icon: loadedIcon)
+        let cache = IconCache(
+            countLimit: 4,
+            totalCostLimit: 1_000_000,
+            maxConcurrentLoads: 1,
+            loader: { key in await recorder.load(key: key) },
+            fallbackIcon: { _ in fallbackIcon }
+        )
+        let url = URL(fileURLWithPath: "/tmp/Shared.app")
+
+        let cancelledTask = Task { await cache.icon(for: url) }
+        await recorder.waitUntilLoadStarts(for: url.path)
+        let visibleTask = Task { await cache.icon(for: url) }
+        await yieldForTaskScheduling()
+
+        cancelledTask.cancel()
+        let cancelledIcon = await cancelledTask.value
+
+        await recorder.releaseAll()
+        let visibleIcon = await visibleTask.value
+
+        XCTAssertIdentical(cancelledIcon, fallbackIcon)
+        XCTAssertIdentical(visibleIcon, loadedIcon)
+        let loadCount = await recorder.loadCount(for: url.path)
+        XCTAssertEqual(loadCount, 1)
+    }
+
     func testIconCacheLoadsMultipleKeysIndependently() async {
         let recorder = IconLoadRecorder()
         let cache = IconCache(
@@ -113,7 +143,6 @@ final class IconCacheTests: XCTestCase {
         await waitUntilInFlightLoadCount(2, in: cache)
 
         cancelledTask.cancel()
-        await cache.cancelLoad(for: cancelledURL)
         _ = await cancelledTask.value
 
         let cancelledLoadCount = await recorder.loadCount(for: cancelledURL.path)
@@ -123,6 +152,37 @@ final class IconCacheTests: XCTestCase {
 
         await recorder.releaseAll()
         _ = await runningTask.value
+        let finalInFlightLoadCount = await cache.inFlightLoadCount()
+        XCTAssertEqual(finalInFlightLoadCount, 0)
+    }
+
+    func testLastWaiterCancellationReleasesCapacityWhenLoaderIgnoresCancellation() async {
+        let recorder = GatedIconLoadRecorder()
+        let cache = IconCache(
+            countLimit: 4,
+            totalCostLimit: 1_000_000,
+            maxConcurrentLoads: 1,
+            loader: { key in await recorder.loadIgnoringCancellation(key: key) },
+            fallbackIcon: { _ in Self.icon(named: "fallback") }
+        )
+        let cancelledURL = URL(fileURLWithPath: "/tmp/Cancelled.app")
+        let queuedURL = URL(fileURLWithPath: "/tmp/Queued.app")
+
+        let cancelledTask = Task { await cache.icon(for: cancelledURL) }
+        await recorder.waitUntilLoadStarts(for: cancelledURL.path)
+        cancelledTask.cancel()
+        _ = await cancelledTask.value
+
+        let queuedTask = Task { await cache.icon(for: queuedURL) }
+        let queuedLoadStarted = await recorder.waitUntilLoadStarts(for: queuedURL.path, maxYieldCount: 200)
+        await recorder.releaseAll()
+        _ = await queuedTask.value
+
+        XCTAssertTrue(queuedLoadStarted)
+        let cancelledLoadCount = await recorder.loadCount(for: cancelledURL.path)
+        let queuedLoadCount = await recorder.loadCount(for: queuedURL.path)
+        XCTAssertEqual(cancelledLoadCount, 1)
+        XCTAssertEqual(queuedLoadCount, 1)
         let finalInFlightLoadCount = await cache.inFlightLoadCount()
         XCTAssertEqual(finalInFlightLoadCount, 0)
     }
@@ -178,6 +238,12 @@ final class IconCacheTests: XCTestCase {
         }
 
         XCTFail("Timed out waiting for \(expectedCount) in-flight icon loads", file: file, line: line)
+    }
+
+    private func yieldForTaskScheduling() async {
+        for _ in 0..<100 {
+            await Task.yield()
+        }
     }
 }
 
@@ -235,12 +301,17 @@ private actor IconLoadRecorder {
 
 @available(macOS 26.0, *)
 private actor GatedIconLoadRecorder {
+    private let icon: NSImage?
     private var counts: [String: Int] = [:]
     private var activeLoads = 0
     private var activeWaiters: [CheckedContinuation<Void, Never>] = []
     private var loadStartWaiters: [String: [CheckedContinuation<Void, Never>]] = [:]
     private var releaseContinuations: [CheckedContinuation<Void, Never>] = []
     private var isReleased = false
+
+    init(icon: NSImage? = nil) {
+        self.icon = icon
+    }
 
     func load(key: String) async -> NSImage? {
         counts[key, default: 0] += 1
@@ -256,7 +327,23 @@ private actor GatedIconLoadRecorder {
 
         activeLoads -= 1
         guard !Task.isCancelled else { return nil }
-        return IconCacheTests.icon(named: key)
+        return icon ?? IconCacheTests.icon(named: key)
+    }
+
+    func loadIgnoringCancellation(key: String) async -> NSImage? {
+        counts[key, default: 0] += 1
+        activeLoads += 1
+        resumeActiveWaiters()
+        resumeLoadStartWaiters(for: key)
+
+        if !isReleased {
+            await withCheckedContinuation { continuation in
+                releaseContinuations.append(continuation)
+            }
+        }
+
+        activeLoads -= 1
+        return icon ?? IconCacheTests.icon(named: key)
     }
 
     func releaseAll() {
@@ -273,11 +360,26 @@ private actor GatedIconLoadRecorder {
     }
 
     func waitUntilLoadStarts(for key: String) async {
-        guard counts[key, default: 0] == 0 else { return }
+        _ = await waitUntilLoadStarts(for: key, maxYieldCount: nil)
+    }
+
+    func waitUntilLoadStarts(for key: String, maxYieldCount: Int?) async -> Bool {
+        guard counts[key, default: 0] == 0 else { return true }
+
+        if let maxYieldCount {
+            for _ in 0..<maxYieldCount {
+                if counts[key, default: 0] > 0 {
+                    return true
+                }
+                await Task.yield()
+            }
+            return false
+        }
 
         await withCheckedContinuation { continuation in
             loadStartWaiters[key, default: []].append(continuation)
         }
+        return true
     }
 
     func waitUntilActiveLoadCountIsAtLeast(_ minimum: Int) async {

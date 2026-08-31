@@ -346,11 +346,7 @@ struct FileBrowserView: View {
 
             for (index, url) in urls.enumerated() {
                 if Task.isCancelled { return }
-                _ = await withTaskCancellationHandler(operation: {
-                    await IconCache.files.icon(for: url)
-                }, onCancel: {
-                    Task { await IconCache.files.cancelLoad(for: url) }
-                })
+                _ = await IconCache.files.icon(for: url)
 
                 if FileIconPreloadPolicy.shouldYield(afterLoadingItemAt: index) {
                     await Task.yield()
@@ -1399,11 +1395,7 @@ private struct FileIconView: View {
         }
 
         icon = nil
-        let loadedIcon = await withTaskCancellationHandler(operation: {
-            await IconCache.files.icon(for: url)
-        }, onCancel: {
-            Task { await IconCache.files.cancelLoad(for: url) }
-        })
+        let loadedIcon = await IconCache.files.icon(for: url)
         guard !Task.isCancelled else { return }
         icon = loadedIcon
     }

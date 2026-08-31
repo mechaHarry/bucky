@@ -15,6 +15,26 @@ final class ApplicationSearchEngineTests: XCTestCase {
         XCTAssertEqual(results.map(\.title), ["Calendar", "Notes", "Terminal"])
     }
 
+    func testWhitespaceOnlyQueryPreservesPreviousScoredOrdering() {
+        let items = [
+            launchItem(title: "Long Application"),
+            launchItem(title: "App"),
+            launchItem(title: "Medium")
+        ]
+        var rowStore = ApplicationRowStore()
+        rowStore.replaceAll(items)
+
+        let rankedItems = ApplicationSearchEngine.filter(items, normalizedQuery: "   ")
+        let rankedIDs = ApplicationSearchEngine.filterIDs(
+            rowStore.visibleIDs,
+            rowStore: rowStore,
+            normalizedQuery: "   "
+        )
+
+        XCTAssertEqual(rankedItems.map(\.title), ["App", "Medium", "Long Application"])
+        XCTAssertEqual(rowStore.items(for: rankedIDs).map(\.title), ["App", "Medium", "Long Application"])
+    }
+
     func testTokenizedQueryIgnoresExtraWhitespace() {
         let tokens = ApplicationSearchEngine.tokens(for: "  notes   ar  ")
 

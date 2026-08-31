@@ -29,9 +29,6 @@ enum ApplicationSearchEngine {
         }
 
         let queryTokens = tokens(for: normalizedQuery)
-        guard !queryTokens.isEmpty else {
-            return items
-        }
 
         return items.indices.compactMap { index -> RankedApplicationMatch? in
             let item = items[index]
@@ -59,9 +56,6 @@ enum ApplicationSearchEngine {
         }
 
         let queryTokens = tokens(for: normalizedQuery)
-        guard !queryTokens.isEmpty else {
-            return ids
-        }
 
         return ids.indices.compactMap { index -> RankedApplicationMatch? in
             guard let item = rowStore.item(for: ids[index]),
@@ -88,9 +82,6 @@ enum ApplicationSearchEngine {
         }
 
         let queryTokens = tokens(for: normalizedQuery)
-        guard !queryTokens.isEmpty else {
-            return candidates
-        }
 
         return candidates.compactMap { candidate -> (ApplicationSearchCandidate, RankedApplicationMatch)? in
             guard queryTokens.allSatisfy({ candidate.searchText.contains($0) }) else {

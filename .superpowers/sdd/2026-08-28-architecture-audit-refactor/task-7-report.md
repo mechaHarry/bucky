@@ -165,3 +165,185 @@ The final signed commit hash is reported in the short status response after comm
 
 - Existing Swift build emits pre-existing Sendable warnings for `ApplicationIndexSnapshotCache` captured from dispatch queues; this task did not touch that ownership path.
 - `IconCache.cancelLoad(for:)` cancels by cache key, so two callers for the same key share cancellation. This matches same-key coalescing and current app/file view usage, but a future multi-owner API may want per-waiter cancellation tokens.
+
+---
+
+# Task 7 Fix Round 1 Report
+
+## Scope
+
+Addressed all three review findings without starting persistence extraction, view extraction, documentation, or version tasks:
+
+- Same-key cancellation now cancels only the cancelled waiter, not every waiter for that cache key.
+- Last-waiter cancellation now releases active load capacity even when the loader ignores task cancellation.
+- Whitespace-only application queries now preserve the prior observable scored ordering instead of returning source order.
+
+## Exact Interfaces After Fix
+
+```swift
+@available(macOS 26.0, *)
+enum ApplicationSearchEngine {
+    static func tokens(for normalizedQuery: String) -> [String]
+    static func filter(_ items: [LaunchItem], normalizedQuery: String) -> [LaunchItem]
+    static func filterIDs(_ ids: [ApplicationRowID], rowStore: ApplicationRowStore, normalizedQuery: String) -> [ApplicationRowID]
+    static func rankedCandidates(_ candidates: [ApplicationSearchCandidate], normalizedQuery: String) -> [ApplicationSearchCandidate]
+}
+```
+
+```swift
+@available(macOS 26.0, *)
+actor IconCache {
+    typealias Loader = @Sendable (String) async -> NSImage?
+    typealias FallbackIcon = @Sendable (String) -> NSImage
+    typealias CacheKey = @Sendable (URL) -> String
+
+    static let applications: IconCache
+    static let files: IconCache
+
+    nonisolated let countLimit: Int
+    nonisolated let totalCostLimit: Int
+    nonisolated let maxConcurrentLoads: Int
+
+    init(
+        countLimit: Int,
+        totalCostLimit: Int,
+        maxConcurrentLoads: Int,
+        cacheKey: @escaping CacheKey = { $0.path },
+        loader: @escaping Loader,
+        fallbackIcon: @escaping FallbackIcon
+    )
+
+    func cachedIcon(for url: URL) -> NSImage?
+    nonisolated func icon(for url: URL) async -> NSImage
+    func inFlightLoadCount() -> Int
+}
+```
+
+`IconCache.cancelLoad(for:)` was removed. Cancellation ownership is now per caller/waiter through `icon(for:)`; view-level `withTaskCancellationHandler` wrappers in app/file icon preload and row icon loading were removed.
+
+## Cache Bounds and Concurrency Behavior After Fix
+
+- `IconCache.applications`: count limit `256`, cost limit `134217728` bytes, max concurrent loads `4`, key is `url.path`.
+- `IconCache.files`: count limit `768`, cost limit `134217728` bytes, max concurrent loads `2`, key is `url.standardizedFileURL.path`.
+- Same-key requests still coalesce into one `InFlightLoad` and one loader task while retaining separate waiter IDs.
+- A cancelled waiter removes only its own waiter ID and receives the configured fallback icon from `icon(for:)`.
+- Remaining same-key waiters stay attached and receive the loaded icon when the coalesced load completes.
+- When the last waiter cancels, the cache removes the in-flight entry, removes pending queue entries, cancels the loader task if present, releases active capacity immediately, and schedules queued work after an actor-yield cleanup turn.
+- Stale completions from cancellation-ignoring loaders are guarded by a per-load UUID and cannot populate cache, complete unrelated waiters, or decrement active capacity twice.
+- Detached loader tasks capture only loader/fallback closures, the key, load ID, and weak actor self.
+
+## Search Behavior After Fix
+
+- `normalizedQuery.isEmpty` remains the only all-results/source-order fast path.
+- Whitespace-only non-empty strings tokenize to no tokens, then use the shared scoring/tie-break pipeline. This restores the previous observable behavior: all rows match, shorter titles score ahead of longer titles, and deterministic tie handling still applies.
+- Indexed and in-memory paths continue to share the same tokenization, scoring, and deterministic ordering implementation.
+
+## Files Changed in Fix Round 1
+
+- `Sources/Bucky/Indexer/ApplicationSearchEngine.swift`
+- `Sources/Bucky/UI/SwiftUI/IconCache.swift`
+- `Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift`
+- `Sources/Bucky/UI/SwiftUI/FileBrowserView.swift`
+- `Tests/BuckyTests/ApplicationSearchEngineTests.swift`
+- `Tests/BuckyTests/IconCacheTests.swift`
+- `.superpowers/sdd/2026-08-28-architecture-audit-refactor/task-7-report.md`
+
+## TDD RED Results
+
+Before production fixes, the focused regression tests failed for the two reviewed defects that were still present:
+
+```text
+$ swift test --filter 'ApplicationSearchEngineTests|IconCacheTests'
+Test Case '-[BuckyTests.ApplicationSearchEngineTests testWhitespaceOnlyQueryPreservesPreviousScoredOrdering]' failed: XCTAssertEqual failed: ("["Long Application", "App", "Medium"]") is not equal to ("["App", "Medium", "Long Application"]")
+Test Case '-[BuckyTests.IconCacheTests testLastWaiterCancellationReleasesCapacityWhenLoaderIgnoresCancellation]' failed: XCTAssertTrue failed
+Process exited with code 1
+```
+
+The same-key waiter cancellation regression was added alongside the RED suite and remained as explicit coverage for the key-wide cancellation removal.
+
+## Commands and Pristine Outputs
+
+Focused search/cache regressions:
+
+```text
+$ swift test --filter 'ApplicationSearchEngineTests|IconCacheTests'
+Test Suite 'ApplicationSearchEngineTests' passed
+Executed 7 tests, with 0 failures (0 unexpected)
+Test Suite 'IconCacheTests' passed
+Executed 9 tests, with 0 failures (0 unexpected)
+Test Suite 'Selected tests' passed
+Executed 16 tests, with 0 failures (0 unexpected)
+Process exited with code 0
+```
+
+Focused launcher/search/cache/performance:
+
+```text
+$ swift test --filter 'LiquidGlassLauncherFilterTests|ApplicationRowStoreTests|ApplicationSearchEngineTests|IconCacheTests|LauncherFilterPerformanceTests'
+Test Suite 'Selected tests' passed
+Executed 29 tests, with 0 failures (0 unexpected)
+Bucky performance launcher-filter checked: current median 325.638 ms, baseline 361.139 ms, delta -9.83%, band comfort, samples min/median/max 324.533/325.638/327.803 ms
+Process exited with code 0
+```
+
+Broader launcher-related coverage:
+
+```text
+$ swift test --filter 'Launcher|LiquidGlassLauncher|ApplicationSearchEngine|ApplicationRowStore|IconCache|FileBrowserPreviewPolicy'
+Test Suite 'Selected tests' passed
+Executed 144 tests, with 0 failures (0 unexpected)
+Bucky performance launcher-filter checked: current median 335.969 ms, baseline 361.139 ms, delta -6.97%, band comfort, samples min/median/max 330.711/335.969/348.521 ms
+Process exited with code 0
+```
+
+Full suite:
+
+```text
+$ swift test
+Test Suite 'All tests' passed
+Executed 333 tests, with 0 failures (0 unexpected)
+Bucky performance launcher-filter checked: current median 328.987 ms, baseline 361.139 ms, delta -8.90%, band comfort, samples min/median/max 328.216/328.987/346.959 ms
+Process exited with code 0
+```
+
+Diff hygiene after report append:
+
+```text
+$ git diff --check
+Process exited with code 0
+```
+
+Cancellation-handler search after report append:
+
+```text
+$ rg -n "cancelLoad\(|withTaskCancellationHandler" Sources/Bucky/UI/SwiftUI Sources/Bucky/Indexer Tests/BuckyTests
+Process exited with code 1
+```
+
+## Performance Comparison
+
+- Recorded baseline: `361.139 ms`.
+- Focused launcher performance run: `325.638 ms`, delta `-9.83%`, band `comfort`.
+- Broader launcher-related run: `335.969 ms`, delta `-6.97%`, band `comfort`.
+- Full-suite launcher performance run: `328.987 ms`, delta `-8.90%`, band `comfort`.
+- No launcher-filter regression observed.
+
+## Memory, Cancellation, and Security Self-Review
+
+- Per-waiter cancellation removes only the current waiter's UUID from in-flight state.
+- Last-waiter cancellation removes all cache-owned references for that key, cancels the task, releases active capacity, and lets stale cancellation-ignoring task completions fall through the load-ID guard.
+- `completedIconsByWaiterID` is cleared for cancelled waiters and populated only for waiters still registered at completion time.
+- Loader tasks use `[weak self]`, avoiding actor-retention cycles.
+- Queue fan-out remains bounded by `maxConcurrentLoads`; queued keys do not create detached work until capacity exists.
+- Completed icon storage remains `NSCache`-bounded by explicit count and total-cost limits.
+- No network/API paths, backoff logic, or security-sensitive file operations were changed.
+- No PII, company/customer details, domains, secrets, or non-public values were introduced.
+- Version metadata remains unchanged intentionally because this fix round is constrained to Task 7 and explicitly excludes documentation/version tasks.
+
+## Commit Hash
+
+The fix-round signed commit hash is reported in the final short status response after commit creation. It cannot be embedded in this file before creating the same commit because changing this file changes the commit hash.
+
+## Concerns
+
+- None open for the three fix-round review findings.

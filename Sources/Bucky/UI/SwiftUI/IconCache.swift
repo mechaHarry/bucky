@@ -93,10 +93,6 @@ actor IconCache {
         inFlightLoads.count
     }
 
-    func cancelLoad(for url: URL) {
-        cancelLoad(forKey: cacheKey(url))
-    }
-
     private func registerWaiter(id waiterID: UUID, key: String) -> NSImage? {
         if let cachedIcon = cache.object(forKey: key as NSString) {
             return cachedIcon
@@ -131,20 +127,24 @@ actor IconCache {
             }
 
             activeLoadCount += 1
+            load.isActive = true
+            let loadID = load.id
             let loader = loader
             let fallbackIcon = fallbackIcon
             load.task = Task.detached(priority: .utility) { [weak self] in
                 let icon = await loader(key) ?? fallbackIcon(key)
-                await self?.completeLoad(key: key, icon: icon)
+                await self?.completeLoad(key: key, loadID: loadID, icon: icon)
             }
             inFlightLoads[key] = load
         }
     }
 
-    private func completeLoad(key: String, icon: NSImage) {
-        guard let load = inFlightLoads.removeValue(forKey: key) else {
+    private func completeLoad(key: String, loadID: UUID, icon: NSImage) {
+        guard let load = inFlightLoads[key],
+              load.id == loadID else {
             return
         }
+        inFlightLoads.removeValue(forKey: key)
 
         if !load.waiterIDs.isEmpty {
             cache.setObject(icon, forKey: key as NSString, cost: estimatedCost(for: icon))
@@ -154,11 +154,10 @@ actor IconCache {
             completedIconsByWaiterID[waiterID] = icon
         }
 
-        activeLoadCount = max(0, activeLoadCount - 1)
-        Task { [weak self] in
-            await Task.yield()
-            await self?.scheduleAvailableLoads()
+        if load.isActive {
+            activeLoadCount = max(0, activeLoadCount - 1)
         }
+        scheduleLoadsAfterCancellationCleanup()
     }
 
     private func cancelWaiter(id: UUID, key: String) {
@@ -169,37 +168,24 @@ actor IconCache {
         }
 
         if load.waiterIDs.isEmpty {
-            if let task = load.task {
-                task.cancel()
-                inFlightLoads[key] = load
-            } else {
-                inFlightLoads.removeValue(forKey: key)
-                pendingLoadKeys.removeAll { $0 == key }
+            inFlightLoads.removeValue(forKey: key)
+            pendingLoadKeys.removeAll { $0 == key }
+            load.task?.cancel()
+
+            if load.isActive {
+                activeLoadCount = max(0, activeLoadCount - 1)
             }
+            scheduleLoadsAfterCancellationCleanup()
             return
         }
 
         inFlightLoads[key] = load
     }
 
-    private func cancelLoad(forKey key: String) {
-        guard let load = inFlightLoads.removeValue(forKey: key) else {
-            return
-        }
-
-        pendingLoadKeys.removeAll { $0 == key }
-        load.task?.cancel()
-        let fallback = fallbackIcon(key)
-        for waiterID in load.waiterIDs {
-            completedIconsByWaiterID[waiterID] = fallback
-        }
-
-        if load.task != nil {
-            activeLoadCount = max(0, activeLoadCount - 1)
-            Task { [weak self] in
-                await Task.yield()
-                await self?.scheduleAvailableLoads()
-            }
+    private func scheduleLoadsAfterCancellationCleanup() {
+        Task { [weak self] in
+            await Task.yield()
+            await self?.scheduleAvailableLoads()
         }
     }
 
@@ -218,6 +204,8 @@ actor IconCache {
 
 @available(macOS 26.0, *)
 private struct InFlightLoad {
+    let id = UUID()
     var task: Task<Void, Never>?
     var waiterIDs: Set<UUID> = []
+    var isActive = false
 }
