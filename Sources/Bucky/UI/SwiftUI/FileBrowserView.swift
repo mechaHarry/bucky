@@ -346,7 +346,11 @@ struct FileBrowserView: View {
 
             for (index, url) in urls.enumerated() {
                 if Task.isCancelled { return }
-                _ = await FileIconCache.shared.icon(for: url)
+                _ = await withTaskCancellationHandler(operation: {
+                    await IconCache.files.icon(for: url)
+                }, onCancel: {
+                    Task { await IconCache.files.cancelLoad(for: url) }
+                })
 
                 if FileIconPreloadPolicy.shouldYield(afterLoadingItemAt: index) {
                     await Task.yield()
@@ -1355,81 +1359,6 @@ struct FileIconPreloadPolicy {
 }
 
 @available(macOS 26.0, *)
-private actor FileIconCache {
-    static let shared = FileIconCache()
-
-    private let cache = NSCache<NSString, NSImage>()
-    private var inFlightTasks: [String: Task<NSImage, Never>] = [:]
-    private var activeLoadCount = 0
-    private var loadWaiters: [CheckedContinuation<Void, Never>] = []
-    private let maxConcurrentLoads = 2
-
-    private init() {
-        cache.countLimit = FileIconPreloadPolicy.preloadLimit
-        cache.totalCostLimit = 128 * 1024 * 1024
-    }
-
-    func cachedIcon(for url: URL) -> NSImage? {
-        cache.object(forKey: cacheKey(for: url) as NSString)
-    }
-
-    func icon(for url: URL) async -> NSImage {
-        let path = cacheKey(for: url)
-        let key = path as NSString
-        if let cachedIcon = cache.object(forKey: key) {
-            return cachedIcon
-        }
-
-        if let inFlightTask = inFlightTasks[path] {
-            return await inFlightTask.value
-        }
-
-        let task = Task.detached(priority: .utility) { [self] in
-            await acquireLoadSlot()
-            return NSWorkspace.shared.icon(forFile: path)
-        }
-        inFlightTasks[path] = task
-
-        let icon = await task.value
-        releaseLoadSlot()
-        cache.setObject(icon, forKey: key, cost: estimatedCost(for: icon))
-        inFlightTasks[path] = nil
-        return icon
-    }
-
-    private func cacheKey(for url: URL) -> String {
-        url.standardizedFileURL.path
-    }
-
-    private func estimatedCost(for icon: NSImage) -> Int {
-        let largestPixelArea = icon.representations
-            .map { max(1, $0.pixelsWide) * max(1, $0.pixelsHigh) }
-            .max() ?? Int(max(1, icon.size.width) * max(1, icon.size.height))
-
-        return largestPixelArea * 4
-    }
-
-    private func acquireLoadSlot() async {
-        if activeLoadCount < maxConcurrentLoads {
-            activeLoadCount += 1
-            return
-        }
-
-        await withCheckedContinuation { continuation in
-            loadWaiters.append(continuation)
-        }
-    }
-
-    private func releaseLoadSlot() {
-        if loadWaiters.isEmpty {
-            activeLoadCount = max(0, activeLoadCount - 1)
-        } else {
-            loadWaiters.removeFirst().resume()
-        }
-    }
-}
-
-@available(macOS 26.0, *)
 private struct FileIconView: View {
     let url: URL
     @ObservedObject var model: FileBrowserModel
@@ -1464,13 +1393,17 @@ private struct FileIconView: View {
             return
         }
 
-        if let cachedIcon = await FileIconCache.shared.cachedIcon(for: url) {
+        if let cachedIcon = await IconCache.files.cachedIcon(for: url) {
             icon = cachedIcon
             return
         }
 
         icon = nil
-        let loadedIcon = await FileIconCache.shared.icon(for: url)
+        let loadedIcon = await withTaskCancellationHandler(operation: {
+            await IconCache.files.icon(for: url)
+        }, onCancel: {
+            Task { await IconCache.files.cancelLoad(for: url) }
+        })
         guard !Task.isCancelled else { return }
         icon = loadedIcon
     }

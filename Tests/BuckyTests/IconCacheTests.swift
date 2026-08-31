@@ -1,0 +1,305 @@
+import AppKit
+import XCTest
+@testable import Bucky
+
+@available(macOS 26.0, *)
+final class IconCacheTests: XCTestCase {
+    func testIconCacheReturnsCachedIconWithoutReloadingSameKey() async {
+        let recorder = IconLoadRecorder()
+        let cache = IconCache(
+            countLimit: 2,
+            totalCostLimit: 1_000_000,
+            maxConcurrentLoads: 1,
+            loader: { key in await recorder.load(key: key) },
+            fallbackIcon: { _ in Self.icon(named: "fallback") }
+        )
+        let url = URL(fileURLWithPath: "/tmp/Finder.app")
+
+        let first = await cache.icon(for: url)
+        let second = await cache.icon(for: url)
+
+        XCTAssertIdentical(first, second)
+        let loadCount = await recorder.loadCount(for: url.path)
+        let cachedIcon = await cache.cachedIcon(for: url)
+        XCTAssertEqual(loadCount, 1)
+        XCTAssertIdentical(cachedIcon, first)
+    }
+
+    func testIconCacheCoalescesConcurrentLoadsForTheSameKey() async {
+        let recorder = IconLoadRecorder(delayNanoseconds: 20_000_000)
+        let cache = IconCache(
+            countLimit: 4,
+            totalCostLimit: 1_000_000,
+            maxConcurrentLoads: 2,
+            loader: { key in await recorder.load(key: key) },
+            fallbackIcon: { _ in Self.icon(named: "fallback") }
+        )
+        let url = URL(fileURLWithPath: "/tmp/Notes.app")
+
+        async let first = cache.icon(for: url)
+        async let second = cache.icon(for: url)
+        let icons = await [first, second]
+
+        XCTAssertIdentical(icons[0], icons[1])
+        let loadCount = await recorder.loadCount(for: url.path)
+        XCTAssertEqual(loadCount, 1)
+    }
+
+    func testIconCacheLoadsMultipleKeysIndependently() async {
+        let recorder = IconLoadRecorder()
+        let cache = IconCache(
+            countLimit: 4,
+            totalCostLimit: 1_000_000,
+            maxConcurrentLoads: 2,
+            loader: { key in await recorder.load(key: key) },
+            fallbackIcon: { _ in Self.icon(named: "fallback") }
+        )
+        let firstURL = URL(fileURLWithPath: "/tmp/Notes.app")
+        let secondURL = URL(fileURLWithPath: "/tmp/Terminal.app")
+
+        let first = await cache.icon(for: firstURL)
+        let second = await cache.icon(for: secondURL)
+
+        XCTAssertNotIdentical(first, second)
+        let firstLoadCount = await recorder.loadCount(for: firstURL.path)
+        let secondLoadCount = await recorder.loadCount(for: secondURL.path)
+        XCTAssertEqual(firstLoadCount, 1)
+        XCTAssertEqual(secondLoadCount, 1)
+    }
+
+    func testIconCacheBoundsConcurrentLoads() async {
+        let recorder = IconLoadRecorder(delayNanoseconds: 30_000_000)
+        let cache = IconCache(
+            countLimit: 8,
+            totalCostLimit: 1_000_000,
+            maxConcurrentLoads: 2,
+            loader: { key in await recorder.load(key: key) },
+            fallbackIcon: { _ in Self.icon(named: "fallback") }
+        )
+        let urls = (0..<6).map { URL(fileURLWithPath: "/tmp/App\($0).app") }
+
+        await withTaskGroup(of: NSImage.self) { group in
+            for url in urls {
+                group.addTask {
+                    await cache.icon(for: url)
+                }
+            }
+
+            for await _ in group {}
+        }
+
+        let maxActiveLoads = await recorder.maxActiveLoads()
+        XCTAssertLessThanOrEqual(maxActiveLoads, 2)
+    }
+
+    func testCancellingPendingLoadRemovesItsInFlightState() async {
+        let recorder = GatedIconLoadRecorder()
+        let cache = IconCache(
+            countLimit: 4,
+            totalCostLimit: 1_000_000,
+            maxConcurrentLoads: 1,
+            loader: { key in await recorder.load(key: key) },
+            fallbackIcon: { _ in Self.icon(named: "fallback") }
+        )
+        let runningURL = URL(fileURLWithPath: "/tmp/Running.app")
+        let cancelledURL = URL(fileURLWithPath: "/tmp/Cancelled.app")
+
+        let runningTask = Task { await cache.icon(for: runningURL) }
+        await recorder.waitUntilLoadStarts(for: runningURL.path)
+        let runningLoadCount = await recorder.loadCount(for: runningURL.path)
+        XCTAssertEqual(runningLoadCount, 1)
+
+        let cancelledTask = Task { await cache.icon(for: cancelledURL) }
+        await waitUntilInFlightLoadCount(2, in: cache)
+
+        cancelledTask.cancel()
+        await cache.cancelLoad(for: cancelledURL)
+        _ = await cancelledTask.value
+
+        let cancelledLoadCount = await recorder.loadCount(for: cancelledURL.path)
+        let inFlightLoadCount = await cache.inFlightLoadCount()
+        XCTAssertEqual(cancelledLoadCount, 0)
+        XCTAssertEqual(inFlightLoadCount, 1)
+
+        await recorder.releaseAll()
+        _ = await runningTask.value
+        let finalInFlightLoadCount = await cache.inFlightLoadCount()
+        XCTAssertEqual(finalInFlightLoadCount, 0)
+    }
+
+    func testLoaderNilUsesFallbackIconAndCachesIt() async {
+        let fallback = Self.icon(named: "fallback")
+        let cache = IconCache(
+            countLimit: 2,
+            totalCostLimit: 1_000_000,
+            maxConcurrentLoads: 1,
+            loader: { _ -> NSImage? in nil },
+            fallbackIcon: { _ in fallback }
+        )
+        let url = URL(fileURLWithPath: "/tmp/Missing.app")
+
+        let icon = await cache.icon(for: url)
+
+        XCTAssertIdentical(icon, fallback)
+        let cachedIcon = await cache.cachedIcon(for: url)
+        XCTAssertIdentical(cachedIcon, fallback)
+    }
+
+    func testIconCachePublishesConfiguredLimits() {
+        let cache = IconCache(
+            countLimit: 7,
+            totalCostLimit: 12_345,
+            maxConcurrentLoads: 3,
+            loader: { _ -> NSImage? in nil },
+            fallbackIcon: { _ in Self.icon(named: "fallback") }
+        )
+
+        XCTAssertEqual(cache.countLimit, 7)
+        XCTAssertEqual(cache.totalCostLimit, 12_345)
+        XCTAssertEqual(cache.maxConcurrentLoads, 3)
+    }
+
+    fileprivate static func icon(named name: String) -> NSImage {
+        NSImage(size: NSSize(width: 8, height: 8))
+    }
+
+    private func waitUntilInFlightLoadCount(
+        _ expectedCount: Int,
+        in cache: IconCache,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
+        for _ in 0..<100 {
+            let count = await cache.inFlightLoadCount()
+            if count >= expectedCount {
+                return
+            }
+            await Task.yield()
+        }
+
+        XCTFail("Timed out waiting for \(expectedCount) in-flight icon loads", file: file, line: line)
+    }
+}
+
+@available(macOS 26.0, *)
+private actor IconLoadRecorder {
+    private let delayNanoseconds: UInt64
+    private var counts: [String: Int] = [:]
+    private var activeLoads = 0
+    private var observedMaxActiveLoads = 0
+    private var activeWaiters: [CheckedContinuation<Void, Never>] = []
+
+    init(delayNanoseconds: UInt64 = 0) {
+        self.delayNanoseconds = delayNanoseconds
+    }
+
+    func load(key: String) async -> NSImage? {
+        counts[key, default: 0] += 1
+        activeLoads += 1
+        observedMaxActiveLoads = max(observedMaxActiveLoads, activeLoads)
+        resumeActiveWaiters()
+
+        if delayNanoseconds > 0 {
+            try? await Task.sleep(nanoseconds: delayNanoseconds)
+        }
+
+        activeLoads -= 1
+        guard !Task.isCancelled else { return nil }
+        return IconCacheTests.icon(named: key)
+    }
+
+    func loadCount(for key: String) -> Int {
+        counts[key, default: 0]
+    }
+
+    func maxActiveLoads() -> Int {
+        observedMaxActiveLoads
+    }
+
+    func waitUntilActiveLoadCountIsAtLeast(_ minimum: Int) async {
+        guard activeLoads < minimum else { return }
+
+        await withCheckedContinuation { continuation in
+            activeWaiters.append(continuation)
+        }
+    }
+
+    private func resumeActiveWaiters() {
+        let waiters = activeWaiters
+        activeWaiters.removeAll()
+        for waiter in waiters {
+            waiter.resume()
+        }
+    }
+}
+
+@available(macOS 26.0, *)
+private actor GatedIconLoadRecorder {
+    private var counts: [String: Int] = [:]
+    private var activeLoads = 0
+    private var activeWaiters: [CheckedContinuation<Void, Never>] = []
+    private var loadStartWaiters: [String: [CheckedContinuation<Void, Never>]] = [:]
+    private var releaseContinuations: [CheckedContinuation<Void, Never>] = []
+    private var isReleased = false
+
+    func load(key: String) async -> NSImage? {
+        counts[key, default: 0] += 1
+        activeLoads += 1
+        resumeActiveWaiters()
+        resumeLoadStartWaiters(for: key)
+
+        if !isReleased {
+            await withCheckedContinuation { continuation in
+                releaseContinuations.append(continuation)
+            }
+        }
+
+        activeLoads -= 1
+        guard !Task.isCancelled else { return nil }
+        return IconCacheTests.icon(named: key)
+    }
+
+    func releaseAll() {
+        isReleased = true
+        let continuations = releaseContinuations
+        releaseContinuations.removeAll()
+        for continuation in continuations {
+            continuation.resume()
+        }
+    }
+
+    func loadCount(for key: String) -> Int {
+        counts[key, default: 0]
+    }
+
+    func waitUntilLoadStarts(for key: String) async {
+        guard counts[key, default: 0] == 0 else { return }
+
+        await withCheckedContinuation { continuation in
+            loadStartWaiters[key, default: []].append(continuation)
+        }
+    }
+
+    func waitUntilActiveLoadCountIsAtLeast(_ minimum: Int) async {
+        guard activeLoads < minimum else { return }
+
+        await withCheckedContinuation { continuation in
+            activeWaiters.append(continuation)
+        }
+    }
+
+    private func resumeActiveWaiters() {
+        let waiters = activeWaiters
+        activeWaiters.removeAll()
+        for waiter in waiters {
+            waiter.resume()
+        }
+    }
+
+    private func resumeLoadStartWaiters(for key: String) {
+        let waiters = loadStartWaiters.removeValue(forKey: key) ?? []
+        for waiter in waiters {
+            waiter.resume()
+        }
+    }
+}

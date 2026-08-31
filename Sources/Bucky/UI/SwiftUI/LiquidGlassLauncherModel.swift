@@ -645,78 +645,11 @@ final class LiquidGlassLauncherModel: ObservableObject {
         rowStore: ApplicationRowStore,
         normalizedQuery: String
     ) -> [AppRowID] {
-        guard !normalizedQuery.isEmpty else {
-            return ids
-        }
-
-        let tokens = normalizedQuery
-            .split(whereSeparator: \.isWhitespace)
-            .map(String.init)
-
-        return ids.compactMap { id -> (AppRowID, Int)? in
-            guard let item = rowStore.item(for: id),
-                  tokens.allSatisfy({ item.searchText.contains($0) }) else {
-                return nil
-            }
-
-            return (id, score(item: item, tokens: tokens))
-        }
-        .sorted {
-            if $0.1 == $1.1 {
-                let left = rowStore.item(for: $0.0)?.title ?? ""
-                let right = rowStore.item(for: $1.0)?.title ?? ""
-                return left.localizedStandardCompare(right) == .orderedAscending
-            }
-            return $0.1 > $1.1
-        }
-        .map(\.0)
+        ApplicationSearchEngine.filterIDs(ids, rowStore: rowStore, normalizedQuery: normalizedQuery)
     }
 
     nonisolated static func filter(_ items: [LaunchItem], normalizedQuery: String) -> [LaunchItem] {
-        guard !normalizedQuery.isEmpty else {
-            return items
-        }
-
-        let tokens = normalizedQuery
-            .split(whereSeparator: \.isWhitespace)
-            .map(String.init)
-
-        return items.indices.compactMap { index -> (Int, Int)? in
-            let item = items[index]
-            guard tokens.allSatisfy({ item.searchText.contains($0) }) else {
-                return nil
-            }
-            return (index, score(item: item, tokens: tokens))
-        }
-        .sorted {
-            if $0.1 == $1.1 {
-                return items[$0.0].title.localizedStandardCompare(items[$1.0].title) == .orderedAscending
-            }
-            return $0.1 > $1.1
-        }
-        .map { items[$0.0] }
-    }
-
-    nonisolated private static func score(item: LaunchItem, tokens: [String]) -> Int {
-        let title = normalized(item.title)
-        var score = 0
-
-        for token in tokens {
-            if title == token {
-                score += 1200
-            } else if title.hasPrefix(token) {
-                score += 1000
-            } else if title.split(separator: " ").contains(where: { $0.hasPrefix(token) }) {
-                score += 850
-            } else if title.contains(token) {
-                score += 650
-            } else {
-                score += 350
-            }
-        }
-
-        score -= min(item.title.count, 120)
-        return score
+        ApplicationSearchEngine.filter(items, normalizedQuery: normalizedQuery)
     }
 
     private func applyToolsResults(scheduleHistory: Bool = true) {
