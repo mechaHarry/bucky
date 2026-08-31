@@ -634,7 +634,7 @@ final class LauncherModeRoutingTests: XCTestCase {
 
         model.show(mode: .dictionary)
 
-        XCTAssertEqual(model.toolItems, [])
+        XCTAssertEqual(model.resultSnapshot.rows, [])
         XCTAssertNil(model.emptyMessage)
     }
 
@@ -648,9 +648,10 @@ final class LauncherModeRoutingTests: XCTestCase {
 
         model.show(mode: .dictionary)
 
-        XCTAssertEqual(model.toolItems.map(\.kind), [.dictionaryHistory, .dictionaryHistory])
-        XCTAssertEqual(model.toolItems.map(\.title), ["banana", "apple"])
-        XCTAssertTrue(model.toolItems.allSatisfy { $0.copyText == nil })
+        let rows = model.resultSnapshot.rows
+        XCTAssertEqual(rows.map(\.kind), [.dictionaryHistory, .dictionaryHistory])
+        XCTAssertEqual(rows.map(\.display), ["banana", "apple"])
+        XCTAssertTrue(rows.allSatisfy { $0.copyText == nil })
         XCTAssertNil(model.emptyMessage)
     }
 
@@ -663,13 +664,13 @@ final class LauncherModeRoutingTests: XCTestCase {
         let model = makeDictionaryLauncherModel(dictionaryHistoryStore: dictionaryHistoryStore)
 
         model.show(mode: .dictionary)
-        guard let banana = model.toolItems.first(where: { $0.title == "banana" }) else {
+        guard let banana = model.resultSnapshot.rows.first(where: { $0.display == "banana" }) else {
             return XCTFail("Expected banana dictionary history row")
         }
 
-        model.removeDictionaryHistory(banana)
+        model.performAccessoryActivation(for: banana)
 
-        XCTAssertEqual(model.toolItems.map(\.title), ["apple"])
+        XCTAssertEqual(model.resultSnapshot.rows.map(\.display), ["apple"])
         XCTAssertEqual(dictionaryHistoryStore.words.map(\.term), ["apple"])
         XCTAssertNil(model.emptyMessage)
     }
@@ -689,7 +690,7 @@ final class LauncherModeRoutingTests: XCTestCase {
         _ = model.handle(command: .open)
 
         XCTAssertEqual(dictionaryHistoryStore.words.map(\.term), ["apple", "banana"])
-        XCTAssertEqual(model.toolItems.first?.title, "apple")
+        XCTAssertEqual(model.resultSnapshot.rows.first?.display, "apple")
         XCTAssertEqual(model.selectedIndex, 0)
         XCTAssertEqual(model.selectionScrollRequest?.index, 0)
         XCTAssertEqual(model.selectionScrollRequest?.anchor, .top)
@@ -709,15 +710,15 @@ final class LauncherModeRoutingTests: XCTestCase {
         model.queryDidChange()
 
         XCTAssertEqual(lookup.queries, [])
-        XCTAssertEqual(model.toolItems, [])
+        XCTAssertEqual(model.resultSnapshot, .loading(message: "Searching Dictionary"))
 
         model.query = "apple"
         model.queryDidChange()
         RunLoop.current.run(until: Date().addingTimeInterval(0.18))
 
         XCTAssertEqual(lookup.queries, ["apple"])
-        XCTAssertEqual(model.toolItems.map(\.title), ["apple"])
-        XCTAssertEqual(model.toolItems.map(\.subtitle), ["Definition for apple"])
+        XCTAssertEqual(model.resultSnapshot.rows.map(\.display), ["apple"])
+        XCTAssertEqual(model.resultSnapshot.rows.map(\.subtitle), ["Definition for apple"])
     }
 
     @MainActor

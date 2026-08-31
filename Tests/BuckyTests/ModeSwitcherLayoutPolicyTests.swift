@@ -117,6 +117,7 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
         XCTAssertLessThan(pathWidth, 420)
     }
 
+    @MainActor
     func testWindowKeyStatePublishesOnlyOnValueChange() {
         let model = LiquidGlassLauncherModel(
             settingsStore: SettingsStore(),
