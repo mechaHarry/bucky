@@ -68,7 +68,7 @@ App indexing and mode handoff stay asynchronous. Apps can briefly show `Loading 
 
 ## Stone Boundaries
 
-Shared launcher mode metadata lives in `StoneCatalog`, shared rows flow through `StoneResultRow` and `StoneResultSnapshot`, and shared side effects flow through `StoneActivation` plus `LiquidGlassLauncherModel.perform(_:,for:)`. That keeps mode definitions, result rendering, and activation behavior aligned across Apps, Calculator, Dictionary, and Files.
+Built-in launcher mode metadata lives in `StoneCatalog`, provider-owned metadata is supplied through `StoneProviderRegistry`, shared rows flow through `StoneResultRow` and `StoneResultSnapshot`, and shared side effects flow through `StoneActivation` plus `LiquidGlassLauncherModel.perform(_:,for:)`. That keeps mode definitions, result rendering, and activation behavior aligned across built-in and extension Stones.
 
 To add a new Stone:
 
