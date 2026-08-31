@@ -62,13 +62,9 @@ Bucky now uses the SwiftUI-native Liquid Glass launcher with a glass window surf
 
 The launcher reindexes app locations in the background every time it opens. While the launcher is open, Command+R also reindexes and refreshes the currently displayed results using the current search text. Command+Comma opens Settings.
 
-The menu bar item provides Open, Reindex, Settings, and Quit actions. Bucky scans `.app` bundles under `/Applications`, `/System/Applications`, and `~/Applications`.
+The menu bar item provides Open, Reindex, Settings, and Quit actions. Bucky scans `.app` bundles recursively under `/Applications`, `/System/Applications`, and `~/Applications`, and scans only direct child `.app` bundles under `/System/Library/CoreServices` so native utilities such as Finder stay launchable without walking nested support trees.
 
-Explicitly included apps are also indexed. The default inclusion is:
-
-```text
-/System/Library/CoreServices/Finder.app
-```
+App indexing and mode handoff stay asynchronous. Apps can briefly show `Loading apps` while a background index is still populating the first result set. Switching into Files first shows a lightweight `Loading files` placeholder until the file browser model is activated, then the file browser publishes its own loading or loaded directory state.
 
 ## Settings
 
@@ -106,6 +102,8 @@ The file format is:
 
 Use Settings to add apps through the macOS file picker or remove included apps from the list.
 
+If `inclusions.json` is missing, Bucky creates it with an empty `includedPaths` array. If the file is malformed, Bucky rewrites it as valid empty JSON and continues with no explicit inclusions. Finder is no longer injected through this file; it is discovered by the direct `/System/Library/CoreServices` scan.
+
 ## Exclusions
 
 Each result has a hide button. Exclusions are stored as JSON at:
@@ -125,3 +123,9 @@ The file format is:
 ```
 
 Edit that file manually and press Command+R in Bucky to reload it, or remove hidden apps from Settings.
+
+If `exclusions.json` is missing or malformed, Bucky falls back to an empty exclusion set. The file is only written when exclusions are changed.
+
+## Fixture And PII Rules
+
+Committed fixtures, screenshots, and JSON examples must stay neutral. Use placeholders such as `/Users/test`, `/Applications/Example.app`, and sample names already used in tests. Do not commit company names, customer names, private domains, or other non-public identifiers in docs, fixtures, or example config.

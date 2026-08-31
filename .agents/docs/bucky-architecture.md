@@ -29,9 +29,8 @@ This project is a local-only macOS launcher implemented as a Swift Package macOS
   - `/Applications`
   - `/System/Applications`
   - `~/Applications`
-- `/System/Library/CoreServices` is scanned only for direct child `.app` bundles so native Apple utility apps are available without walking the full CoreServices support tree.
-- Explicit inclusions are merged after root scanning. Finder remains in the default inclusion list for backward compatibility with existing config, but is deduped after the CoreServices scan.
-- Default inclusion path: `/System/Library/CoreServices/Finder.app`.
+- `/System/Library/CoreServices` is scanned only for direct child `.app` bundles so native Apple utility apps such as Finder are available without walking the full CoreServices support tree.
+- Explicit inclusions are merged after root scanning and deduped by full app path. Finder arrives from the CoreServices scan, not from a seeded inclusion default.
 - Dedupe is by full app path.
 - Search text for apps includes only the app title. Paths, directories, bundle identifiers, and executable names are not searchable.
 - `SystemSettingsIndexer` reads the top-level System Settings sidebar from `/System/Applications/System Settings.app/Contents/Resources/Sidebar.plist`, resolves matching settings `.appex` bundles from `/System/Library/ExtensionKit/Extensions` and `/System/Applications/System Settings.app/Contents/PlugIns`, and keeps only extensions that declare `allowsXAppleSystemPreferencesURLScheme`.
@@ -53,8 +52,8 @@ All app config uses JSON under:
 Files:
 
 - `settings.json`: hotkey, launch-on-startup preference, animation timing preference, file-browser start directory, and custom actions.
-- `inclusions.json`: explicit `.app` paths to merge into the index. Missing or malformed file defaults to Finder.
-- `exclusions.json`: paths hidden from search results.
+- `inclusions.json`: explicit `.app` paths to merge into the index. Missing files are created with an empty array; malformed files are rewritten as valid empty JSON.
+- `exclusions.json`: paths hidden from search results. Missing or malformed files fall back to an empty in-memory set until the user changes exclusions.
 - `calculations.json`: most recent calculator-mode calculations, newest first, capped at 100 entries.
 - `app-index-snapshot.json`: memoized launcher app/settings/action rows used as the startup snapshot. Malformed or incompatible snapshots are ignored and rebuilt by the next index pass.
 
@@ -87,7 +86,8 @@ Exclusions are applied after indexing and inclusions. An explicitly included app
 - Calculator, Dictionary, and Files modes do not search or launch apps.
 - Apps is the default mode and must not activate Files code. `LiquidGlassLauncherModel` creates `FileBrowserModel` lazily only when Files is selected or the Files UI requests it.
 - Mode switches publish the new mode and restored query immediately, then defer mode-specific result snapshots behind the first interactable update. Stale deferred mode work is ignored by generation token.
-- Files mode shows a lightweight loading state if the file-browser model is not already warm, then prepares the model after the first Files frame.
+- Mode switches publish the new mode immediately, then defer the mode-specific snapshot work one turn so the UI can render the new shell before heavier work starts.
+- Files mode shows a lightweight `Loading files` placeholder if the file-browser model is not already warm, then prepares the model after the first Files frame.
 - Files mode lists mounted volumes alongside directory contents and supports folders-first sorting so directories can stay grouped ahead of non-folder entries.
 - File-browser directory lists flow through `FileBrowserDirectoryStreaming` before reaching SwiftUI. The model publishes stable loading, empty, and loaded snapshots and ignores stale stream results when a newer directory request wins.
 - Calculator mode exposes a clear-history button. Pin is global to all launcher modes. While pinned, the launcher stays above other apps, shows a bolder accent border, can be dragged by its background, refocuses on the global launcher hotkey, and stays open after result activation.
@@ -108,6 +108,20 @@ Exclusions are applied after indexing and inclusions. An explicitly included app
   - Managing included apps with Add/Remove. Add uses `NSOpenPanel` restricted to `.app` bundles.
   - Managing hidden apps with Remove.
   - Managing custom action names and shell commands that appear in app results as `Action`.
+
+## Stone Extension Recipe
+
+- Add the new `StoneID` case and one `StoneDefinition` entry in `StoneCatalog`. That single catalog entry owns ordering, shortcut number, placeholder text, icon, tint, accepted surface, and update policy.
+- Let `LauncherMode` bridge only the shared launcher-facing metadata from the catalog. If the new Stone uses text input, it should ride the existing text-input surface; if it is non-textual, define the narrow surface boundary it needs.
+- Model result rows and activation intents separately. `StoneResultRow` carries stable row identity plus declarative `StoneActivation` values; `LiquidGlassLauncherModel.perform(_:,for:)` is the side-effect boundary that turns those intents into copy, open, or history-removal behavior.
+- Keep Stone-specific result shaping inside the Stone or its focused helper, similar to `DictionaryStone`, and feed shared result rows back through `StoneResultSnapshot` rather than embedding side effects in SwiftUI.
+- Add focused tests at the shared seams: catalog coverage (`StoneCatalogTests`), launcher routing (`LauncherModeRoutingTests`), row identity and activation mapping (`StoneResultsTests`), and Stone-specific behavior tests for the new domain.
+- Keep domain policy local. Shared code should only learn new generic metadata or activation cases when the new Stone truly needs a new cross-cutting boundary.
+
+## Fixture And PII Rules
+
+- Tests and committed examples use neutral identifiers such as `/Users/test`, `/Applications/Example.app`, and `SampleCloudTarget`.
+- Do not commit real company names, customer data, private domains, or other non-public identifiers in fixtures, screenshots, example JSON, or architecture notes.
 
 ## Known Product Decisions
 
