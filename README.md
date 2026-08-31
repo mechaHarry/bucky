@@ -60,11 +60,23 @@ Files mode shows mounted volumes alongside folders and files, and supports folde
 
 Bucky now uses the SwiftUI-native Liquid Glass launcher with a glass window surface, per-row glass effects, glass buttons, and animated state transitions. macOS 26 is required; the previous AppKit launcher has been removed.
 
-The launcher reindexes app locations in the background every time it opens. While the launcher is open, Command+R also reindexes and refreshes the currently displayed results using the current search text. Command+Comma opens Settings.
+App indexing starts during launcher controller initialization and stays fresh through the source stream, settings changes, and explicit refresh paths. Opening the launcher only presents and focuses the existing window state; while the launcher is open, Command+R reindexes and refreshes the currently displayed results using the current search text. Command+Comma opens Settings.
 
 The menu bar item provides Open, Reindex, Settings, and Quit actions. Bucky scans `.app` bundles recursively under `/Applications`, `/System/Applications`, and `~/Applications`, and scans only direct child `.app` bundles under `/System/Library/CoreServices` so native utilities such as Finder stay launchable without walking nested support trees.
 
 App indexing and mode handoff stay asynchronous. Apps can briefly show `Loading apps` while a background index is still populating the first result set. Switching into Files first shows a lightweight `Loading files` placeholder until the file browser model is activated, then the file browser publishes its own loading or loaded directory state.
+
+## Stone Boundaries
+
+Shared launcher mode metadata lives in `StoneCatalog`, shared rows flow through `StoneResultRow` and `StoneResultSnapshot`, and shared side effects flow through `StoneActivation` plus `LiquidGlassLauncherModel.perform(_:,for:)`. That keeps mode definitions, result rendering, and activation behavior aligned across Apps, Calculator, Dictionary, and Files.
+
+To add a new Stone:
+
+- Add one `StoneID` case and one `StoneDefinition` entry in `Sources/Bucky/Models/StoneModels.swift` for ordering, shortcut, placeholder, icon, surface, tint, and update policy.
+- Keep Stone-specific query/result behavior in a focused Stone helper or boundary, then map its output into shared `StoneResultRow` and `StoneResultSnapshot` values.
+- Reuse shared activation intents where possible and extend `StoneActivation` only if the new Stone needs a genuinely new cross-cutting side effect.
+- Add focused coverage in `Tests/BuckyTests/StoneCatalogTests.swift`, `Tests/BuckyTests/LauncherModeRoutingTests.swift`, `Tests/BuckyTests/StoneResultsTests.swift`, plus Stone-specific behavior tests for the new domain.
+- Keep domain-specific rules inside the new Stone instead of widening shared launcher policy.
 
 ## Settings
 
