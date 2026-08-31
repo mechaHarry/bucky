@@ -62,30 +62,34 @@ actor IconCache {
 
     nonisolated func icon(for url: URL) async -> NSImage {
         let key = cacheKey(url)
-        let currentTask = withUnsafeCurrentTask { $0 }
         if let cachedIcon = await cachedIcon(for: url) {
             return cachedIcon
         }
-        guard currentTask?.isCancelled != true else {
-            return fallbackIcon(key)
-        }
 
         let waiterID = UUID()
-        if let cachedIcon = await registerWaiter(id: waiterID, key: key) {
-            return cachedIcon
-        }
-
-        while true {
-            if currentTask?.isCancelled == true {
-                await cancelWaiter(id: waiterID, key: key)
+        return await withTaskCancellationHandler {
+            guard !Task.isCancelled else {
                 return fallbackIcon(key)
             }
 
-            if let icon = await completedIcon(for: waiterID) {
-                return icon
+            if let cachedIcon = await registerWaiter(id: waiterID, key: key) {
+                return cachedIcon
             }
 
-            try? await Task.sleep(nanoseconds: 1_000_000)
+            while !Task.isCancelled {
+                if let icon = await completedIcon(for: waiterID) {
+                    return icon
+                }
+
+                try? await Task.sleep(nanoseconds: 1_000_000)
+            }
+
+            await cancelWaiter(id: waiterID, key: key)
+            return fallbackIcon(key)
+        } onCancel: {
+            Task { [weak self] in
+                await self?.cancelWaiter(id: waiterID, key: key)
+            }
         }
     }
 

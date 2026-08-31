@@ -347,3 +347,173 @@ The fix-round signed commit hash is reported in the final short status response 
 ## Concerns
 
 - None open for the three fix-round review findings.
+
+---
+
+# Task 7 Fix Round 2 Report
+
+## Scope
+
+Addressed the scoped re-review issue in `IconCache.icon(for:)` without starting later tasks:
+
+- Removed the unsafe `withUnsafeCurrentTask { $0 }` handle storage/read-after-suspension pattern.
+- Kept view-level key-wide cancellation handlers removed.
+- Kept same-key waiter isolation, last-waiter capacity release, fallback behavior, and whitespace-only search ranking intact.
+
+## Exact Interface After Fix Round 2
+
+The public/internal `IconCache` surface remains the same as fix round 1:
+
+```swift
+@available(macOS 26.0, *)
+actor IconCache {
+    typealias Loader = @Sendable (String) async -> NSImage?
+    typealias FallbackIcon = @Sendable (String) -> NSImage
+    typealias CacheKey = @Sendable (URL) -> String
+
+    static let applications: IconCache
+    static let files: IconCache
+
+    nonisolated let countLimit: Int
+    nonisolated let totalCostLimit: Int
+    nonisolated let maxConcurrentLoads: Int
+
+    init(
+        countLimit: Int,
+        totalCostLimit: Int,
+        maxConcurrentLoads: Int,
+        cacheKey: @escaping CacheKey = { $0.path },
+        loader: @escaping Loader,
+        fallbackIcon: @escaping FallbackIcon
+    )
+
+    func cachedIcon(for url: URL) -> NSImage?
+    nonisolated func icon(for url: URL) async -> NSImage
+    func inFlightLoadCount() -> Int
+}
+```
+
+`icon(for:)` now uses:
+
+- a per-call `UUID` waiter ID;
+- safe `Task.isCancelled` checks inside the async operation;
+- `withTaskCancellationHandler` whose `onCancel` creates a short cleanup task that calls `cancelWaiter(id:key:)` for only that waiter ID;
+- no stored `UnsafeCurrentTask` and no use of `withUnsafeCurrentTask`.
+
+## Cache Bounds and Concurrency Behavior After Fix Round 2
+
+- `IconCache.applications`: count limit `256`, cost limit `134217728` bytes, max concurrent loads `4`, key is `url.path`.
+- `IconCache.files`: count limit `768`, cost limit `134217728` bytes, max concurrent loads `2`, key is `url.standardizedFileURL.path`.
+- Same-key requests continue to coalesce through one `InFlightLoad` and one loader task with multiple waiter IDs.
+- Cancellation removes only the cancelled waiter's UUID; unrelated same-key waiters remain registered.
+- Last-waiter cancellation removes the in-flight entry, drops pending queue entries, cancels the loader task if present, releases active capacity immediately, and schedules queued work even if the loader ignores cancellation.
+- Stale completions remain guarded by the per-load UUID and cannot cache icons, complete waiters, or release active capacity twice after cache-owned state has already been removed.
+- Cleanup tasks capture the actor weakly and do not create retain cycles.
+
+## Search Behavior Retained
+
+- Empty normalized queries return source order.
+- Whitespace-only non-empty queries continue through the shared scoring path, preserving the prior observable ordering covered by `testWhitespaceOnlyQueryPreservesPreviousScoredOrdering`.
+- Indexed and in-memory application ranking remain shared through `ApplicationSearchEngine`.
+
+## Files Changed in Fix Round 2
+
+- `Sources/Bucky/UI/SwiftUI/IconCache.swift`
+- `.superpowers/sdd/2026-08-28-architecture-audit-refactor/task-7-report.md`
+
+## TDD / Regression Coverage
+
+No new consumer-visible behavior was introduced in round 2; the re-review defect was an unsafe internal cancellation implementation. The existing round-1 regressions were retained and rerun against the new safe cancellation implementation:
+
+- `testCancellingOneSameKeyWaiterKeepsOtherWaiterOnLoadedIcon`
+- `testLastWaiterCancellationReleasesCapacityWhenLoaderIgnoresCancellation`
+- `testWhitespaceOnlyQueryPreservesPreviousScoredOrdering`
+
+The source-level safety check also verifies the removed unsafe API and key-wide cancellation symbols are absent from the relevant implementation/test scope.
+
+## Commands and Pristine Outputs
+
+Focused search/cache regressions:
+
+```text
+$ swift test --filter 'ApplicationSearchEngineTests|IconCacheTests'
+Test Suite 'ApplicationSearchEngineTests' passed
+Executed 7 tests, with 0 failures (0 unexpected)
+Test Suite 'IconCacheTests' passed
+Executed 9 tests, with 0 failures (0 unexpected)
+Test Suite 'Selected tests' passed
+Executed 16 tests, with 0 failures (0 unexpected)
+Process exited with code 0
+```
+
+Focused launcher/search/cache/performance:
+
+```text
+$ swift test --filter 'LiquidGlassLauncherFilterTests|ApplicationRowStoreTests|ApplicationSearchEngineTests|IconCacheTests|LauncherFilterPerformanceTests'
+Test Suite 'Selected tests' passed
+Executed 29 tests, with 0 failures (0 unexpected)
+Bucky performance launcher-filter checked: current median 328.602 ms, baseline 361.139 ms, delta -9.01%, band comfort, samples min/median/max 325.543/328.602/339.847 ms
+Process exited with code 0
+```
+
+Broader launcher-related coverage:
+
+```text
+$ swift test --filter 'Launcher|LiquidGlassLauncher|ApplicationSearchEngine|ApplicationRowStore|IconCache|FileBrowserPreviewPolicy'
+Test Suite 'Selected tests' passed
+Executed 144 tests, with 0 failures (0 unexpected)
+Bucky performance launcher-filter checked: current median 331.690 ms, baseline 361.139 ms, delta -8.15%, band comfort, samples min/median/max 330.896/331.690/333.880 ms
+Process exited with code 0
+```
+
+Full suite:
+
+```text
+$ swift test
+Test Suite 'All tests' passed
+Executed 333 tests, with 0 failures (0 unexpected)
+Bucky performance launcher-filter checked: current median 332.311 ms, baseline 361.139 ms, delta -7.98%, band comfort, samples min/median/max 330.814/332.311/355.676 ms
+Process exited with code 0
+```
+
+Diff hygiene:
+
+```text
+$ git diff --check
+Process exited with code 0
+```
+
+Unsafe/key-wide cancellation source check:
+
+```text
+$ rg -n "UnsafeCurrentTask|withUnsafeCurrentTask|cancelLoad\(" Sources/Bucky/UI/SwiftUI/IconCache.swift Sources/Bucky/UI/SwiftUI/LiquidGlassLauncherView.swift Sources/Bucky/UI/SwiftUI/FileBrowserView.swift Sources/Bucky/Indexer Tests/BuckyTests
+Process exited with code 1
+```
+
+## Performance Comparison
+
+- Recorded baseline: `361.139 ms`.
+- Focused launcher performance run: `328.602 ms`, delta `-9.01%`, band `comfort`.
+- Broader launcher-related run: `331.690 ms`, delta `-8.15%`, band `comfort`.
+- Full-suite launcher performance run: `332.311 ms`, delta `-7.98%`, band `comfort`.
+- No launcher-filter regression observed.
+
+## Memory, Cancellation, and Security Self-Review
+
+- No unsafe task pointer or task handle is stored beyond a closure.
+- Per-waiter UUID ownership remains the only cancellation identity.
+- `onCancel` performs actor cleanup by waiter ID only, preserving unrelated same-key waiters.
+- Last-waiter cancellation still releases active capacity immediately and stale loader completions are ignored by load ID.
+- The cancellation cleanup task captures `self` weakly to avoid retaining the cache actor after callers go away.
+- Detached loader tasks still capture only loader/fallback closures, key, load ID, and weak actor self.
+- No API/network/backoff paths, file security behavior, or destructive operations were changed.
+- No PII, company/customer details, domains, secrets, or non-public values were introduced.
+- Version metadata remains unchanged because this is constrained to Task 7 fix scope and later documentation/version tasks are explicitly out of scope.
+
+## Commit Hash
+
+The fix-round-2 signed commit hash is reported in the final short status response after commit creation. It cannot be embedded in this file before creating the same commit because changing this file changes the commit hash.
+
+## Concerns
+
+- None open for fix round 2.
