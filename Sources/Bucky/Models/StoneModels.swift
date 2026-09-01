@@ -58,32 +58,35 @@ struct StoneDefinition: Identifiable, Equatable, Hashable {
 }
 
 @MainActor
-protocol TextStoneProvider: AnyObject {
+protocol StoneProvider: AnyObject {
     var definition: StoneDefinition { get }
 
     func snapshot(for query: String) -> StoneResultSnapshot
     func updateSnapshot(for query: String) async -> StoneResultSnapshot
     func cancel()
     func activation(for row: StoneResultRow) -> StoneActivation
-    func perform(_ activation: StoneActivation, for row: StoneResultRow) -> TextStoneActivationResult
+    func perform(_ activation: StoneActivation, for row: StoneResultRow) -> StoneProviderActivationResult
 }
 
-enum TextStoneActivationResult: Equatable {
+typealias TextStoneProvider = StoneProvider
+
+enum StoneProviderActivationResult: Equatable {
     case unhandled
     case handled(shouldRefresh: Bool, resetSelection: Bool, shouldHide: Bool)
 }
 
+typealias TextStoneActivationResult = StoneProviderActivationResult
+
 @MainActor
 final class StoneProviderRegistry {
-    private let providersByID: [StoneID: any TextStoneProvider]
+    private let providersByID: [StoneID: any StoneProvider]
     let orderedDefinitions: [StoneDefinition]
 
-    init(providers: [any TextStoneProvider]) {
-        var providersByID: [StoneID: any TextStoneProvider] = [:]
+    init(providers: [any StoneProvider]) {
+        var providersByID: [StoneID: any StoneProvider] = [:]
         var orderedDefinitions = StoneCatalog.orderedDefinitions
 
         for provider in providers {
-            precondition(provider.definition.acceptsTextInput, "Text Stone provider must use a text-input definition")
             let previous = providersByID.updateValue(provider, forKey: provider.definition.id)
             precondition(previous == nil, "StoneProviderRegistry contains duplicate provider for \(provider.definition.id)")
 
@@ -121,7 +124,7 @@ final class StoneProviderRegistry {
         return LauncherMode(definition: definition)
     }
 
-    func provider(for id: StoneID) -> (any TextStoneProvider)? {
+    func provider(for id: StoneID) -> (any StoneProvider)? {
         providersByID[id]
     }
 
@@ -142,7 +145,7 @@ final class StoneProviderRegistry {
         providersByID[id]?.activation(for: row)
     }
 
-    func perform(_ activation: StoneActivation, for id: StoneID, row: StoneResultRow) -> TextStoneActivationResult {
+    func perform(_ activation: StoneActivation, for id: StoneID, row: StoneResultRow) -> StoneProviderActivationResult {
         providersByID[id]?.perform(activation, for: row) ?? .unhandled
     }
 }

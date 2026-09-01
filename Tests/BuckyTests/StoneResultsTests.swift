@@ -4,6 +4,33 @@ import XCTest
 final class StoneResultsTests: XCTestCase {
     @MainActor
     @available(macOS 26.0, *)
+    func testRegisteredNonTextStoneProviderUsesSharedSnapshotPath() throws {
+        let provider = NonTextStoneProvider()
+        let model = LiquidGlassLauncherModel(
+            settingsStore: SettingsStore(),
+            inclusionStore: InclusionStore(),
+            exclusionStore: ExclusionStore(),
+            calculationHistoryStore: CalculationHistoryStore(),
+            dictionaryHistoryStore: DictionaryHistoryStore(fileURL: temporaryDictionaryHistoryFileURL()),
+            dictionaryLookup: { _ in [] },
+            dictionaryOpenHandler: { _ in },
+            stoneProviders: [provider],
+            fileBrowserModel: FileBrowserModel(
+                fileSystem: StubFileSystemClient(home: TestFixtures.userHome, entriesByDirectory: [:]),
+                store: InMemoryFileBrowserStore(state: .defaultValue),
+                directoryStream: ImmediateDirectoryStream()
+            )
+        )
+
+        let mode = try XCTUnwrap(model.availableModes.first { $0.stoneID == provider.definition.id })
+        model.show(mode: mode)
+
+        XCTAssertEqual(model.resultSnapshot.rows.map(\.display), ["Shared non-text result"])
+        XCTAssertEqual(provider.snapshotQueries, [""])
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
     func testAdditionalTextStoneProviderParticipatesInLauncherBehavior() throws {
         let provider = AdditionalTextStoneProvider()
         let model = LiquidGlassLauncherModel(
@@ -418,6 +445,55 @@ final class StoneResultsTests: XCTestCase {
                 )
             ]
         }
+    }
+}
+
+@MainActor
+private final class NonTextStoneProvider: StoneProvider {
+    let definition = StoneDefinition(
+        id: StoneID(rawValue: 60),
+        shortcutNumber: 6,
+        presentation: StonePresentation(
+            title: "Shared Surface",
+            placeholder: "",
+            systemImage: "rectangle.stack"
+        ),
+        surface: .fileBrowser,
+        updatePolicy: .immediate,
+        tint: StoneTint(
+            activeHex: 0x406080,
+            panelHex: 0x304860,
+            iconHex: 0x203040,
+            darkModeIconHex: 0xB0C0D0
+        )
+    )
+    private(set) var snapshotQueries: [String] = []
+
+    func snapshot(for query: String) -> StoneResultSnapshot {
+        snapshotQueries.append(query)
+        return .loaded(rows: [StoneResultRow(
+            id: .tool(kind: .message, key: "shared-non-text-result"),
+            display: "Shared non-text result",
+            subtitle: "Provider-owned snapshot",
+            copyText: nil,
+            kind: .message,
+            primaryActivation: .none,
+            accessoryActivation: .none
+        )])
+    }
+
+    func updateSnapshot(for query: String) async -> StoneResultSnapshot {
+        snapshot(for: query)
+    }
+
+    func cancel() {}
+
+    func activation(for row: StoneResultRow) -> StoneActivation {
+        row.primaryActivation
+    }
+
+    func perform(_ activation: StoneActivation, for row: StoneResultRow) -> StoneProviderActivationResult {
+        .unhandled
     }
 }
 

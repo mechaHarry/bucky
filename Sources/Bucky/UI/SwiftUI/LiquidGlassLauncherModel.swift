@@ -34,7 +34,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private let exclusionStore: ExclusionStore
     private let calculationHistoryStore: CalculationHistoryStore
     private let dictionaryHistoryStore: DictionaryHistoryStore
-    private let textStoneProviders: StoneProviderRegistry
+    private let stoneProviders: StoneProviderRegistry
     private let fileBrowserModelFactory: () -> FileBrowserModel
     private let applicationIndexSnapshotCache: ApplicationIndexSnapshotCache
     private var appRowStore = ApplicationRowStore()
@@ -65,7 +65,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
         dictionaryHistoryStore: DictionaryHistoryStore = DictionaryHistoryStore(),
         dictionaryLookup: @escaping @Sendable (String) -> [DictionaryResult] = { DictionaryLookup.results(for: $0) },
         dictionaryOpenHandler: @escaping @MainActor (String) -> Void = LiquidGlassLauncherModel.openDictionaryTerm,
-        textStoneProviders: [any TextStoneProvider] = [],
+        textStoneProviders: [any StoneProvider] = [],
+        stoneProviders: [any StoneProvider] = [],
         fileBrowserModel: FileBrowserModel? = nil,
         fileBrowserModelFactory: (() -> FileBrowserModel)? = nil,
         applicationIndexSnapshotCache: ApplicationIndexSnapshotCache = ApplicationIndexSnapshotCache()
@@ -80,7 +81,9 @@ final class LiquidGlassLauncherModel: ObservableObject {
             lookup: dictionaryLookup,
             openHandler: dictionaryOpenHandler
         )
-        self.textStoneProviders = StoneProviderRegistry(providers: [dictionaryStone] + textStoneProviders)
+        self.stoneProviders = StoneProviderRegistry(
+            providers: [dictionaryStone] + textStoneProviders + stoneProviders
+        )
         self.applicationIndexSnapshotCache = applicationIndexSnapshotCache
         self.activatedFileBrowserModel = fileBrowserModel
         self.fileBrowserModelFactory = fileBrowserModelFactory ?? {
@@ -122,11 +125,11 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     var availableModes: [LauncherMode] {
-        textStoneProviders.availableModes
+        stoneProviders.availableModes
     }
 
     func mode(forCommandNumber commandNumber: Int) -> LauncherMode? {
-        textStoneProviders.mode(forShortcutNumber: commandNumber)
+        stoneProviders.mode(forShortcutNumber: commandNumber)
     }
 
     var placeholder: String {
@@ -459,7 +462,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     func activate(_ row: StoneResultRow) {
-        let activation = textStoneProviders.activation(for: mode.stoneID, row: row) ?? row.primaryActivation
+        let activation = stoneProviders.activation(for: mode.stoneID, row: row) ?? row.primaryActivation
         perform(activation, for: row)
     }
 
@@ -475,7 +478,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     private func cancelPendingTextStoneUpdates() {
-        for stoneID in textStoneProviders.registeredStoneIDs {
+        for stoneID in stoneProviders.registeredStoneIDs {
             cancelPendingTextStoneUpdate(for: stoneID)
         }
     }
@@ -484,7 +487,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         var requestGate = textStoneRequestGates[stoneID] ?? StoneResultRequestGate()
         requestGate.cancel()
         textStoneRequestGates[stoneID] = requestGate
-        textStoneProviders.cancel(for: stoneID)
+        stoneProviders.cancel(for: stoneID)
         pendingTextStoneUpdateTasks[stoneID]?.cancel()
         pendingTextStoneUpdateTasks[stoneID] = nil
     }
@@ -527,7 +530,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     private func applyCurrentMode(preservePreviousOnEmpty: Bool = false) {
-        if textStoneProviders.provider(for: mode.stoneID) != nil {
+        if stoneProviders.provider(for: mode.stoneID) != nil {
             applyToolsResults()
             return
         }
@@ -704,7 +707,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         cancelPendingCalculationHistory()
 
-        if let provider = textStoneProviders.provider(for: mode.stoneID) {
+        if let provider = stoneProviders.provider(for: mode.stoneID) {
             let stoneID = provider.definition.id
             cancelPendingTextStoneUpdate(for: stoneID)
             toolItems = []
@@ -741,7 +744,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         for trimmedQuery: String,
         delayNanoseconds: UInt64
     ) {
-        guard let provider = textStoneProviders.provider(for: mode.stoneID) else { return }
+        guard let provider = stoneProviders.provider(for: mode.stoneID) else { return }
         applyDeferredTextStoneResults(
             for: provider,
             query: trimmedQuery,
@@ -750,7 +753,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     private func applyDeferredTextStoneResults(
-        for provider: any TextStoneProvider,
+        for provider: any StoneProvider,
         query: String,
         delayNanoseconds: UInt64
     ) {
@@ -919,7 +922,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     private func storeCurrentQuery() {
-        if textStoneProviders.provider(for: mode.stoneID) != nil {
+        if stoneProviders.provider(for: mode.stoneID) != nil {
             textStoneQueries[mode.stoneID] = query
             return
         }
@@ -937,7 +940,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     private func storedQuery(for mode: LauncherMode) -> String {
-        if textStoneProviders.provider(for: mode.stoneID) != nil {
+        if stoneProviders.provider(for: mode.stoneID) != nil {
             return textStoneQueries[mode.stoneID] ?? ""
         }
 
@@ -975,7 +978,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     private func publishLightweightModeSnapshot(for mode: LauncherMode) {
-        if textStoneProviders.provider(for: mode.stoneID) != nil {
+        if stoneProviders.provider(for: mode.stoneID) != nil {
             textStoneResultSnapshots[mode.stoneID] = .loaded(rows: [])
             return
         }
@@ -1123,7 +1126,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     private func perform(_ activation: StoneActivation, for row: StoneResultRow) {
-        switch textStoneProviders.perform(activation, for: mode.stoneID, row: row) {
+        switch stoneProviders.perform(activation, for: mode.stoneID, row: row) {
         case let .handled(shouldRefresh, resetSelection, shouldHide):
             if shouldRefresh, inputIsBlank {
                 applyToolsResults(scheduleHistory: false)

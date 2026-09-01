@@ -112,8 +112,8 @@ Exclusions are applied after indexing and inclusions. An explicitly included app
 
 ## Stone Extension Recipe
 
-- Define a provider-owned `StoneDefinition` and register the provider through `StoneProviderRegistry`. The provider owns its `StoneID`, while its definition owns ordering, shortcut number, placeholder text, icon, tint, accepted surface, and update policy.
-- Let `LauncherMode` bridge only the shared launcher-facing metadata from the registry-backed provider definition. If the new Stone uses text input, it should ride the existing text-input surface; if it is non-textual, define the narrow surface boundary it needs.
+- Define a provider-owned `StoneDefinition`, conform to the generic `StoneProvider` boundary, and register through `StoneProviderRegistry`. `TextStoneProvider` remains a source-compatible name for existing conformers. The provider owns its `StoneID`, while its definition owns ordering, shortcut number, placeholder text, icon, tint, accepted surface, and update policy.
+- Let `LauncherMode` bridge only the shared launcher-facing metadata from the registry-backed provider definition. Registered providers on any `StoneSurface` publish through the shared `StoneResultSnapshot` path without a provider-specific launcher case. Files remains a specialized built-in surface for filesystem navigation.
 - Model result rows and activation intents separately. `StoneResultRow` carries stable row identity, declarative `StoneActivation` values, and generic-or-provider-supplied accessory presentation; `LiquidGlassLauncherModel.perform(_:,for:)` is the side-effect boundary that turns those intents into copy, open, or history-removal behavior.
 - Keep Stone-specific result shaping inside the Stone or its focused helper, similar to `DictionaryStone`, and feed shared result rows back through `StoneResultSnapshot` rather than embedding side effects in SwiftUI.
 - Add focused tests at the shared seams: catalog coverage (`StoneCatalogTests`), launcher routing (`LauncherModeRoutingTests`), row identity and activation mapping (`StoneResultsTests`), and Stone-specific behavior tests for the new domain.
