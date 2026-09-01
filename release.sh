@@ -146,8 +146,8 @@ if [[ -z "${GITHUB_TOKEN:-}" && "${DRY_RUN}" -eq 0 ]]; then
     exit 1
 fi
 
-echo "Fetching ${REMOTE}/${default_branch} and tags..."
-git fetch "${REMOTE}" "+refs/heads/${default_branch}:refs/remotes/${REMOTE}/${default_branch}" --tags
+echo "Fetching ${REMOTE}/${default_branch} without rewriting existing tags..."
+git fetch "${REMOTE}" "+refs/heads/${default_branch}:refs/remotes/${REMOTE}/${default_branch}" --no-tags
 
 remote_head="$(git rev-parse "${REMOTE}/${default_branch}")"
 local_head="$(git rev-parse HEAD)"
