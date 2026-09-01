@@ -62,6 +62,10 @@ final class StoneResultsTests: XCTestCase {
         model.queryDidChange()
         waitUntil(model.resultSnapshot.rows.map(\.display) == ["Note: activate"])
         let row = try XCTUnwrap(model.resultSnapshot.rows.first)
+        XCTAssertEqual(
+            row.accessoryPresentation,
+            .init(systemImage: "bookmark", help: "Save note")
+        )
         model.activate(row)
 
         XCTAssertEqual(provider.performedActivations, [.copy("activate")])
@@ -166,39 +170,76 @@ final class StoneResultsTests: XCTestCase {
         )
     }
 
-    func testToolRowsExposeActivationIntentsWithoutSideEffects() throws {
+    func testToolRowsExposeSurvivingActivationIntentsWithoutSideEffects() {
         let calculation = StoneResultRow.tool(ToolItem(
             title: "4",
             subtitle: "2 + 2 =",
             copyText: "4",
             kind: .calculation
         ))
-        let dictionary = StoneResultRow.tool(ToolItem(
-            title: "apple",
-            subtitle: "A fruit",
-            copyText: nil,
-            kind: .dictionary
-        ))
-        let history = StoneResultRow.tool(ToolItem(
-            title: "banana",
-            subtitle: "Opened 8/28/26, 4:00 PM",
-            copyText: nil,
-            kind: .dictionaryHistory
+        let calculationHistory = StoneResultRow.tool(ToolItem(
+            title: "2 + 2 = 4",
+            subtitle: "Calculated recently",
+            copyText: "4",
+            kind: .calculationHistory
         ))
         let message = StoneResultRow.tool(ToolItem(
-            title: "No dictionary matches",
-            subtitle: "zzzz",
+            title: "Complete the calculation",
+            subtitle: "2 +",
             copyText: nil,
             kind: .message
         ))
 
         XCTAssertEqual(calculation.primaryActivation, .copy("4"))
         XCTAssertEqual(calculation.accessoryActivation, .copy("4"))
-        XCTAssertEqual(dictionary.primaryActivation, .open(.url(try XCTUnwrap(URL(string: "dict://apple")))))
-        XCTAssertEqual(dictionary.accessoryActivation, .open(.url(try XCTUnwrap(URL(string: "dict://apple")))))
-        XCTAssertEqual(history.accessoryActivation, .removeHistory(history.id))
+        XCTAssertEqual(calculationHistory.primaryActivation, .copy("4"))
+        XCTAssertEqual(calculationHistory.accessoryActivation, .copy("4"))
         XCTAssertEqual(message.primaryActivation, .none)
         XCTAssertEqual(message.accessoryActivation, .none)
+    }
+
+    func testRowsUseGenericAccessoryPresentationDefaults() {
+        let copyRow = StoneResultRow(
+            id: .tool(kind: .calculation, key: "copy"),
+            display: "4",
+            subtitle: "2 + 2 =",
+            copyText: "4",
+            kind: .calculation,
+            primaryActivation: .copy("4"),
+            accessoryActivation: .copy("4")
+        )
+        let openRow = StoneResultRow(
+            id: .tool(kind: .message, key: "open"),
+            display: "Open result",
+            subtitle: "A result",
+            copyText: nil,
+            kind: .message,
+            primaryActivation: .none,
+            accessoryActivation: .open(.application(URL(fileURLWithPath: "/Applications/Example.app")))
+        )
+        let removeRow = StoneResultRow(
+            id: .tool(kind: .calculationHistory, key: "remove"),
+            display: "4",
+            subtitle: "History",
+            copyText: "4",
+            kind: .calculationHistory,
+            primaryActivation: .copy("4"),
+            accessoryActivation: .removeHistory(.tool(kind: .calculationHistory, key: "remove"))
+        )
+        let noActionRow = StoneResultRow(
+            id: .tool(kind: .message, key: "none"),
+            display: "Message",
+            subtitle: "No action",
+            copyText: nil,
+            kind: .message,
+            primaryActivation: .none,
+            accessoryActivation: .none
+        )
+
+        XCTAssertEqual(copyRow.accessoryPresentation, .init(systemImage: "doc.on.doc", help: "Copy result"))
+        XCTAssertEqual(openRow.accessoryPresentation, .init(systemImage: "arrow.up.right", help: "Open result"))
+        XCTAssertEqual(removeRow.accessoryPresentation, .init(systemImage: "trash", help: "Remove from history"))
+        XCTAssertNil(noActionRow.accessoryPresentation)
     }
 
     func testResultRequestGateRejectsStaleAndCancelledRequests() {
@@ -450,8 +491,9 @@ private final class AdditionalTextStoneProvider: TextStoneProvider {
             subtitle: "Neutral text provider",
             copyText: query,
             kind: .message,
-            primaryActivation: .none,
-            accessoryActivation: .none
+            primaryActivation: .copy(query),
+            accessoryActivation: .copy(query),
+            accessoryPresentation: .init(systemImage: "bookmark", help: "Save note")
         )])
     }
 

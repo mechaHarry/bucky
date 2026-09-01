@@ -49,8 +49,6 @@ struct ToolItem: Hashable {
     enum Kind: Hashable {
         case calculation
         case calculationHistory
-        case dictionary
-        case dictionaryHistory
         case message
     }
 
@@ -90,10 +88,6 @@ struct ToolItem: Hashable {
             return .tool(kind: .calculation, key: "live:\(subtitle)")
         case .calculationHistory:
             return .tool(kind: .calculationHistory, key: "history:\(title)")
-        case .dictionary:
-            return .tool(kind: .dictionary, key: "term:\(normalized(title))")
-        case .dictionaryHistory:
-            return .tool(kind: .dictionaryHistory, key: "history:\(normalized(title))")
         case .message:
             return .tool(kind: .message, key: "message:\(title):\(subtitle):\(copyText ?? "")")
         }

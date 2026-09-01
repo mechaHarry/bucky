@@ -131,6 +131,14 @@ final class DictionaryStoneTests: XCTestCase {
         XCTAssertEqual(stone.activation(for: resultRow), .open(.url(try XCTUnwrap(URL(string: "dict://ice%20cream")))))
         XCTAssertEqual(stone.activation(for: historyRow), .open(.url(try XCTUnwrap(URL(string: "dict://banana")))))
         XCTAssertEqual(historyRow.accessoryActivation, .removeHistory(historyRow.id))
+        XCTAssertEqual(
+            resultRow.accessoryPresentation,
+            .init(systemImage: "book", help: "Open in Dictionary")
+        )
+        XCTAssertEqual(
+            historyRow.accessoryPresentation,
+            .init(systemImage: "trash", help: "Remove from dictionary history")
+        )
     }
 
     @MainActor

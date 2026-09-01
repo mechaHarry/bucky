@@ -75,7 +75,7 @@ To add a new Stone:
 - Define a provider-owned `StoneDefinition` and register the provider through `StoneProviderRegistry`; the provider owns its `StoneID`, metadata, query behavior, and activation mapping.
 - Use the registry-backed launcher mode and shortcut collections so the new Stone appears in ordering, keyboard navigation, placeholders, icons, surfaces, tints, and update policy without editing a central enum or switch.
 - Keep Stone-specific query/result behavior in a focused Stone helper or boundary, then map its output into shared `StoneResultRow` and `StoneResultSnapshot` values.
-- Reuse shared activation intents where possible and extend `StoneActivation` only if the new Stone needs a genuinely new cross-cutting side effect.
+- Reuse shared activation intents where possible and extend `StoneActivation` only if the new Stone needs a genuinely new cross-cutting side effect. Use generic accessory presentation defaults or set a row's `accessoryPresentation` for a domain-specific symbol or help string; do not add Stone cases to the launcher view.
 - Add focused coverage in `Tests/BuckyTests/StoneCatalogTests.swift`, `Tests/BuckyTests/LauncherModeRoutingTests.swift`, `Tests/BuckyTests/StoneResultsTests.swift`, plus Stone-specific behavior tests for the new domain.
 - Keep domain-specific rules inside the new Stone instead of widening shared launcher policy.
 

@@ -41,6 +41,28 @@ enum StoneResultSnapshot: Equatable {
 }
 
 struct StoneResultRow: Identifiable, Equatable, Hashable {
+    struct AccessoryPresentation: Equatable, Hashable {
+        let systemImage: String
+        let help: String
+
+        static let copy = Self(systemImage: "doc.on.doc", help: "Copy result")
+        static let open = Self(systemImage: "arrow.up.right", help: "Open result")
+        static let removeHistory = Self(systemImage: "trash", help: "Remove from history")
+
+        static func `default`(for activation: StoneActivation) -> Self? {
+            switch activation {
+            case .copy:
+                return .copy
+            case .open:
+                return .open
+            case .removeHistory:
+                return .removeHistory
+            case .none:
+                return nil
+            }
+        }
+    }
+
     enum ID: Equatable, Hashable {
         case application(AppRowID)
         case tool(kind: Kind, key: String)
@@ -75,6 +97,7 @@ struct StoneResultRow: Identifiable, Equatable, Hashable {
     let kind: Kind
     let primaryActivation: StoneActivation
     let accessoryActivation: StoneActivation
+    let accessoryPresentation: AccessoryPresentation?
     let iconURL: URL?
     let accessoryText: String?
 
@@ -87,7 +110,8 @@ struct StoneResultRow: Identifiable, Equatable, Hashable {
         primaryActivation: StoneActivation,
         accessoryActivation: StoneActivation,
         iconURL: URL? = nil,
-        accessoryText: String? = nil
+        accessoryText: String? = nil,
+        accessoryPresentation: AccessoryPresentation? = nil
     ) {
         self.id = id
         self.display = display
@@ -96,6 +120,7 @@ struct StoneResultRow: Identifiable, Equatable, Hashable {
         self.kind = kind
         self.primaryActivation = primaryActivation
         self.accessoryActivation = accessoryActivation
+        self.accessoryPresentation = accessoryPresentation ?? AccessoryPresentation.default(for: accessoryActivation)
         self.iconURL = iconURL
         self.accessoryText = accessoryText
     }
@@ -107,7 +132,9 @@ struct StoneResultRow: Identifiable, Equatable, Hashable {
             subtitle,
             copyText ?? "",
             kind.rawValue,
-            accessoryText ?? ""
+            accessoryText ?? "",
+            accessoryPresentation?.systemImage ?? "",
+            accessoryPresentation?.help ?? ""
         ].joined(separator: "\u{1E}")
     }
 
@@ -127,8 +154,8 @@ struct StoneResultRow: Identifiable, Equatable, Hashable {
 
     static func tool(_ item: ToolItem) -> StoneResultRow {
         let kind = StoneResultRow.Kind(toolKind: item.kind)
-        let primaryActivation = Self.primaryActivation(for: item, rowKind: kind)
-        let accessoryActivation = Self.accessoryActivation(for: item, rowKind: kind, primaryActivation: primaryActivation)
+        let primaryActivation = Self.primaryActivation(for: item)
+        let accessoryActivation = Self.accessoryActivation(for: item, primaryActivation: primaryActivation)
 
         return StoneResultRow(
             id: item.stoneResultID,
@@ -154,40 +181,26 @@ struct StoneResultRow: Identifiable, Equatable, Hashable {
         )
     }
 
-    private static func primaryActivation(for item: ToolItem, rowKind: Kind) -> StoneActivation {
-        switch rowKind {
+    private static func primaryActivation(for item: ToolItem) -> StoneActivation {
+        switch item.kind {
         case .calculation, .calculationHistory:
             guard let copyText = item.copyText else { return .none }
             return .copy(copyText)
-        case .dictionary, .dictionaryHistory:
-            return dictionaryActivation(for: item.title)
-        case .application, .file, .message:
+        case .message:
             return .none
         }
     }
 
     private static func accessoryActivation(
         for item: ToolItem,
-        rowKind: Kind,
         primaryActivation: StoneActivation
     ) -> StoneActivation {
-        switch rowKind {
-        case .calculation, .calculationHistory, .dictionary:
+        switch item.kind {
+        case .calculation, .calculationHistory:
             return primaryActivation
-        case .dictionaryHistory:
-            return .removeHistory(item.stoneResultID)
-        case .application, .file, .message:
+        case .message:
             return .none
         }
-    }
-
-    private static func dictionaryActivation(for term: String) -> StoneActivation {
-        guard let escapedTerm = term.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
-              let url = URL(string: "dict://\(escapedTerm)") else {
-            return .none
-        }
-
-        return .open(.url(url))
     }
 }
 
@@ -227,10 +240,6 @@ private extension StoneResultRow.Kind {
             self = .calculation
         case .calculationHistory:
             self = .calculationHistory
-        case .dictionary:
-            self = .dictionary
-        case .dictionaryHistory:
-            self = .dictionaryHistory
         case .message:
             self = .message
         }

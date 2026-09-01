@@ -13,17 +13,6 @@ final class DictionaryHistoryStoreTests: XCTestCase {
         XCTAssertEqual(entry, sameEntry)
     }
 
-    func testDictionaryHistoryToolKindIsUsable() {
-        let item = ToolItem(
-            title: "History",
-            subtitle: "Dictionary",
-            copyText: nil,
-            kind: .dictionaryHistory
-        )
-
-        XCTAssertEqual(item.kind, .dictionaryHistory)
-    }
-
     func testAddDedupesByNormalizedTermAndMovesLatestToTop() {
         let store = makeStore()
 

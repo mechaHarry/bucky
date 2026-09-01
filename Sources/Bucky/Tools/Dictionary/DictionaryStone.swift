@@ -122,7 +122,11 @@ final class DictionaryStone: TextStoneProvider {
             copyText: nil,
             kind: .dictionaryHistory,
             primaryActivation: primaryActivation,
-            accessoryActivation: .removeHistory(id)
+            accessoryActivation: .removeHistory(id),
+            accessoryPresentation: .init(
+                systemImage: "trash",
+                help: "Remove from dictionary history"
+            )
         )
     }
 
@@ -147,7 +151,11 @@ final class DictionaryStone: TextStoneProvider {
                 copyText: nil,
                 kind: .dictionary,
                 primaryActivation: primaryActivation,
-                accessoryActivation: primaryActivation
+                accessoryActivation: primaryActivation,
+                accessoryPresentation: .init(
+                    systemImage: "book",
+                    help: "Open in Dictionary"
+                )
             )
         }
     }

@@ -255,7 +255,7 @@ struct LiquidGlassLauncherView: View {
 
     private func stoneRow(_ row: StoneResultRow, index: Int) -> some View {
         let isSelected = index == model.selectedIndex
-        let actionConfiguration = rowActionConfiguration(for: row)
+        let actionConfiguration = row.accessoryPresentation
 
         return LauncherResultRow(
             isSelected: isSelected,
@@ -314,7 +314,7 @@ struct LiquidGlassLauncherView: View {
                         model.selectedIndex = index
                         model.performAccessoryActivation(for: row)
                     } label: {
-                        Image(systemName: actionConfiguration.symbol)
+                        Image(systemName: actionConfiguration.systemImage)
                             .frame(width: 16, height: 16)
                             .padding(5)
                     }
@@ -443,22 +443,6 @@ struct LiquidGlassLauncherView: View {
         }
     }
 
-    private func rowActionConfiguration(for row: StoneResultRow) -> RowActionConfiguration? {
-        switch row.accessoryActivation {
-        case .copy:
-            return RowActionConfiguration(symbol: "doc.on.doc", help: "Copy result")
-        case .open:
-            return RowActionConfiguration(symbol: "book", help: "Open in Dictionary")
-        case .removeHistory:
-            return RowActionConfiguration(
-                symbol: "trash",
-                help: "Remove from dictionary history"
-            )
-        case .none:
-            return nil
-        }
-    }
-
     private func preloadApplicationIcons() {
         guard model.mode == .applications, model.isPresented else { return }
         let urls = AppIconPreloadPolicy.preloadURLs(for: model.filteredIconURLs)
@@ -529,12 +513,6 @@ struct LauncherPinnedBorderPolicy {
             ? Color.accentColor.opacity(0.68)
             : LauncherVisualStyle.resultsPaneRim.opacity(0.24)
     }
-}
-
-@available(macOS 26.0, *)
-private struct RowActionConfiguration {
-    let symbol: String
-    let help: String
 }
 
 @available(macOS 26.0, *)

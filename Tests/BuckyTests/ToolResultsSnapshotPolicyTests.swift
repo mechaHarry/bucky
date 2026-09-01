@@ -34,18 +34,18 @@ final class ToolResultsSnapshotPolicyTests: XCTestCase {
         }
     }
 
+    @MainActor
     func testDictionaryToolSnapshotsUseSubtleAnimation() {
-        let items = [
-            ToolItem(
-                title: "hello",
-                subtitle: "A greeting",
-                copyText: nil,
-                kind: .dictionary
-            )
-        ]
+        let rows = DictionaryStone.resultRows(
+            for: [DictionaryResult(term: "hello", definition: "A greeting")],
+            query: "hello"
+        )
 
         XCTAssertEqual(
-            ToolResultsSnapshotPolicy.animation(for: .dictionary, items: items),
+            ToolResultsSnapshotPolicy.animation(
+                for: .dictionary,
+                snapshot: .loaded(rows: rows)
+            ),
             .subtle
         )
     }
