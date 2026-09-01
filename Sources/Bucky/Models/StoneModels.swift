@@ -14,14 +14,31 @@ struct StoneID: RawRepresentable, CaseIterable, Identifiable, Hashable {
 
 enum StoneSurface: Hashable {
     case textInput
+    case sharedResults
     case fileBrowser
 
+    enum ActiveModePresentation: Hashable {
+        case textInput
+        case sharedResults
+        case fileBrowser
+    }
+
     var acceptsTextInput: Bool {
+        self == .textInput
+    }
+
+    var usesFileBrowser: Bool {
+        self == .fileBrowser
+    }
+
+    var activeModePresentation: ActiveModePresentation {
         switch self {
         case .textInput:
-            return true
+            return .textInput
+        case .sharedResults:
+            return .sharedResults
         case .fileBrowser:
-            return false
+            return .fileBrowser
         }
     }
 }
@@ -86,7 +103,7 @@ final class StoneProviderRegistry {
         var providersByID: [StoneID: any StoneProvider] = [:]
         var orderedDefinitions = StoneCatalog.orderedDefinitions
 
-        for provider in providers {
+        for provider in providers where Self.canRegister(provider.definition) {
             let previous = providersByID.updateValue(provider, forKey: provider.definition.id)
             precondition(previous == nil, "StoneProviderRegistry contains duplicate provider for \(provider.definition.id)")
 
@@ -107,6 +124,10 @@ final class StoneProviderRegistry {
         )
         self.providersByID = providersByID
         self.orderedDefinitions = orderedDefinitions
+    }
+
+    private static func canRegister(_ definition: StoneDefinition) -> Bool {
+        definition.id != .files && !definition.surface.usesFileBrowser
     }
 
     var registeredStoneIDs: [StoneID] {

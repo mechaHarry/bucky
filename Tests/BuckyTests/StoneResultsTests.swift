@@ -25,6 +25,11 @@ final class StoneResultsTests: XCTestCase {
         let mode = try XCTUnwrap(model.availableModes.first { $0.stoneID == provider.definition.id })
         model.show(mode: mode)
 
+        XCTAssertEqual(mode.stoneDefinition.surface, .sharedResults)
+        XCTAssertFalse(mode.acceptsTextInput)
+        XCTAssertFalse(mode.stoneDefinition.surface.usesFileBrowser)
+        XCTAssertEqual(model.resultCount, 1)
+        XCTAssertNil(model.emptyMessage)
         XCTAssertEqual(model.resultSnapshot.rows.map(\.display), ["Shared non-text result"])
         XCTAssertEqual(provider.snapshotQueries, [""])
     }
@@ -458,7 +463,7 @@ private final class NonTextStoneProvider: StoneProvider {
             placeholder: "",
             systemImage: "rectangle.stack"
         ),
-        surface: .fileBrowser,
+        surface: .sharedResults,
         updatePolicy: .immediate,
         tint: StoneTint(
             activeHex: 0x406080,

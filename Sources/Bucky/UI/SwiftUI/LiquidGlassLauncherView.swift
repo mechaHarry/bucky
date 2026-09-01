@@ -180,7 +180,7 @@ struct LiquidGlassLauncherView: View {
 
     @ViewBuilder
     private var results: some View {
-        if model.mode == .files {
+        if model.mode.stoneDefinition.surface.usesFileBrowser {
             fileBrowserResults
         } else {
             stoneResults(model.resultSnapshot)
@@ -370,7 +370,7 @@ struct LiquidGlassLauncherView: View {
     }
 
     private func resultRowID(for index: Int) -> StoneResultRow.ID? {
-        if model.mode == .files {
+        if model.mode.stoneDefinition.surface.usesFileBrowser {
             guard index >= 0, index < model.fileBrowserModel.entries.count else { return nil }
             return .file(model.fileBrowserModel.entries[index].url)
         }

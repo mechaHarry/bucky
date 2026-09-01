@@ -137,7 +137,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     var resultCount: Int {
-        if mode == .files {
+        if mode.stoneDefinition.surface.usesFileBrowser {
             return MainActor.assumeIsolated {
                 fileBrowserModel.entries.count
             }
@@ -151,7 +151,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     var emptyMessage: String? {
-        guard mode != .files else {
+        guard !mode.stoneDefinition.surface.usesFileBrowser else {
             if MainActor.assumeIsolated({ fileBrowserModel.entries.isEmpty }) {
                 return "No files"
             }
@@ -186,7 +186,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
             return toolResultSnapshot()
         }
 
-        if mode == .files {
+        if mode.stoneDefinition.surface.usesFileBrowser {
             return .loaded(rows: MainActor.assumeIsolated { fileBrowserModel.entries.map(StoneResultRow.file) })
         }
 
@@ -253,7 +253,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     func prepareFileBrowserMode() {
-        guard mode == .files else { return }
+        guard mode.stoneDefinition.surface.usesFileBrowser else { return }
         let model = activateFileBrowserModel()
         selectedIndex = MainActor.assumeIsolated {
             model.selectedIndex
@@ -273,32 +273,32 @@ final class LiquidGlassLauncherModel: ObservableObject {
     func handle(command: LauncherCommand) -> Bool {
         switch command {
         case .up:
-            if mode == .files {
+            if mode.stoneDefinition.surface.usesFileBrowser {
                 return handleFileBrowserCommand(command)
             }
             moveSelection(by: -1)
         case .down:
-            if mode == .files {
+            if mode.stoneDefinition.surface.usesFileBrowser {
                 return handleFileBrowserCommand(command)
             }
             moveSelection(by: 1)
         case .top:
-            if mode == .files {
+            if mode.stoneDefinition.surface.usesFileBrowser {
                 return handleFileBrowserCommand(command, anchor: .top)
             }
             moveSelection(to: 0, anchor: .top)
         case .bottom:
-            if mode == .files {
+            if mode.stoneDefinition.surface.usesFileBrowser {
                 return handleFileBrowserCommand(command, anchor: .bottom)
             }
             moveSelection(to: resultCount - 1, anchor: .bottom)
         case .open:
-            if mode == .files {
+            if mode.stoneDefinition.surface.usesFileBrowser {
                 return handleFileBrowserCommand(command)
             }
             activateSelected()
         case .close:
-            if mode == .files, fileBrowserFocusState != .browse {
+            if mode.stoneDefinition.surface.usesFileBrowser, fileBrowserFocusState != .browse {
                 return handleFileBrowserCommand(command)
             }
             clearInputOrHide()
@@ -317,13 +317,13 @@ final class LiquidGlassLauncherModel: ObservableObject {
         case .clearHistory:
             clearHistory()
         case .togglePin:
-            if mode == .files {
+            if mode.stoneDefinition.surface.usesFileBrowser {
                 return handleFileBrowserCommand(command)
             }
             isPinned.toggle()
         case .left, .right, .prepareSpaceInteraction, .space, .shiftSpace, .beginSpaceHold, .endSpaceHold,
                 .alphaNumeric, .shiftAlphaNumeric, .beginPinnedFocus, .endPinnedFocus, .historyBack, .historyForward:
-            guard mode == .files else { return false }
+            guard mode.stoneDefinition.surface.usesFileBrowser else { return false }
             return handleFileBrowserCommand(command)
         }
 
@@ -1077,7 +1077,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     private func activateSelected() {
-        if mode == .files {
+        if mode.stoneDefinition.surface.usesFileBrowser {
             MainActor.assumeIsolated {
                 fileBrowserModel.handle(.open)
             }

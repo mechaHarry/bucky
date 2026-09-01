@@ -52,7 +52,7 @@ struct ModeSwitcherView: View {
 
     @ViewBuilder
     private func activePill(for mode: LauncherMode) -> some View {
-        switch mode.stoneDefinition.surface {
+        switch mode.stoneDefinition.surface.activeModePresentation {
         case .textInput:
             TextInputModePill(
                 model: model,
@@ -60,6 +60,8 @@ struct ModeSwitcherView: View {
                 symbol: mode.helpSystemImage,
                 isSearchFocused: $isSearchFocused
             )
+        case .sharedResults:
+            SharedResultsModePill(mode: mode, colorScheme: colorScheme)
         case .fileBrowser:
             GeometryReader { proxy in
                 let displayedPath = displayedFilePath
@@ -271,6 +273,42 @@ private struct TextInputModePill: View {
             )
         }
         .contentShape(Capsule())
+    }
+}
+
+@available(macOS 26.0, *)
+private struct SharedResultsModePill: View {
+    let mode: LauncherMode
+    let colorScheme: ColorScheme
+
+    var body: some View {
+        HStack(spacing: ModeSwitcherLayoutPolicy.activeTextPillIconLeadingInset) {
+            ActiveTextPillIcon(symbol: mode.helpSystemImage)
+                .foregroundStyle(LauncherModeTintPolicy.iconColor(for: mode, colorScheme: colorScheme))
+
+            Text(mode.shortTitle)
+                .font(.system(size: 22, weight: .semibold, design: .rounded))
+                .lineLimit(1)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, ModeSwitcherLayoutPolicy.activeTextPillHorizontalInset)
+        .frame(
+            maxWidth: .infinity,
+            minHeight: ModeSwitcherLayoutPolicy.activePillHeight,
+            maxHeight: ModeSwitcherLayoutPolicy.activePillHeight,
+            alignment: .center
+        )
+        .background {
+            ModeControlBackground(
+                shape: Capsule(),
+                fill: Color(nsColor: .windowBackgroundColor),
+                tint: LauncherModeTintPolicy.activeColor(for: mode),
+                isActive: true
+            )
+        }
+        .contentShape(Capsule())
+        .accessibilityLabel(mode.shortTitle)
     }
 }
 

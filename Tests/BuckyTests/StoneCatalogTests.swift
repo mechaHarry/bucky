@@ -58,6 +58,29 @@ final class StoneCatalogTests: XCTestCase {
         )
     }
 
+    func testSharedResultsSurfaceIsNonTextAndUsesSafeModePresentation() {
+        XCTAssertFalse(StoneSurface.sharedResults.acceptsTextInput)
+        XCTAssertFalse(StoneSurface.sharedResults.usesFileBrowser)
+        XCTAssertEqual(StoneSurface.sharedResults.activeModePresentation, .sharedResults)
+        XCTAssertEqual(StoneSurface.fileBrowser.activeModePresentation, .fileBrowser)
+    }
+
+    @MainActor
+    func testRegistryRejectsProvidersClaimingReservedFileBrowserSurface() {
+        let registry = StoneProviderRegistry(providers: [
+            ReservedFileBrowserProvider(),
+            ReservedFileBrowserProvider(id: StoneID(rawValue: 99), shortcutNumber: 6)
+        ])
+
+        XCTAssertNil(registry.provider(for: .files))
+        XCTAssertEqual(
+            registry.availableModes.first(where: { $0.stoneID == .files })?.stoneDefinition,
+            StoneCatalog.definition(for: .files)
+        )
+        XCTAssertFalse(registry.registeredStoneIDs.contains(.files))
+        XCTAssertEqual(registry.availableModes.map(\.stoneID), StoneID.allCases)
+    }
+
     func testAdditionalStoneIDDoesNotRequireStaticCatalogDefinition() {
         XCTAssertEqual(StoneID(rawValue: 99).rawValue, 99)
         XCTAssertNil(StoneCatalog.definition(forRawValue: 99))
@@ -122,4 +145,30 @@ private final class TestTextStoneProvider: TextStoneProvider {
     func perform(_ activation: StoneActivation, for row: StoneResultRow) -> TextStoneActivationResult {
         .unhandled
     }
+}
+
+@MainActor
+private final class ReservedFileBrowserProvider: StoneProvider {
+    let definition: StoneDefinition
+
+    init(id: StoneID = .files, shortcutNumber: Int = 4) {
+        definition = StoneDefinition(
+            id: id,
+            shortcutNumber: shortcutNumber,
+            presentation: StonePresentation(
+                title: "Replacement Files",
+                placeholder: "Not allowed",
+                systemImage: "exclamationmark.triangle"
+            ),
+            surface: .fileBrowser,
+            updatePolicy: .immediate,
+            tint: StoneCatalog.definition(for: .files).tint
+        )
+    }
+
+    func snapshot(for query: String) -> StoneResultSnapshot { .loaded(rows: []) }
+    func updateSnapshot(for query: String) async -> StoneResultSnapshot { snapshot(for: query) }
+    func cancel() {}
+    func activation(for row: StoneResultRow) -> StoneActivation { .none }
+    func perform(_ activation: StoneActivation, for row: StoneResultRow) -> StoneProviderActivationResult { .unhandled }
 }
