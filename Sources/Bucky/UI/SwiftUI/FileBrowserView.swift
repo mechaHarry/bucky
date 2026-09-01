@@ -976,7 +976,7 @@ struct QuickLookPreviewSurface: View {
     @ObservedObject var model: FileBrowserModel
     let preview: FileBrowserPreview
     let entry: FileBrowserEntry?
-    @State private var nativePreviewFailed = false
+    @State private var nativePreviewReadiness: FileBrowserPreviewReadiness = .loading
 
     var body: some View {
         GeometryReader { proxy in
@@ -996,14 +996,14 @@ struct QuickLookPreviewSurface: View {
                 }
                 .shadow(color: .black.opacity(0.28), radius: 34, x: 0, y: 18)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                .onChange(of: preview.url) {
-                    nativePreviewFailed = false
+                .onChange(of: preview) { _, nextPreview in
+                    nativePreviewReadiness = nextPreview.mode == .nativeThumbnail ? .loading : .ready
                 }
             }
         }
 
     private var resolvedMode: FileBrowserPreviewMode {
-        if preview.mode == .nativeThumbnail, nativePreviewFailed {
+        if preview.mode == .nativeThumbnail, nativePreviewReadiness == .failed {
             return .metadataFallback
         }
         return preview.mode
@@ -1034,7 +1034,7 @@ struct QuickLookPreviewSurface: View {
                 url: preview.url,
                 thumbnailSize: CGSize(width: size.width, height: previewAreaHeight),
                 model: model,
-                didFail: $nativePreviewFailed
+                readiness: $nativePreviewReadiness
             )
                 .frame(width: size.width, height: previewAreaHeight)
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -1042,6 +1042,14 @@ struct QuickLookPreviewSurface: View {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .strokeBorder(Color(nsColor: .separatorColor).opacity(0.24), lineWidth: 1)
                 }
+
+            if FileBrowserPreviewLoadingPolicy.shouldShowSkeleton(
+                for: .nativeThumbnail,
+                readiness: nativePreviewReadiness
+            ) {
+                SkeletonLoadingView(label: "Loading preview", surface: .filePreview)
+                    .allowsHitTesting(false)
+            }
 
             LinearGradient(
                 colors: [.black.opacity(0), .black.opacity(0.68)],
@@ -1160,30 +1168,104 @@ struct QuickLookPreviewSurface: View {
     }()
 }
 
+enum FileBrowserPreviewReadiness: Equatable {
+    case loading
+    case ready
+    case failed
+}
+
+enum FileBrowserPreviewLoadingPolicy {
+    static func shouldShowSkeleton(
+        for mode: FileBrowserPreviewMode,
+        readiness: FileBrowserPreviewReadiness
+    ) -> Bool {
+        guard readiness == .loading else { return false }
+        return mode == .nativeThumbnail || mode == .video
+    }
+}
+
 @available(macOS 26.0, *)
 private struct AutoPlayingVideoPreview: View {
     let url: URL
-    @State private var player: AVPlayer?
+    @StateObject private var playback = VideoPreviewPlaybackState()
 
     var body: some View {
-        VideoPlayer(player: player)
-            .background(Color.black)
-            .onAppear {
-                startPlayback()
+        ZStack {
+            if FileBrowserPreviewLoadingPolicy.shouldShowSkeleton(
+                for: .video,
+                readiness: playback.readiness
+            ) {
+                SkeletonLoadingView(label: "Loading preview", surface: .filePreview)
+            } else {
+                VideoPlayer(player: playback.player)
             }
-            .onDisappear {
-                player?.pause()
+        }
+        .background(Color.black)
+        .onAppear {
+            playback.start(url: url)
+        }
+        .onDisappear {
+            playback.stop()
+        }
+        .onChange(of: url) { _, nextURL in
+            playback.start(url: nextURL)
+        }
+    }
+}
+
+private final class VideoPreviewPlaybackState: ObservableObject {
+    @Published private(set) var player: AVPlayer?
+    @Published private(set) var readiness: FileBrowserPreviewReadiness = .loading
+
+    private var loadedURL: URL?
+    private var statusObservation: NSKeyValueObservation?
+    private var loadGeneration = 0
+
+    func start(url: URL) {
+        guard loadedURL != url || player == nil else { return }
+
+        stop()
+        loadGeneration &+= 1
+        let currentGeneration = loadGeneration
+        loadedURL = url
+        readiness = .loading
+
+        let item = AVPlayerItem(url: url)
+        let nextPlayer = AVPlayer(playerItem: item)
+        player = nextPlayer
+        statusObservation = item.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.loadedURL == url, self.loadGeneration == currentGeneration else { return }
+
+                switch item.status {
+                case .readyToPlay:
+                    self.readiness = .ready
+                    nextPlayer.play()
+                case .failed:
+                    nextPlayer.pause()
+                    self.readiness = .failed
+                case .unknown:
+                    self.readiness = .loading
+                @unknown default:
+                    self.readiness = .failed
+                }
             }
-            .onChange(of: url) {
-                startPlayback()
-            }
+        }
     }
 
-    private func startPlayback() {
-        let nextPlayer = AVPlayer(url: url)
+    func stop() {
+        loadGeneration &+= 1
+        statusObservation?.invalidate()
+        statusObservation = nil
         player?.pause()
-        player = nextPlayer
-        nextPlayer.play()
+        player = nil
+        loadedURL = nil
+        readiness = .loading
+    }
+
+    deinit {
+        statusObservation?.invalidate()
+        player?.pause()
     }
 }
 
@@ -1287,7 +1369,7 @@ private struct NativeQuickLookThumbnailView: NSViewRepresentable {
     let url: URL
     let thumbnailSize: CGSize
     @ObservedObject var model: FileBrowserModel
-    @Binding var didFail: Bool
+    @Binding var readiness: FileBrowserPreviewReadiness
 
     func makeNSView(context: Context) -> NSImageView {
         let imageView = NSImageView()
@@ -1304,7 +1386,7 @@ private struct NativeQuickLookThumbnailView: NSViewRepresentable {
             thumbnailSize: thumbnailSize,
             model: model,
             into: imageView,
-            didFail: $didFail
+            readiness: $readiness
         )
     }
 
@@ -1315,6 +1397,7 @@ private struct NativeQuickLookThumbnailView: NSViewRepresentable {
     final class Coordinator {
         private var representedURL: URL?
         private var representedSize = CGSize.zero
+        private var loadGeneration = 0
 
         @MainActor
         func loadThumbnail(
@@ -1322,21 +1405,26 @@ private struct NativeQuickLookThumbnailView: NSViewRepresentable {
             thumbnailSize: CGSize,
             model: FileBrowserModel,
             into imageView: NSImageView,
-            didFail: Binding<Bool>
+            readiness: Binding<FileBrowserPreviewReadiness>
         ) {
             guard representedURL != url || representedSize != thumbnailSize else { return }
             representedURL = url
             representedSize = thumbnailSize
+            loadGeneration &+= 1
+            let currentGeneration = loadGeneration
             imageView.image = nil
-            didFail.wrappedValue = false
+            readiness.wrappedValue = .loading
 
             let scale = NSScreen.main?.backingScaleFactor ?? 2
             model.loadPreviewThumbnail(for: url, size: thumbnailSize, scale: scale) { image in
-                guard self.representedURL == url, self.representedSize == thumbnailSize else { return }
+                guard self.representedURL == url,
+                      self.representedSize == thumbnailSize,
+                      self.loadGeneration == currentGeneration else { return }
                 if let image {
                     imageView.image = image
+                    readiness.wrappedValue = .ready
                 } else {
-                    didFail.wrappedValue = true
+                    readiness.wrappedValue = .failed
                 }
             }
         }

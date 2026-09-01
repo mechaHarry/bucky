@@ -7,41 +7,80 @@ enum SkeletonLoadingSurface: Equatable {
     case compact
 }
 
-enum SkeletonLoadingPolicy {
-    static let launcherResultRowCount = 4
-    static let fileResultRowCount = 5
-    static let filePreviewRowCount = 3
+enum SkeletonLoadingAnimationLifecycle: Equatable {
+    case appearToStartDisappearToStop
+}
 
-    static let resultRowHeight: CGFloat = 54
-    static let compactRowHeight: CGFloat = 10
-    static let rowSpacing: CGFloat = 8
-    static let cornerRadius: CGFloat = 12
-    static let animationDuration: TimeInterval = 0.95
+struct SkeletonLoadingAnimationConfiguration: Equatable {
+    let duration: TimeInterval
+    let autoreverses: Bool
+    let lifecycle: SkeletonLoadingAnimationLifecycle
+
+    var swiftUIAnimation: Animation {
+        .easeInOut(duration: duration)
+            .repeatForever(autoreverses: autoreverses)
+    }
+}
+
+struct SkeletonLoadingConfiguration: Equatable {
+    let rowCount: Int
+    let rowHeight: CGFloat
+    let rowSpacing: CGFloat
+    let horizontalPadding: CGFloat
+    let cornerRadius: CGFloat
+    let accessibilityLabel: String
+    let animation: SkeletonLoadingAnimationConfiguration
+}
+
+enum SkeletonLoadingPolicy {
     static let restingOpacity = 0.34
     static let activeOpacity = 0.68
 
-    static let exposesAccessibleLabel = true
-    static let repeatsAnimation = true
-    static let stopsAnimationOnDisappear = true
-    static let usesTask = false
-    static let usesTimer = false
+    static func configuration(
+        for surface: SkeletonLoadingSurface,
+        label: String
+    ) -> SkeletonLoadingConfiguration {
+        let rowCount: Int
+        let rowHeight: CGFloat
+        let horizontalPadding: CGFloat
+        let cornerRadius: CGFloat
 
-    static func rowCount(for surface: SkeletonLoadingSurface) -> Int {
         switch surface {
         case .launcherResults:
-            launcherResultRowCount
+            rowCount = 4
+            rowHeight = 54
+            horizontalPadding = 12
+            cornerRadius = 12
         case .fileResults:
-            fileResultRowCount
+            rowCount = 5
+            rowHeight = 54
+            horizontalPadding = 12
+            cornerRadius = 12
         case .filePreview:
-            filePreviewRowCount
+            rowCount = 3
+            rowHeight = 54
+            horizontalPadding = 12
+            cornerRadius = 12
         case .compact:
-            1
+            rowCount = 1
+            rowHeight = 10
+            horizontalPadding = 0
+            cornerRadius = 0
         }
-    }
 
-    static var animation: Animation {
-        .easeInOut(duration: animationDuration)
-            .repeatForever(autoreverses: true)
+        return SkeletonLoadingConfiguration(
+            rowCount: rowCount,
+            rowHeight: rowHeight,
+            rowSpacing: 8,
+            horizontalPadding: horizontalPadding,
+            cornerRadius: cornerRadius,
+            accessibilityLabel: label,
+            animation: SkeletonLoadingAnimationConfiguration(
+                duration: 0.95,
+                autoreverses: true,
+                lifecycle: .appearToStartDisappearToStop
+            )
+        )
     }
 }
 
@@ -52,27 +91,31 @@ struct SkeletonLoadingView: View {
 
     @State private var isAnimating = false
 
-    private var rowCount: Int {
-        SkeletonLoadingPolicy.rowCount(for: surface)
+    private var configuration: SkeletonLoadingConfiguration {
+        SkeletonLoadingPolicy.configuration(for: surface, label: label)
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: SkeletonLoadingPolicy.rowSpacing) {
-            ForEach(0..<rowCount, id: \.self) { index in
+        VStack(alignment: .leading, spacing: configuration.rowSpacing) {
+            ForEach(0..<configuration.rowCount, id: \.self) { index in
                 skeletonRow(at: index)
             }
         }
-        .padding(surface == .compact ? 0 : 12)
+        .padding(configuration.horizontalPadding)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         .opacity(isAnimating ? SkeletonLoadingPolicy.activeOpacity : SkeletonLoadingPolicy.restingOpacity)
-        .animation(SkeletonLoadingPolicy.animation, value: isAnimating)
+        .animation(configuration.animation.swiftUIAnimation, value: isAnimating)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(label)
+        .accessibilityLabel(configuration.accessibilityLabel)
         .onAppear {
-            isAnimating = true
+            if configuration.animation.lifecycle == .appearToStartDisappearToStop {
+                isAnimating = true
+            }
         }
         .onDisappear {
-            isAnimating = false
+            if configuration.animation.lifecycle == .appearToStartDisappearToStop {
+                isAnimating = false
+            }
         }
     }
 
@@ -82,7 +125,7 @@ struct SkeletonLoadingView: View {
             Capsule(style: .continuous)
                 .fill(.quaternary)
                 .frame(maxWidth: .infinity)
-                .frame(height: SkeletonLoadingPolicy.compactRowHeight)
+                .frame(height: configuration.rowHeight)
         } else {
             HStack(spacing: 12) {
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
@@ -106,9 +149,9 @@ struct SkeletonLoadingView: View {
             }
             .padding(.horizontal, 12)
             .frame(maxWidth: .infinity)
-            .frame(height: SkeletonLoadingPolicy.resultRowHeight)
+            .frame(height: configuration.rowHeight)
             .background(.quaternary.opacity(0.12), in: RoundedRectangle(
-                cornerRadius: SkeletonLoadingPolicy.cornerRadius,
+                cornerRadius: configuration.cornerRadius,
                 style: .continuous
             ))
         }
