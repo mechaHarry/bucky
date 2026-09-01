@@ -8,7 +8,6 @@ final class DictionaryHistoryStoreTests: XCTestCase {
         let entry = DictionaryHistoryEntry(id: id, term: "apple", date: date)
         let sameEntry = DictionaryHistoryEntry(id: id, term: "apple", date: date)
 
-        assertIdentifiableAndEquatable(entry)
         XCTAssertEqual(entry.id, id)
         XCTAssertEqual(entry, sameEntry)
     }
@@ -76,7 +75,4 @@ final class DictionaryHistoryStoreTests: XCTestCase {
             .appendingPathComponent("BuckyDictionaryHistory-\(UUID().uuidString).json")
     }
 
-    private func assertIdentifiableAndEquatable<Entry: Identifiable & Equatable>(_ entry: Entry) {
-        XCTAssertEqual(entry, entry)
-    }
 }

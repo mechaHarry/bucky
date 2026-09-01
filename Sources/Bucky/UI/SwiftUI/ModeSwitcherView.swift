@@ -233,16 +233,6 @@ struct ModeSwitcherLayoutPolicy {
     }
 }
 
-struct ModeSwitcherGlassTransitionPolicy {
-    static func usesMatchedGeometry(for mode: LauncherMode) -> Bool {
-        false
-    }
-
-    static func usesOuterContainer(for _: LauncherMode) -> Bool {
-        false
-    }
-}
-
 @available(macOS 26.0, *)
 private struct TextInputModePill: View {
     @ObservedObject var model: LiquidGlassLauncherModel

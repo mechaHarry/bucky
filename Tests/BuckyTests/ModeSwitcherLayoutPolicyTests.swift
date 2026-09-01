@@ -63,14 +63,6 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
             .calculator,
             .dictionary
         ])
-        XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: .applications))
-        XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: .calculator))
-        XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: .dictionary))
-        XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: .files))
-        XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: .applications))
-        XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: .calculator))
-        XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: .dictionary))
-        XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: .files))
         XCTAssertEqual(
             ModeSwitcherLayoutPolicy.activeTextPillIconLeadingInset,
             ModeSwitcherLayoutPolicy.activeTextPillHorizontalInset
@@ -100,11 +92,6 @@ final class ModeSwitcherLayoutPolicyTests: XCTestCase {
             progressInset - baseInset,
             ModeSwitcherLayoutPolicy.activeTextPillProgressWidth + ModeSwitcherLayoutPolicy.activePillHeight / 4
         )
-    }
-
-    func testModeStonesAndPillsDisableMatchedGeometryAndOuterContainers() {
-        XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesMatchedGeometry(for: .files))
-        XCTAssertFalse(ModeSwitcherGlassTransitionPolicy.usesOuterContainer(for: .files))
     }
 
     func testFilesPathMarqueeUsesFixedPathWidthInsidePill() {

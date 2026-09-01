@@ -1,21 +1,5 @@
 import Foundation
 
-struct ApplicationSearchCandidate: Hashable {
-    let sourceIndex: Int
-    let title: String
-    let searchText: String
-
-    init(sourceIndex: Int, title: String, searchText: String) {
-        self.sourceIndex = sourceIndex
-        self.title = title
-        self.searchText = searchText
-    }
-
-    init(sourceIndex: Int, item: LaunchItem) {
-        self.init(sourceIndex: sourceIndex, title: item.title, searchText: item.searchText)
-    }
-}
-
 enum ApplicationSearchEngine {
     static func tokens(for normalizedQuery: String) -> [String] {
         normalizedQuery
@@ -71,34 +55,6 @@ enum ApplicationSearchEngine {
         }
         .sorted(by: ranksBefore)
         .map { ids[$0.sourceIndex] }
-    }
-
-    static func rankedCandidates(
-        _ candidates: [ApplicationSearchCandidate],
-        normalizedQuery: String
-    ) -> [ApplicationSearchCandidate] {
-        guard !normalizedQuery.isEmpty else {
-            return candidates
-        }
-
-        let queryTokens = tokens(for: normalizedQuery)
-
-        return candidates.compactMap { candidate -> (ApplicationSearchCandidate, RankedApplicationMatch)? in
-            guard queryTokens.allSatisfy({ candidate.searchText.contains($0) }) else {
-                return nil
-            }
-
-            return (
-                candidate,
-                RankedApplicationMatch(
-                    sourceIndex: candidate.sourceIndex,
-                    title: candidate.title,
-                    score: score(title: candidate.title, tokens: queryTokens)
-                )
-            )
-        }
-        .sorted { ranksBefore($0.1, $1.1) }
-        .map(\.0)
     }
 
     private static func ranksBefore(_ left: RankedApplicationMatch, _ right: RankedApplicationMatch) -> Bool {
