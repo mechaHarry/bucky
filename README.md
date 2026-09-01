@@ -64,7 +64,7 @@ App indexing starts during launcher controller initialization and stays fresh th
 
 The menu bar item provides Open, Reindex, Settings, and Quit actions. Bucky scans `.app` bundles recursively under `/Applications`, `/System/Applications`, and `~/Applications`, and scans only direct child `.app` bundles under `/System/Library/CoreServices` so native utilities such as Finder stay launchable without walking nested support trees.
 
-App indexing and mode handoff stay asynchronous. Apps can briefly show `Loading apps` while a background index is still populating the first result set. Switching into Files first shows a lightweight `Loading files` placeholder until the file browser model is activated, then the file browser publishes its own loading or loaded directory state.
+App indexing and mode handoff stay asynchronous. Apps and text Stones show a shared animated Skeleton surface with an accessible loading label while background work is still populating the first result set. Switching into Files first shows the same loading surface until the file browser model is activated, then the file browser publishes its own loading, empty, or loaded directory state.
 
 ## Stone Boundaries
 

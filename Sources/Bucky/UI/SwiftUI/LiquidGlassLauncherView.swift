@@ -196,9 +196,7 @@ struct LiquidGlassLauncherView: View {
             )
                 .transition(.opacity)
         } else {
-            Text("Loading files")
-                .font(.system(size: 17, weight: .medium))
-                .foregroundStyle(.secondary)
+            SkeletonLoadingView(label: "Loading files", surface: .fileResults)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .task {
                     await Task.yield()
@@ -209,24 +207,36 @@ struct LiquidGlassLauncherView: View {
 
     @ViewBuilder
     private func stoneResults(_ snapshot: StoneResultSnapshot) -> some View {
-        if let surfaceMessage = snapshot.surfaceMessage {
-            Text(surfaceMessage)
-                .font(.system(size: 17, weight: .medium))
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        switch snapshot {
+        case let .loading(message):
+            SkeletonLoadingView(label: message, surface: .launcherResults)
                 .transition(.opacity)
-        } else {
-            resultScrollView(reconstructionID: snapshot.identity) {
-                ForEach(Array(snapshot.rows.enumerated()), id: \.element.id) { index, row in
-                    stoneRow(row, index: index)
-                        .transition(rowTransition(for: row))
-                }
-            }
-            .animation(
-                toolSnapshotAnimation(for: snapshot),
-                value: snapshot.identity
-            )
+        case let .empty(message):
+            surfaceMessage(message)
+        case .message, .loaded:
+            resultContent(snapshot)
         }
+    }
+
+    private func surfaceMessage(_ message: String) -> some View {
+        Text(message)
+            .font(.system(size: 17, weight: .medium))
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .transition(.opacity)
+    }
+
+    private func resultContent(_ snapshot: StoneResultSnapshot) -> some View {
+        resultScrollView(reconstructionID: snapshot.identity) {
+            ForEach(Array(snapshot.rows.enumerated()), id: \.element.id) { index, row in
+                stoneRow(row, index: index)
+                    .transition(rowTransition(for: row))
+            }
+        }
+        .animation(
+            toolSnapshotAnimation(for: snapshot),
+            value: snapshot.identity
+        )
     }
 
     private func resultScrollView<Content: View>(

@@ -87,7 +87,8 @@ Exclusions are applied after indexing and inclusions. An explicitly included app
 - Apps is the default mode and must not activate Files code. `LiquidGlassLauncherModel` creates `FileBrowserModel` lazily only when Files is selected or the Files UI requests it.
 - Mode switches publish the new mode and restored query immediately, then defer mode-specific result snapshots behind the first interactable update. Stale deferred mode work is ignored by generation token.
 - Mode switches publish the new mode immediately, then defer the mode-specific snapshot work one turn so the UI can render the new shell before heavier work starts.
-- Files mode shows a lightweight `Loading files` placeholder if the file-browser model is not already warm, then prepares the model after the first Files frame.
+- Loading result surfaces use the shared animated `SkeletonLoadingView` and `SkeletonLoadingPolicy`, with an accessible label and lifecycle-bound animation. Empty and no-results states remain ordinary text messages.
+- Files mode shows the shared loading surface if the file-browser model is not already warm, then prepares the model after the first Files frame.
 - Files mode lists mounted volumes alongside directory contents and supports folders-first sorting so directories can stay grouped ahead of non-folder entries.
 - File-browser directory lists flow through `FileBrowserDirectoryStreaming` before reaching SwiftUI. The model publishes stable loading, empty, and loaded snapshots and ignores stale stream results when a newer directory request wins.
 - Calculator mode exposes a clear-history button. Pin is global to all launcher modes. While pinned, the launcher stays above other apps, shows a bolder accent border, can be dragged by its background, refocuses on the global launcher hotkey, and stays open after result activation.

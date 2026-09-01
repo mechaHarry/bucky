@@ -82,14 +82,19 @@ struct ModeSwitcherView: View {
                                 .foregroundStyle(iconTint)
                                 .frame(width: ModeSwitcherLayoutPolicy.filesPathIconWidth)
 
-                            FadeMarqueeText(
-                                text: displayedPath,
-                                font: .system(size: 16, weight: .semibold),
-                                constrainedWidth: pathWidth
-                            )
-                            .frame(width: pathWidth, height: ModeSwitcherLayoutPolicy.filesPathTextHeight, alignment: .leading)
-                            .clipped()
-                            .layoutPriority(0)
+                            if model.activeFileBrowserModel == nil {
+                                SkeletonLoadingView(label: "Loading files", surface: .compact)
+                                    .frame(width: pathWidth, height: ModeSwitcherLayoutPolicy.filesPathTextHeight)
+                            } else {
+                                FadeMarqueeText(
+                                    text: displayedPath,
+                                    font: .system(size: 16, weight: .semibold),
+                                    constrainedWidth: pathWidth
+                                )
+                                .frame(width: pathWidth, height: ModeSwitcherLayoutPolicy.filesPathTextHeight, alignment: .leading)
+                                .clipped()
+                                .layoutPriority(0)
+                            }
                         }
                         .frame(width: ModeSwitcherLayoutPolicy.filesPathButtonWidth(in: proxy.size.width), alignment: .leading)
                         .contentShape(Rectangle())

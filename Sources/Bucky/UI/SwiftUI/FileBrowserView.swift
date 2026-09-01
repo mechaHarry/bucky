@@ -155,8 +155,13 @@ struct FileBrowserView: View {
                 }
 
                 if model.entries.isEmpty {
-                    placeholder(model.isLoadingEntries ? "Loading files" : "No readable files")
-                        .transition(.opacity)
+                    if model.isLoadingEntries {
+                        SkeletonLoadingView(label: "Loading files", surface: .fileResults)
+                            .transition(.opacity)
+                    } else {
+                        placeholder("No readable files")
+                            .transition(.opacity)
+                    }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1187,21 +1192,30 @@ private struct CodeTextFilePreview: View {
     let url: URL
     @State private var text = ""
     @State private var errorMessage: String?
+    @State private var isLoading = false
 
     var body: some View {
-        ScrollView([.vertical, .horizontal]) {
-            Text(errorMessage ?? text)
-                .font(.system(size: 12, weight: .regular, design: .monospaced))
-                .foregroundStyle(Color(nsColor: errorMessage == nil
-                    ? FileBrowserCodePreviewTheme.foreground
-                    : FileBrowserCodePreviewTheme.secondaryForeground))
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(14)
+        ZStack {
+            ScrollView([.vertical, .horizontal]) {
+                Text(errorMessage ?? text)
+                    .font(.system(size: 12, weight: .regular, design: .monospaced))
+                    .foregroundStyle(Color(nsColor: errorMessage == nil
+                        ? FileBrowserCodePreviewTheme.foreground
+                        : FileBrowserCodePreviewTheme.secondaryForeground))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(14)
+            }
+
+            if isLoading {
+                SkeletonLoadingView(label: "Loading preview", surface: .filePreview)
+                    .padding(14)
+            }
         }
         .background(Color(nsColor: FileBrowserCodePreviewTheme.background))
         .task(id: url) {
-            text = "Loading preview..."
+            isLoading = true
+            text = ""
             errorMessage = nil
             do {
                 let loadedText = try await Task.detached(priority: .utility) {
@@ -1210,10 +1224,12 @@ private struct CodeTextFilePreview: View {
                 guard !Task.isCancelled else { return }
                 text = loadedText
                 errorMessage = nil
+                isLoading = false
             } catch {
                 guard !Task.isCancelled else { return }
                 text = ""
                 errorMessage = error.localizedDescription
+                isLoading = false
             }
         }
     }
