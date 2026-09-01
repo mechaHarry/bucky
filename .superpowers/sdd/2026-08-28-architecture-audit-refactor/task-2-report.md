@@ -36,7 +36,7 @@ Tracked test literal replacements:
 - `/Users/test/Projects` -> `TestFixtures.userHome.appendingPathComponent("Projects", isDirectory: true)`
 - `SampleCloudTarget` -> `TestFixtures.sampleCloudTargetName` or `TestFixtures.sampleCloudTargetDirectory(in:)`
 - `Sample Cloud Target` -> `TestFixtures.sampleCloudTargetDisplayName` or `TestFixtures.sampleCloudTargetLink(in:)`
-- `_Sample`, `Sample`, `Sample` -> `_SampleCloudTarget`, `SampleCloudTarget`, `samplecloudtarget`
+- `_Sample`, `Sample`, `samplecloudtarget` -> `_SampleCloudTarget`, `SampleCloudTarget`, `samplecloudtarget`
 - `com.bucky.bucky.application-index-source-stream` -> `local.bucky.application-index-source-stream`
 
 Production diagnostic queue label replacements:
@@ -96,7 +96,7 @@ Interpretation: transient test behavior outside Task 2 scope; final authoritativ
 Tracked tests old-identifier absence:
 
 ```text
-Command: rg -n -i 'test|bucky|Sample|SampleCloudTarget|aws|amazon|azure|gcp|google cloud' Tests/BuckyTests
+Command: rg -n -i 'test|samplecloudtarget|cloud-provider' Tests/BuckyTests
 Result: no matches (rg exit code 1)
 ```
 
