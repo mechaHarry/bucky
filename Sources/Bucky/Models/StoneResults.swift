@@ -57,6 +57,8 @@ struct StoneResultRow: Identifiable, Equatable, Hashable {
                 return .open
             case .removeHistory:
                 return .removeHistory
+            case .providerAction:
+                return nil
             case .none:
                 return nil
             }
@@ -99,6 +101,7 @@ struct StoneResultRow: Identifiable, Equatable, Hashable {
     let accessoryActivation: StoneActivation
     let accessoryPresentation: AccessoryPresentation?
     let iconURL: URL?
+    let iconSystemImage: String?
     let accessoryText: String?
 
     init(
@@ -110,6 +113,7 @@ struct StoneResultRow: Identifiable, Equatable, Hashable {
         primaryActivation: StoneActivation,
         accessoryActivation: StoneActivation,
         iconURL: URL? = nil,
+        iconSystemImage: String? = nil,
         accessoryText: String? = nil,
         accessoryPresentation: AccessoryPresentation? = nil
     ) {
@@ -122,6 +126,7 @@ struct StoneResultRow: Identifiable, Equatable, Hashable {
         self.accessoryActivation = accessoryActivation
         self.accessoryPresentation = accessoryPresentation ?? AccessoryPresentation.default(for: accessoryActivation)
         self.iconURL = iconURL
+        self.iconSystemImage = iconSystemImage
         self.accessoryText = accessoryText
     }
 
@@ -132,6 +137,7 @@ struct StoneResultRow: Identifiable, Equatable, Hashable {
             subtitle,
             copyText ?? "",
             kind.rawValue,
+            iconSystemImage ?? "",
             accessoryText ?? "",
             accessoryPresentation?.systemImage ?? "",
             accessoryPresentation?.help ?? ""
@@ -208,6 +214,7 @@ enum StoneActivation: Equatable, Hashable {
     case copy(String)
     case open(LaunchTarget)
     case removeHistory(StoneResultRow.ID)
+    case providerAction(String)
     case none
 }
 

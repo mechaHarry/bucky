@@ -94,7 +94,7 @@ final class DictionaryStone: TextStoneProvider {
         case let .removeHistory(rowID) where row.kind == .dictionaryHistory && rowID == row.id:
             historyStore.remove(term: row.display)
             return .handled(shouldRefresh: true, resetSelection: true, shouldHide: false)
-        case .copy, .open, .removeHistory, .none:
+        case .copy, .open, .removeHistory, .providerAction, .none:
             return .unhandled
         }
     }

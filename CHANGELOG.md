@@ -2,6 +2,13 @@
 
 All notable changes to Bucky are documented here.
 
+## [3.2.0] - 2026-09-01
+
+### Added
+
+- Added the green Countdowns Stone with named target datetimes, live remaining-time display, and add/edit/delete management.
+- Added atomic JSON persistence for countdowns and generic Stone provider actions plus live refresh metadata.
+
 ## [3.1.6] - 2026-09-01
 
 ### Added

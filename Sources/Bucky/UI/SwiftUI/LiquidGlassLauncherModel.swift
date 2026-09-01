@@ -13,7 +13,13 @@ final class LiquidGlassLauncherModel: ObservableObject {
     @Published var selectionScrollRequest: SelectionScrollRequest?
     @Published var isIndexing = false
     @Published var animationTiming: LauncherAnimationTiming
-    @Published var isPresented = false
+    @Published var isPresented = false {
+        didSet {
+            if !isPresented {
+                cancelLiveStoneRefresh()
+            }
+        }
+    }
     @Published var isWindowKey = false
     @Published var isShowingSettings = false
     @Published var isShowingHelp = false
@@ -54,6 +60,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private var textStoneRequestGates: [StoneID: StoneResultRequestGate] = [:]
     private var pendingModeSnapshotTask: Task<Void, Never>?
     private var modeSnapshotGeneration = 0
+    private var liveStoneRefreshTask: Task<Void, Never>?
     private var warmCacheTask: Task<Void, Never>?
     private var selectionScrollRequestID = 0
 
@@ -101,6 +108,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
             task.cancel()
         }
         pendingModeSnapshotTask?.cancel()
+        liveStoneRefreshTask?.cancel()
         warmCacheTask?.cancel()
     }
 
@@ -204,6 +212,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     func show(mode: LauncherMode) {
+        cancelLiveStoneRefresh()
         isShowingSettings = false
         isShowingHelp = false
         applicationQuery = ""
@@ -519,6 +528,33 @@ final class LiquidGlassLauncherModel: ObservableObject {
         pendingModeSnapshotTask = nil
     }
 
+    private func scheduleLiveStoneRefresh(for provider: any StoneProvider) {
+        cancelLiveStoneRefresh()
+
+        guard let interval = provider.definition.refreshIntervalNanoseconds else { return }
+        let stoneID = provider.definition.id
+        liveStoneRefreshTask = Task { [weak self, provider] in
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(nanoseconds: interval)
+                } catch {
+                    return
+                }
+
+                guard !Task.isCancelled else { return }
+                await MainActor.run { [weak self] in
+                    guard let self, self.mode.stoneID == stoneID else { return }
+                    self.applyTextStoneSnapshot(provider.snapshot(for: self.query), for: stoneID)
+                }
+            }
+        }
+    }
+
+    private func cancelLiveStoneRefresh() {
+        liveStoneRefreshTask?.cancel()
+        liveStoneRefreshTask = nil
+    }
+
     private func activateFileBrowserModel() -> FileBrowserModel {
         if let activatedFileBrowserModel {
             return activatedFileBrowserModel
@@ -708,6 +744,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         cancelPendingCalculationHistory()
 
         if let provider = stoneProviders.provider(for: mode.stoneID) {
+            scheduleLiveStoneRefresh(for: provider)
             let stoneID = provider.definition.id
             cancelPendingTextStoneUpdate(for: stoneID)
             toolItems = []
@@ -724,6 +761,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
             }
             return
         }
+
+        cancelLiveStoneRefresh()
 
         switch ToolResultsSnapshotPolicy.update(for: mode, query: query) {
         case .immediate:
@@ -960,6 +999,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         if mode != nextMode {
             modeWillSwitchAction?(mode, nextMode)
         }
+        cancelLiveStoneRefresh()
         cancelPendingTextStoneUpdates()
         cancelPendingApplicationFilter()
         storeCurrentQuery()
@@ -1152,6 +1192,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
         case let .open(target):
             launch(target)
         case .removeHistory:
+            return
+        case .providerAction:
             return
         case .none:
             return

@@ -71,6 +71,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         calculationHistoryStore: CalculationHistoryStore,
         dictionaryHistoryStore: DictionaryHistoryStore,
         hotKeyChangeHandler: @escaping @MainActor (HotKeyConfiguration) -> Bool,
+        stoneProviders: [any StoneProvider] = [],
         alphaDriverFactory: (@MainActor (NSWindow) -> any LauncherWindowAlphaAnimationDriver)? = nil
     ) {
         model = LiquidGlassLauncherModel(
@@ -78,7 +79,8 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             inclusionStore: inclusionStore,
             exclusionStore: exclusionStore,
             calculationHistoryStore: calculationHistoryStore,
-            dictionaryHistoryStore: dictionaryHistoryStore
+            dictionaryHistoryStore: dictionaryHistoryStore,
+            stoneProviders: stoneProviders
         )
         window = BuckyPanelWindow(
             contentRect: NSRect(

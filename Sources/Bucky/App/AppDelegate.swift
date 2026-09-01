@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let exclusionStore = ExclusionStore()
     private let calculationHistoryStore = CalculationHistoryStore()
     private let dictionaryHistoryStore = DictionaryHistoryStore()
+    private let countdownStore = CountdownStore()
     private var launcherController: LauncherControlling?
     private var statusMenuController: StatusMenuController?
     private var hotKeyController: HotKeyController?
@@ -42,7 +43,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 dictionaryHistoryStore: dictionaryHistoryStore,
                 hotKeyChangeHandler: { [weak self] hotKey in
                     self?.registerHotKey(hotKey) ?? false
-                }
+                },
+                stoneProviders: [CountdownStone(store: countdownStore)]
             )
         }
 

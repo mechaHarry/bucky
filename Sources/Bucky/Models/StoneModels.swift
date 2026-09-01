@@ -7,6 +7,7 @@ struct StoneID: RawRepresentable, CaseIterable, Identifiable, Hashable {
     static let calculator = StoneID(rawValue: 2)
     static let dictionary = StoneID(rawValue: 3)
     static let files = StoneID(rawValue: 4)
+    static let countdowns = StoneID(rawValue: 5)
     static let allCases: [StoneID] = [.applications, .calculator, .dictionary, .files]
 
     var id: Self { self }
@@ -68,6 +69,25 @@ struct StoneDefinition: Identifiable, Equatable, Hashable {
     let surface: StoneSurface
     let updatePolicy: StoneUpdatePolicy
     let tint: StoneTint
+    let refreshIntervalNanoseconds: UInt64?
+
+    init(
+        id: StoneID,
+        shortcutNumber: Int,
+        presentation: StonePresentation,
+        surface: StoneSurface,
+        updatePolicy: StoneUpdatePolicy,
+        tint: StoneTint,
+        refreshIntervalNanoseconds: UInt64? = nil
+    ) {
+        self.id = id
+        self.shortcutNumber = shortcutNumber
+        self.presentation = presentation
+        self.surface = surface
+        self.updatePolicy = updatePolicy
+        self.tint = tint
+        self.refreshIntervalNanoseconds = refreshIntervalNanoseconds
+    }
 
     var acceptsTextInput: Bool {
         surface.acceptsTextInput

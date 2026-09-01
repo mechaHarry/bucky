@@ -401,7 +401,7 @@ struct LiquidGlassLauncherView: View {
         if row.kind == .application, let iconURL = row.iconURL {
             ApplicationIconView(url: iconURL)
         } else {
-            Image(systemName: toolSymbol(for: row.kind))
+            Image(systemName: row.iconSystemImage ?? toolSymbol(for: row.kind))
                 .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(toolColor(for: row.kind))
                 .frame(width: 38, height: 38)
