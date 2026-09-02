@@ -16,6 +16,7 @@ struct LauncherResultList<RowID: Hashable, Content: View>: View {
     @Binding var scrollTargetID: RowID?
     let scrollTargetAnchor: UnitPoint?
     let reconstructionID: AnyHashable?
+    let reconstructionAnimation: Animation?
     let usesEagerRows: Bool
     @ViewBuilder let content: () -> Content
 
@@ -23,12 +24,14 @@ struct LauncherResultList<RowID: Hashable, Content: View>: View {
         scrollTargetID: Binding<RowID?> = .constant(nil),
         scrollTargetAnchor: UnitPoint? = nil,
         reconstructionID: AnyHashable? = nil,
+        reconstructionAnimation: Animation? = .smooth(duration: LauncherResultListLayoutPolicy.rowReconstructionAnimationSeconds),
         usesEagerRows: Bool = false,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self._scrollTargetID = scrollTargetID
         self.scrollTargetAnchor = scrollTargetAnchor
         self.reconstructionID = reconstructionID
+        self.reconstructionAnimation = reconstructionAnimation
         self.usesEagerRows = usesEagerRows
         self.content = content
     }
@@ -47,7 +50,7 @@ struct LauncherResultList<RowID: Hashable, Content: View>: View {
         .scrollIndicators(.hidden)
         .scrollIndicatorsFlash(trigger: false)
         .animation(
-            .smooth(duration: LauncherResultListLayoutPolicy.rowReconstructionAnimationSeconds),
+            reconstructionAnimation,
             value: reconstructionID
         )
     }

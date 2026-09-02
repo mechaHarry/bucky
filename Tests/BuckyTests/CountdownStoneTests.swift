@@ -121,12 +121,38 @@ final class CountdownStoneTests: XCTestCase {
     }
 
     @MainActor
-    func testCountdownRowsExposeProviderOwnedEditAndDeleteActions() throws {
+    func testCountdownStoneProvidesInlineCreationConfiguration() {
+        let now = Date(timeIntervalSinceReferenceDate: 100)
+        let stone = CountdownStone(
+            store: CountdownStore(fileURL: temporaryFileURL()),
+            now: { now }
+        )
+
+        XCTAssertEqual(stone.inlineCreationConfiguration.namePlaceholder, "Countdown name")
+        XCTAssertEqual(stone.inlineCreationConfiguration.targetDateLabel, "Target date and time")
+        XCTAssertEqual(stone.inlineCreationConfiguration.systemImage, "timer")
+        XCTAssertEqual(stone.inlineCreationConfiguration.defaultTargetDate, now.addingTimeInterval(3_600))
+    }
+
+    @MainActor
+    func testCountdownStoneSubmitsInlineCreationWithoutModalState() {
+        let now = Date(timeIntervalSinceReferenceDate: 100)
+        let store = CountdownStore(fileURL: temporaryFileURL())
+        let stone = CountdownStone(store: store, now: { now })
+
+        XCTAssertFalse(stone.submitInlineCreation(name: " ", targetDate: now.addingTimeInterval(60)))
+        XCTAssertFalse(stone.submitInlineCreation(name: "Release", targetDate: now))
+        XCTAssertTrue(stone.submitInlineCreation(name: "  Release   day  ", targetDate: now.addingTimeInterval(60)))
+        XCTAssertEqual(store.countdowns.map(\.name), ["Release day"])
+    }
+
+    @MainActor
+    func testCountdownRowsExposeDeleteActionWithoutEditModal() throws {
         let store = CountdownStore(fileURL: temporaryFileURL())
         let countdown = try XCTUnwrap(store.add(name: "Release", targetDate: Date()))
         let row = try XCTUnwrap(CountdownStone.rows(for: [countdown], now: Date()).last)
 
-        XCTAssertEqual(row.primaryActivation, .providerAction("edit:\(countdown.id.uuidString)"))
+        XCTAssertEqual(row.primaryActivation, .none)
         XCTAssertEqual(row.accessoryActivation, .providerAction("delete:\(countdown.id.uuidString)"))
         XCTAssertEqual(row.accessoryPresentation, .init(systemImage: "trash", help: "Delete countdown"))
         XCTAssertEqual(row.iconSystemImage, "timer")
@@ -154,14 +180,39 @@ final class CountdownStoneTests: XCTestCase {
         let mode = try XCTUnwrap(model.availableModes.first { $0.stoneID == .countdowns })
 
         model.show(mode: mode)
-        XCTAssertEqual(model.resultSnapshot.rows[1].subtitle, "0d 00h 00m 00s 200ms")
+        XCTAssertEqual(model.resultSnapshot.rows[0].subtitle, "0d 00h 00m 00s 200ms")
 
         clock.date = clock.date.addingTimeInterval(0.2)
-        await waitUntil(model.resultSnapshot.rows[1].subtitle == "0d 00h 00m 00s 000ms")
+        await waitUntil(model.resultSnapshot.rows[0].subtitle == "0d 00h 00m 00s 000ms")
     }
 
     @MainActor
-    func testCountdownStonePublishesAddRowAndCountdownRows() throws {
+    @available(macOS 26.0, *)
+    func testLauncherSubmitsInlineCreationAndRefreshesTheSharedResultList() throws {
+        let clock = MutableCountdownClock(date: Date(timeIntervalSinceReferenceDate: 100))
+        let stone = CountdownStone(store: CountdownStore(fileURL: temporaryFileURL()), now: { clock.date })
+        let model = LiquidGlassLauncherModel(
+            settingsStore: SettingsStore(),
+            inclusionStore: InclusionStore(),
+            exclusionStore: ExclusionStore(),
+            calculationHistoryStore: CalculationHistoryStore(),
+            stoneProviders: [stone],
+            fileBrowserModel: FileBrowserModel(
+                fileSystem: StubFileSystemClient(home: TestFixtures.userHome, entriesByDirectory: [:]),
+                store: InMemoryFileBrowserStore(state: .defaultValue),
+                directoryStream: ImmediateDirectoryStream()
+            )
+        )
+        let mode = try XCTUnwrap(model.availableModes.first { $0.stoneID == .countdowns })
+
+        model.show(mode: mode)
+
+        XCTAssertTrue(model.submitInlineCreation(name: "Launch", targetDate: clock.date.addingTimeInterval(60)))
+        XCTAssertEqual(model.resultSnapshot.rows.map(\.display), ["Launch"])
+    }
+
+    @MainActor
+    func testCountdownStonePublishesCountdownRowsBelowInlineCreationSurface() throws {
         let store = CountdownStore(fileURL: temporaryFileURL())
         let countdown = try XCTUnwrap(store.add(
             name: "Release",
@@ -171,9 +222,9 @@ final class CountdownStoneTests: XCTestCase {
 
         let rows = stone.snapshot(for: "").rows
 
-        XCTAssertEqual(rows.map(\.display), ["Add countdown", "Release"])
-        XCTAssertEqual(rows[1].subtitle, "0d 00h 18m 54s 000ms")
-        XCTAssertEqual(rows[1].id, .tool(kind: .message, key: "countdown:\(countdown.id.uuidString)"))
+        XCTAssertEqual(rows.map(\.display), ["Release"])
+        XCTAssertEqual(rows[0].subtitle, "0d 00h 18m 54s 000ms")
+        XCTAssertEqual(rows[0].id, .tool(kind: .message, key: "countdown:\(countdown.id.uuidString)"))
     }
 
     private func temporaryFileURL() -> URL {

@@ -11,6 +11,15 @@ struct LiquidGlassLauncherView: View {
     @State private var iconPreloadTask: Task<Void, Never>?
     @State private var scrollTargetID: StoneResultRow.ID?
     @State private var scrollTargetAnchor: UnitPoint?
+    @State private var inlineCreationName = ""
+    @State private var inlineCreationTargetDate = Date()
+    @FocusState private var inlineCreationFocus: InlineCreationField?
+
+    private enum InlineCreationField: Hashable {
+        case name
+        case date
+        case time
+    }
 
     private var resultUpdateAnimation: Animation {
         model.animationTiming.animation(duration: 0.08)
@@ -42,10 +51,12 @@ struct LiquidGlassLauncherView: View {
         .onAppear {
             synchronizeSearchFocus()
             preloadApplicationIcons()
+            resetInlineCreationDraftIfNeeded()
         }
         .onChange(of: model.mode) {
             synchronizeSearchFocus()
             preloadApplicationIcons()
+            resetInlineCreationDraftIfNeeded()
         }
         .onChange(of: model.isShowingSettings) {
             synchronizeSearchFocus()
@@ -63,8 +74,11 @@ struct LiquidGlassLauncherView: View {
             if isPresented {
                 synchronizeSearchFocus()
                 preloadApplicationIcons()
+                resetInlineCreationDraftIfNeeded()
             } else {
                 isSearchFocused = false
+                inlineCreationFocus = nil
+                model.isInlineCreationInputFocused = false
                 iconPreloadTask?.cancel()
                 iconPreloadTask = nil
             }
@@ -73,6 +87,9 @@ struct LiquidGlassLauncherView: View {
             if isWindowKey {
                 synchronizeSearchFocus()
             }
+        }
+        .onChange(of: inlineCreationFocus) { _, focus in
+            model.isInlineCreationInputFocused = focus != nil
         }
         .onChange(of: model.filteredItemIDs) {
             preloadApplicationIcons()
@@ -228,6 +245,10 @@ struct LiquidGlassLauncherView: View {
 
     private func resultContent(_ snapshot: StoneResultSnapshot) -> some View {
         resultScrollView(reconstructionID: snapshot.identity) {
+            if let configuration = model.inlineCreationConfiguration {
+                inlineCreationRow(configuration)
+            }
+
             ForEach(Array(snapshot.rows.enumerated()), id: \.element.id) { index, row in
                 stoneRow(row, index: index)
                     .transition(rowTransition(for: row))
@@ -239,6 +260,129 @@ struct LiquidGlassLauncherView: View {
         )
     }
 
+    private func inlineCreationRow(_ configuration: StoneInlineCreationConfiguration) -> some View {
+        LauncherResultRow(
+            isSelected: false,
+            selectionTint: LauncherModeTintPolicy.selectionColor(for: model.mode),
+            selectionNamespace: selectionGlassNamespace,
+            verticalPadding: 10,
+            minHeight: 82
+        ) {
+            HStack(spacing: 12) {
+                Image(systemName: configuration.systemImage)
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(LauncherModeTintPolicy.activeColor(for: model.mode))
+                    .frame(width: 34, height: 34)
+
+                VStack(alignment: .leading, spacing: 7) {
+                    TextField(configuration.namePlaceholder, text: $inlineCreationName)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 15, weight: .medium))
+                        .focused($inlineCreationFocus, equals: .name)
+                        .onSubmit {
+                            submitInlineCreation(configuration)
+                        }
+                        .accessibilityLabel(configuration.namePlaceholder)
+
+                    HStack(spacing: 7) {
+                        Text("Date")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.secondary)
+
+                        DatePicker(
+                            configuration.targetDateLabel,
+                            selection: $inlineCreationTargetDate,
+                            displayedComponents: [.date]
+                        )
+                        .labelsHidden()
+                        .datePickerStyle(.field)
+                        .controlSize(.small)
+                        .frame(width: 96)
+                        .glassEffect(.regular.interactive(true), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .focused($inlineCreationFocus, equals: .date)
+                        .accessibilityLabel("Target date")
+
+                        Text("Time")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.secondary)
+
+                        DatePicker(
+                            configuration.targetDateLabel,
+                            selection: $inlineCreationTargetDate,
+                            displayedComponents: [.hourAndMinute]
+                        )
+                        .labelsHidden()
+                        .datePickerStyle(.field)
+                        .controlSize(.small)
+                        .frame(width: 88)
+                        .glassEffect(.regular.interactive(true), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .focused($inlineCreationFocus, equals: .time)
+                        .accessibilityLabel("Target time")
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Button {
+                    submitInlineCreation(configuration)
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 15, weight: .bold))
+                        .frame(width: 18, height: 18)
+                        .padding(7)
+                }
+                .buttonStyle(.plain)
+                .background {
+                    Circle()
+                        .fill(Color(nsColor: .controlBackgroundColor).opacity(0.34))
+                }
+                .foregroundStyle(LauncherModeTintPolicy.activeColor(for: model.mode))
+                .help(configuration.submitHelp)
+                .launcherActionButtonRim()
+                .disabled(!canSubmitInlineCreation)
+                .opacity(canSubmitInlineCreation ? 1 : 0.45)
+            }
+            .padding(.vertical, 2)
+        }
+        .background {
+            RoundedRectangle(cornerRadius: LauncherResultListLayoutPolicy.rowCornerRadius, style: .continuous)
+                .fill(.thinMaterial.opacity(0.45))
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: LauncherResultListLayoutPolicy.rowCornerRadius, style: .continuous)
+                .stroke(LauncherModeTintPolicy.activeColor(for: model.mode).opacity(0.24), lineWidth: 1)
+        }
+    }
+
+    private var canSubmitInlineCreation: Bool {
+        !inlineCreationName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && inlineCreationTargetDate > Date()
+    }
+
+    private func submitInlineCreation(_ configuration: StoneInlineCreationConfiguration) {
+        guard model.submitInlineCreation(
+            name: inlineCreationName,
+            targetDate: inlineCreationTargetDate
+        ) else {
+            return
+        }
+
+        inlineCreationName = ""
+        inlineCreationTargetDate = configuration.defaultTargetDate
+        inlineCreationFocus = .name
+    }
+
+    private func resetInlineCreationDraftIfNeeded() {
+        guard model.inlineCreationConfiguration != nil else {
+            inlineCreationFocus = nil
+            model.isInlineCreationInputFocused = false
+            return
+        }
+
+        inlineCreationName = ""
+        inlineCreationTargetDate = model.inlineCreationConfiguration?.defaultTargetDate ?? Date()
+        inlineCreationFocus = .name
+    }
+
     private func resultScrollView<Content: View>(
         reconstructionID: AnyHashable,
         usesEagerRows: Bool = false,
@@ -248,6 +392,9 @@ struct LiquidGlassLauncherView: View {
             scrollTargetID: $scrollTargetID,
             scrollTargetAnchor: scrollTargetAnchor,
             reconstructionID: reconstructionID,
+            reconstructionAnimation: model.mode.stoneDefinition.animatesResultUpdates
+                ? .smooth(duration: LauncherResultListLayoutPolicy.rowReconstructionAnimationSeconds)
+                : nil,
             usesEagerRows: usesEagerRows,
             content: content
         )
@@ -299,6 +446,9 @@ struct LiquidGlassLauncherView: View {
                 }
                 .contentShape(Rectangle())
                 .onTapGesture {
+                    if model.inlineCreationConfiguration != nil {
+                        inlineCreationFocus = nil
+                    }
                     model.selectedIndex = index
                     model.activate(row)
                 }

@@ -489,6 +489,10 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
                 return event
             }
 
+            if self.model.isInlineCreationInputFocused {
+                return event
+            }
+
             if event.type == .flagsChanged, self.model.mode == .files {
                 return self.handleFileModifierEvent(event)
             }

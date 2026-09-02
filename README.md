@@ -58,7 +58,7 @@ Use `Cmd+1` for Apps, `Cmd+2` for Calculator, `Cmd+3` for Dictionary, `Cmd+4` fo
 
 Files mode shows mounted volumes alongside folders and files, and supports folders-first sorting when you want directories grouped ahead of other entries.
 
-Countdowns mode stores named target datetimes in `~/Library/Application Support/Bucky/countdowns.json`. Select Add countdown to create one, click a countdown to edit it, or use its trash button to delete it. Each countdown displays its remaining days, hours, minutes, seconds, and milliseconds, and freezes at zero after its target.
+Countdowns mode stores named target datetimes in `~/Library/Application Support/Bucky/countdowns.json`. The top row accepts a countdown name plus native date and time fields; press Return or the plus button to create it, and use a countdown's trash button to delete it. Each countdown displays its remaining days, hours, minutes, seconds, and milliseconds, and freezes at zero after its target.
 
 Bucky now uses the SwiftUI-native Liquid Glass launcher with a glass window surface, per-row glass effects, glass buttons, and animated state transitions. macOS 26 is required; the previous AppKit launcher has been removed.
 

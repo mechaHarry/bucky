@@ -110,6 +110,21 @@ protocol StoneProvider: AnyObject {
 
 typealias TextStoneProvider = StoneProvider
 
+struct StoneInlineCreationConfiguration: Equatable, Hashable {
+    let namePlaceholder: String
+    let targetDateLabel: String
+    let submitHelp: String
+    let systemImage: String
+    let defaultTargetDate: Date
+}
+
+@MainActor
+protocol InlineCreationStoneProvider: StoneProvider {
+    var inlineCreationConfiguration: StoneInlineCreationConfiguration { get }
+
+    func submitInlineCreation(name: String, targetDate: Date) -> Bool
+}
+
 enum StoneProviderActivationResult: Equatable {
     case unhandled
     case handled(shouldRefresh: Bool, resetSelection: Bool, shouldHide: Bool)

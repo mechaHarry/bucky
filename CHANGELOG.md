@@ -2,6 +2,13 @@
 
 All notable changes to Bucky are documented here.
 
+## [3.2.4] - 2026-09-02
+
+### Changed
+
+- Replaced the Countdown add/edit modal with an always-visible inline creation row containing native glass date and time fields.
+- Press Return in the name field or the plus button to create a countdown immediately below the creation row.
+
 ## [3.2.3] - 2026-09-02
 
 ### Fixed

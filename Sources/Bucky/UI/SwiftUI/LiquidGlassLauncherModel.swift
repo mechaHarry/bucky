@@ -21,6 +21,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         }
     }
     @Published var isWindowKey = false
+    @Published var isInlineCreationInputFocused = false
     @Published var isShowingSettings = false
     @Published var isShowingHelp = false
     @Published var isPinned = false {
@@ -135,6 +136,10 @@ final class LiquidGlassLauncherModel: ObservableObject {
 
     var availableModes: [LauncherMode] {
         stoneProviders.availableModes
+    }
+
+    var inlineCreationConfiguration: StoneInlineCreationConfiguration? {
+        (stoneProviders.provider(for: mode.stoneID) as? any InlineCreationStoneProvider)?.inlineCreationConfiguration
     }
 
     func mode(forCommandNumber commandNumber: Int) -> LauncherMode? {
@@ -478,6 +483,17 @@ final class LiquidGlassLauncherModel: ObservableObject {
 
     func performAccessoryActivation(for row: StoneResultRow) {
         perform(row.accessoryActivation, for: row)
+    }
+
+    @discardableResult
+    func submitInlineCreation(name: String, targetDate: Date) -> Bool {
+        guard let provider = stoneProviders.provider(for: mode.stoneID) as? any InlineCreationStoneProvider,
+              provider.submitInlineCreation(name: name, targetDate: targetDate) else {
+            return false
+        }
+
+        applyToolsResults(scheduleHistory: false)
+        return true
     }
 
     func cancelPendingCalculationHistory() {

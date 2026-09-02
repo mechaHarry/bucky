@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 
 @MainActor
-final class CountdownStone: StoneProvider {
+final class CountdownStone: InlineCreationStoneProvider {
     static let refreshIntervalNanoseconds: UInt64 = 50_000_000
 
     private let store: CountdownStore
@@ -35,6 +35,16 @@ final class CountdownStone: StoneProvider {
         )
     }
 
+    var inlineCreationConfiguration: StoneInlineCreationConfiguration {
+        StoneInlineCreationConfiguration(
+            namePlaceholder: "Countdown name",
+            targetDateLabel: "Target date and time",
+            submitHelp: "Add countdown",
+            systemImage: "timer",
+            defaultTargetDate: now().addingTimeInterval(3_600)
+        )
+    }
+
     func snapshot(for query: String) -> StoneResultSnapshot {
         .loaded(rows: Self.rows(for: store.countdowns, now: now()))
     }
@@ -49,23 +59,15 @@ final class CountdownStone: StoneProvider {
         row.primaryActivation
     }
 
+    func submitInlineCreation(name: String, targetDate: Date) -> Bool {
+        guard targetDate > now(), store.add(name: name, targetDate: targetDate) != nil else {
+            return false
+        }
+        return true
+    }
+
     func perform(_ activation: StoneActivation, for row: StoneResultRow) -> StoneProviderActivationResult {
         guard case let .providerAction(action) = activation else { return .unhandled }
-
-        if action == "add" {
-            guard let draft = presentEditor() else { return .handled(shouldRefresh: false, resetSelection: false, shouldHide: false) }
-            _ = store.add(name: draft.name, targetDate: draft.targetDate)
-            return .handled(shouldRefresh: true, resetSelection: true, shouldHide: false)
-        }
-
-        if let id = id(from: action, prefix: "edit:") {
-            guard let countdown = store.countdowns.first(where: { $0.id == id }),
-                  let draft = presentEditor(for: countdown) else {
-                return .handled(shouldRefresh: false, resetSelection: false, shouldHide: false)
-            }
-            _ = store.update(id: id, name: draft.name, targetDate: draft.targetDate)
-            return .handled(shouldRefresh: true, resetSelection: false, shouldHide: false)
-        }
 
         if let id = id(from: action, prefix: "delete:") {
             guard confirmDeletion() else {
@@ -79,18 +81,6 @@ final class CountdownStone: StoneProvider {
     }
 
     static func rows(for countdowns: [Countdown], now: Date) -> [StoneResultRow] {
-        let addRow = StoneResultRow(
-            id: .tool(kind: .message, key: "countdown:add"),
-            display: "Add countdown",
-            subtitle: "Create a named target",
-            copyText: nil,
-            kind: .message,
-            primaryActivation: .providerAction("add"),
-            accessoryActivation: .providerAction("add"),
-            iconSystemImage: "plus.circle",
-            accessoryPresentation: .init(systemImage: "plus", help: "Add countdown")
-        )
-
         let countdownRows = countdowns.map { countdown in
             StoneResultRow(
                 id: .tool(kind: .message, key: "countdown:\(countdown.id.uuidString)"),
@@ -98,7 +88,7 @@ final class CountdownStone: StoneProvider {
                 subtitle: CountdownRemaining(until: countdown.targetDate, now: now).displayString,
                 copyText: nil,
                 kind: .message,
-                primaryActivation: .providerAction("edit:\(countdown.id.uuidString)"),
+                primaryActivation: .none,
                 accessoryActivation: .providerAction("delete:\(countdown.id.uuidString)"),
                 iconSystemImage: "timer",
                 accessoryText: "Target \(targetDateFormatter.string(from: countdown.targetDate))",
@@ -106,77 +96,7 @@ final class CountdownStone: StoneProvider {
             )
         }
 
-        return [addRow] + countdownRows
-    }
-
-    private func presentEditor(for countdown: Countdown? = nil) -> (name: String, targetDate: Date)? {
-        let alert = NSAlert()
-        alert.messageText = countdown == nil ? "Add Countdown" : "Edit Countdown"
-        alert.informativeText = "Choose a name and target date."
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: "Save")
-        alert.addButton(withTitle: "Cancel")
-
-        let nameField = NSTextField(string: countdown?.name ?? "")
-        nameField.placeholderString = "Countdown name"
-        nameField.setAccessibilityLabel("Countdown name")
-        nameField.isEditable = true
-        nameField.isSelectable = true
-
-        let datePicker = NSDatePicker()
-        datePicker.datePickerStyle = .textFieldAndStepper
-        datePicker.datePickerMode = .single
-        datePicker.datePickerElements = [.yearMonthDay, .hourMinuteSecond]
-        datePicker.dateValue = countdown?.targetDate ?? now().addingTimeInterval(3_600)
-        datePicker.isEnabled = true
-        datePicker.setAccessibilityLabel("Target date")
-
-        let nameLabel = NSTextField(labelWithString: "Name")
-        nameLabel.setAccessibilityLabel("Name field label")
-        nameLabel.alignment = .right
-
-        let dateLabel = NSTextField(labelWithString: "Target")
-        dateLabel.setAccessibilityLabel("Target field label")
-        dateLabel.alignment = .right
-
-        // NSAlert measures accessory views before laying out its window. Explicit
-        // frames keep the form measurable and leave the date picker's text field
-        // and stepper with enough room to receive mouse and keyboard input.
-        let formWidth: CGFloat = 460
-        let formHeight: CGFloat = 84
-        let labelWidth: CGFloat = 72
-        let controlLeading: CGFloat = 88
-        let rowHeight: CGFloat = 28
-        let form = NSView(frame: NSRect(x: 0, y: 0, width: formWidth, height: formHeight))
-        let controlWidth = formWidth - controlLeading
-        nameLabel.frame = NSRect(x: 0, y: formHeight - rowHeight, width: labelWidth, height: rowHeight)
-        nameField.frame = NSRect(x: controlLeading, y: formHeight - rowHeight, width: controlWidth, height: rowHeight)
-        dateLabel.frame = NSRect(x: 0, y: 0, width: labelWidth, height: rowHeight)
-        datePicker.frame = NSRect(x: controlLeading, y: 0, width: controlWidth, height: rowHeight)
-        form.addSubview(nameLabel)
-        form.addSubview(nameField)
-        form.addSubview(dateLabel)
-        form.addSubview(datePicker)
-
-        alert.accessoryView = form
-        alert.window.initialFirstResponder = nameField
-        _ = alert.window.makeFirstResponder(nameField)
-
-        guard alert.runModal() == .alertFirstButtonReturn else { return nil }
-
-        let name = nameField.stringValue
-            .split(whereSeparator: { $0.isWhitespace })
-            .joined(separator: " ")
-        guard !name.isEmpty else {
-            showValidationError("Enter a countdown name.")
-            return nil
-        }
-        guard datePicker.dateValue > now() else {
-            showValidationError("Choose a target date in the future.")
-            return nil
-        }
-
-        return (String(name.prefix(200)), datePicker.dateValue)
+        return countdownRows
     }
 
     private func confirmDeletion() -> Bool {
@@ -187,15 +107,6 @@ final class CountdownStone: StoneProvider {
         alert.addButton(withTitle: "Delete")
         alert.addButton(withTitle: "Cancel")
         return alert.runModal() == .alertFirstButtonReturn
-    }
-
-    private func showValidationError(_ message: String) {
-        let alert = NSAlert()
-        alert.messageText = "Countdown not saved"
-        alert.informativeText = message
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
     }
 
     private func id(from action: String, prefix: String) -> UUID? {
