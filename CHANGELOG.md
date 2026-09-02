@@ -2,6 +2,12 @@
 
 All notable changes to Bucky are documented here.
 
+## [3.2.1] - 2026-09-02
+
+### Fixed
+
+- Made the menubar icon size and visibility explicit so it remains visible across macOS menu bar layouts.
+
 ## [3.2.0] - 2026-09-01
 
 ### Added

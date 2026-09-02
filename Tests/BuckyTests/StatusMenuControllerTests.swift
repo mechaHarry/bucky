@@ -36,6 +36,9 @@ final class StatusMenuControllerTests: XCTestCase {
 
         XCTAssertEqual(statusItem.length, NSStatusItem.squareLength)
         XCTAssertTrue(image.isTemplate)
+        XCTAssertEqual(image.size, NSSize(width: 16, height: 16))
+        XCTAssertEqual(button.imageScaling, .scaleProportionallyDown)
+        XCTAssertTrue(statusItem.isVisible)
         XCTAssertEqual(image.accessibilityDescription, "Bucky")
         XCTAssertEqual(button.title, "")
         XCTAssertEqual(button.toolTip, "Bucky")

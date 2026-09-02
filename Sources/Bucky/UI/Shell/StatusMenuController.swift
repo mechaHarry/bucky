@@ -23,6 +23,7 @@ final class StatusMenuController: NSObject {
         if let button = statusItem.button {
             let image = NSImage(systemSymbolName: "bolt.fill", accessibilityDescription: "Bucky")
             image?.isTemplate = true
+            image?.size = Self.menuBarIconSize
             Self.configureButton(button, image: image)
         }
 
@@ -46,14 +47,18 @@ final class StatusMenuController: NSObject {
         menu.addItem(quitItem)
 
         statusItem.menu = menu
+        statusItem.isVisible = true
     }
 
     internal static func configureButton(_ button: NSStatusBarButton, image: NSImage?) {
         button.image = image
+        button.imageScaling = .scaleProportionallyDown
         button.imagePosition = image == nil ? .noImage : .imageOnly
         button.title = image == nil ? "B" : ""
         button.toolTip = "Bucky"
     }
+
+    private static let menuBarIconSize = NSSize(width: 16, height: 16)
 
     @objc private func open() {
         openAction()
