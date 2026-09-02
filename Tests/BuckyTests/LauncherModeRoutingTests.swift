@@ -252,6 +252,11 @@ final class LauncherModeRoutingTests: XCTestCase {
             mode: .applications,
             isPinned: true
         ))
+        XCTAssertFalse(LauncherWindowDismissalPolicy.shouldHideOnResignKey(
+            mode: .applications,
+            isPinned: false,
+            isModalActive: true
+        ))
     }
 
     func testPresentedVisibleLauncherRestoresFocusWhenAppReactivatesWithoutKeyWindow() {

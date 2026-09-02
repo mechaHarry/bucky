@@ -2,6 +2,14 @@
 
 All notable changes to Bucky are documented here.
 
+## [3.2.2] - 2026-09-02
+
+### Fixed
+
+- Keep Countdown modal interactions visible while focus is temporarily lost, then restore launcher focus after the modal closes.
+- Give Countdown editor controls stable spacing and enough room for date selection.
+- Remove live result transition animation from Countdown updates so displayed time changes frame by frame.
+
 ## [3.2.1] - 2026-09-02
 
 ### Fixed

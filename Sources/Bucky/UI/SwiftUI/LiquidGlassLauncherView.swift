@@ -234,7 +234,7 @@ struct LiquidGlassLauncherView: View {
             }
         }
         .animation(
-            toolSnapshotAnimation(for: snapshot),
+            model.mode.stoneDefinition.animatesResultUpdates ? toolSnapshotAnimation(for: snapshot) : nil,
             value: snapshot.identity
         )
     }

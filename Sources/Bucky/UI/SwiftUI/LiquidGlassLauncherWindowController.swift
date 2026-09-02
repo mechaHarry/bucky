@@ -136,6 +136,9 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         model.openHelpAction = { [weak self] in self?.toggleHelp() }
         model.returnToLauncherAction = { [weak self] in self?.showLauncherFromPanel() }
         model.reindexAction = { [weak self] in self?.reindex() }
+        model.restoreFocusAction = { [weak self] in
+            self?.restoreFocusAfterModal()
+        }
         model.pinnedChangedAction = { [weak self] isPinned in
             self?.setPinned(isPinned)
         }
@@ -942,6 +945,17 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         window.makeKeyAndOrderFront(nil)
     }
 
+    private func restoreFocusAfterModal() {
+        guard model.isPresented,
+              window.isVisible,
+              NSApp.modalWindow == nil else {
+            return
+        }
+
+        activateAndFocusWindow()
+        model.setWindowKeyState(window.isKeyWindow)
+    }
+
     private func activateAndFocusWindow() {
         focusClaimID += 1
         let claimID = focusClaimID
@@ -1109,8 +1123,12 @@ struct LauncherWindowDismissalPolicy {
         mode: LauncherMode,
         isPinned: Bool,
         isShowingSettings: Bool = false,
-        isShowingHelp: Bool = false
+        isShowingHelp: Bool = false,
+        isModalActive: Bool = false
     ) -> Bool {
+        if isModalActive {
+            return false
+        }
         if isShowingSettings || isShowingHelp {
             return true
         }
@@ -1133,7 +1151,8 @@ extension LiquidGlassLauncherWindowController: NSWindowDelegate {
                   mode: model.mode,
                   isPinned: model.isPinned,
                   isShowingSettings: model.isShowingSettings,
-                  isShowingHelp: model.isShowingHelp
+                  isShowingHelp: model.isShowingHelp,
+                  isModalActive: NSApp.modalWindow != nil
               ) else {
             return
         }

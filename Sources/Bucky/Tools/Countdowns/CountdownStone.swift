@@ -30,7 +30,8 @@ final class CountdownStone: StoneProvider {
                 iconHex: 0x0B5D2A,
                 darkModeIconHex: 0x8FF0A8
             ),
-            refreshIntervalNanoseconds: Self.refreshIntervalNanoseconds
+            refreshIntervalNanoseconds: Self.refreshIntervalNanoseconds,
+            animatesResultUpdates: false
         )
     }
 
@@ -119,7 +120,8 @@ final class CountdownStone: StoneProvider {
         let nameField = NSTextField(string: countdown?.name ?? "")
         nameField.placeholderString = "Countdown name"
         nameField.setAccessibilityLabel("Countdown name")
-        nameField.translatesAutoresizingMaskIntoConstraints = false
+        nameField.isEditable = true
+        nameField.isSelectable = true
 
         let datePicker = NSDatePicker()
         datePicker.datePickerStyle = .textFieldAndStepper
@@ -128,43 +130,33 @@ final class CountdownStone: StoneProvider {
         datePicker.dateValue = countdown?.targetDate ?? now().addingTimeInterval(3_600)
         datePicker.isEnabled = true
         datePicker.setAccessibilityLabel("Target date")
-        datePicker.translatesAutoresizingMaskIntoConstraints = false
 
         let nameLabel = NSTextField(labelWithString: "Name")
         nameLabel.setAccessibilityLabel("Name field label")
         nameLabel.alignment = .right
-        nameLabel.translatesAutoresizingMaskIntoConstraints = false
 
         let dateLabel = NSTextField(labelWithString: "Target")
         dateLabel.setAccessibilityLabel("Target field label")
         dateLabel.alignment = .right
-        dateLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        let form = NSView()
-        form.translatesAutoresizingMaskIntoConstraints = false
+        // NSAlert measures accessory views before laying out its window. Explicit
+        // frames keep the form measurable and leave the date picker's text field
+        // and stepper with enough room to receive mouse and keyboard input.
+        let formWidth: CGFloat = 460
+        let formHeight: CGFloat = 84
+        let labelWidth: CGFloat = 72
+        let controlLeading: CGFloat = 88
+        let rowHeight: CGFloat = 28
+        let form = NSView(frame: NSRect(x: 0, y: 0, width: formWidth, height: formHeight))
+        let controlWidth = formWidth - controlLeading
+        nameLabel.frame = NSRect(x: 0, y: formHeight - rowHeight, width: labelWidth, height: rowHeight)
+        nameField.frame = NSRect(x: controlLeading, y: formHeight - rowHeight, width: controlWidth, height: rowHeight)
+        dateLabel.frame = NSRect(x: 0, y: 0, width: labelWidth, height: rowHeight)
+        datePicker.frame = NSRect(x: controlLeading, y: 0, width: controlWidth, height: rowHeight)
         form.addSubview(nameLabel)
         form.addSubview(nameField)
         form.addSubview(dateLabel)
         form.addSubview(datePicker)
-
-        NSLayoutConstraint.activate([
-            form.widthAnchor.constraint(equalToConstant: 440),
-            form.heightAnchor.constraint(equalToConstant: 78),
-            nameLabel.leadingAnchor.constraint(equalTo: form.leadingAnchor),
-            nameLabel.widthAnchor.constraint(equalToConstant: 72),
-            nameLabel.centerYAnchor.constraint(equalTo: nameField.centerYAnchor),
-            dateLabel.leadingAnchor.constraint(equalTo: form.leadingAnchor),
-            dateLabel.widthAnchor.constraint(equalToConstant: 72),
-            dateLabel.centerYAnchor.constraint(equalTo: datePicker.centerYAnchor),
-            nameField.leadingAnchor.constraint(equalTo: nameLabel.trailingAnchor, constant: 12),
-            nameField.trailingAnchor.constraint(equalTo: form.trailingAnchor),
-            nameField.topAnchor.constraint(equalTo: form.topAnchor),
-            nameField.heightAnchor.constraint(equalToConstant: 28),
-            datePicker.leadingAnchor.constraint(equalTo: nameField.leadingAnchor),
-            datePicker.trailingAnchor.constraint(equalTo: form.trailingAnchor),
-            datePicker.topAnchor.constraint(equalTo: nameField.bottomAnchor, constant: 12),
-            datePicker.heightAnchor.constraint(equalToConstant: 28)
-        ])
 
         alert.accessoryView = form
         alert.window.initialFirstResponder = nameField

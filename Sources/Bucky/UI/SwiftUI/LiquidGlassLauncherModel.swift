@@ -34,6 +34,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     var reindexAction: (() -> Void)?
     var pinnedChangedAction: ((Bool) -> Void)?
     var modeWillSwitchAction: ((LauncherMode, LauncherMode) -> Void)?
+    var restoreFocusAction: (() -> Void)?
 
     private let settingsStore: SettingsStore
     private let inclusionStore: InclusionStore
@@ -1177,6 +1178,11 @@ final class LiquidGlassLauncherModel: ObservableObject {
             }
             if shouldHide, !isPinned {
                 hideAction?()
+            }
+            if case .providerAction = activation {
+                DispatchQueue.main.async { [weak self] in
+                    self?.restoreFocusAction?()
+                }
             }
             return
         case .unhandled:

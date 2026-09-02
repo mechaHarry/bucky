@@ -70,6 +70,7 @@ struct StoneDefinition: Identifiable, Equatable, Hashable {
     let updatePolicy: StoneUpdatePolicy
     let tint: StoneTint
     let refreshIntervalNanoseconds: UInt64?
+    let animatesResultUpdates: Bool
 
     init(
         id: StoneID,
@@ -78,7 +79,8 @@ struct StoneDefinition: Identifiable, Equatable, Hashable {
         surface: StoneSurface,
         updatePolicy: StoneUpdatePolicy,
         tint: StoneTint,
-        refreshIntervalNanoseconds: UInt64? = nil
+        refreshIntervalNanoseconds: UInt64? = nil,
+        animatesResultUpdates: Bool = true
     ) {
         self.id = id
         self.shortcutNumber = shortcutNumber
@@ -87,6 +89,7 @@ struct StoneDefinition: Identifiable, Equatable, Hashable {
         self.updatePolicy = updatePolicy
         self.tint = tint
         self.refreshIntervalNanoseconds = refreshIntervalNanoseconds
+        self.animatesResultUpdates = animatesResultUpdates
     }
 
     var acceptsTextInput: Bool {

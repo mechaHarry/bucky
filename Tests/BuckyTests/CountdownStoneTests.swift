@@ -117,6 +117,7 @@ final class CountdownStoneTests: XCTestCase {
         XCTAssertEqual(stone.definition.surface, .sharedResults)
         XCTAssertEqual(stone.definition.tint.activeHex, 0x34C759)
         XCTAssertEqual(stone.definition.refreshIntervalNanoseconds, CountdownStone.refreshIntervalNanoseconds)
+        XCTAssertFalse(stone.definition.animatesResultUpdates)
     }
 
     @MainActor
