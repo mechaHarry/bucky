@@ -98,6 +98,11 @@ final class LauncherModeRoutingTests: XCTestCase {
         ))
     }
 
+    func testModalInputPassesThroughToTheActiveModal() {
+        XCTAssertTrue(LauncherKeyRoutingPolicy.shouldPassThroughModalInput(isModalActive: true))
+        XCTAssertFalse(LauncherKeyRoutingPolicy.shouldPassThroughModalInput(isModalActive: false))
+    }
+
     func testFilesRenameFocusPassesTextEditingKeysExceptReturnAndEscape() {
         XCTAssertTrue(LauncherKeyRoutingPolicy.shouldPassThroughFileTextEditing(
             mode: .files,

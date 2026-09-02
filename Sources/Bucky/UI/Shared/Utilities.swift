@@ -137,6 +137,10 @@ extension String {
 }
 
 enum LauncherKeyRoutingPolicy {
+    static func shouldPassThroughModalInput(isModalActive: Bool) -> Bool {
+        isModalActive
+    }
+
     static func shouldRouteAlphaNumeric(mode: LauncherMode, fileFocusState: FileBrowserFocusState?) -> Bool {
         guard mode == .files else { return true }
         return fileFocusState != .renaming

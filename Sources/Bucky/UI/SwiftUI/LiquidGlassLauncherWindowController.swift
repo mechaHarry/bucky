@@ -485,6 +485,10 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
                 return event
             }
 
+            if LauncherKeyRoutingPolicy.shouldPassThroughModalInput(isModalActive: NSApp.modalWindow != nil) {
+                return event
+            }
+
             if event.type == .flagsChanged, self.model.mode == .files {
                 return self.handleFileModifierEvent(event)
             }

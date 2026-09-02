@@ -160,6 +160,7 @@ final class CountdownStone: StoneProvider {
 
         alert.accessoryView = form
         alert.window.initialFirstResponder = nameField
+        _ = alert.window.makeFirstResponder(nameField)
 
         guard alert.runModal() == .alertFirstButtonReturn else { return nil }
 

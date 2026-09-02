@@ -2,6 +2,13 @@
 
 All notable changes to Bucky are documented here.
 
+## [3.2.3] - 2026-09-02
+
+### Fixed
+
+- Focus the Countdown name field immediately when the editor opens.
+- Pass all keyboard input through to active Countdown modals so shifted text, Tab navigation, and date-picker arrow keys are handled by the modal.
+
 ## [3.2.2] - 2026-09-02
 
 ### Fixed
