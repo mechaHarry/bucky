@@ -118,6 +118,12 @@ struct StoneInlineCreationConfiguration: Equatable, Hashable {
     let defaultTargetDate: Date
 }
 
+struct StoneProviderConfirmation: Equatable, Hashable {
+    let title: String
+    let message: String
+    let confirmationActivation: StoneActivation
+}
+
 @MainActor
 protocol InlineCreationStoneProvider: StoneProvider {
     var inlineCreationConfiguration: StoneInlineCreationConfiguration { get }
@@ -128,6 +134,7 @@ protocol InlineCreationStoneProvider: StoneProvider {
 enum StoneProviderActivationResult: Equatable {
     case unhandled
     case handled(shouldRefresh: Bool, resetSelection: Bool, shouldHide: Bool)
+    case confirmation(StoneProviderConfirmation)
 }
 
 typealias TextStoneActivationResult = StoneProviderActivationResult

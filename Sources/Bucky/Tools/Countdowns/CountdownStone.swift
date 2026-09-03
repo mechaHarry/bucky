@@ -1,4 +1,3 @@
-import AppKit
 import Foundation
 
 @MainActor
@@ -70,9 +69,14 @@ final class CountdownStone: InlineCreationStoneProvider {
         guard case let .providerAction(action) = activation else { return .unhandled }
 
         if let id = id(from: action, prefix: "delete:") {
-            guard confirmDeletion() else {
-                return .handled(shouldRefresh: false, resetSelection: false, shouldHide: false)
-            }
+            return .confirmation(StoneProviderConfirmation(
+                title: "Delete countdown?",
+                message: "Return deletes this countdown. Escape cancels.",
+                confirmationActivation: .providerAction("delete-confirm:\(id.uuidString)")
+            ))
+        }
+
+        if let id = id(from: action, prefix: "delete-confirm:") {
             _ = store.remove(id: id)
             return .handled(shouldRefresh: true, resetSelection: true, shouldHide: false)
         }
@@ -97,16 +101,6 @@ final class CountdownStone: InlineCreationStoneProvider {
         }
 
         return countdownRows
-    }
-
-    private func confirmDeletion() -> Bool {
-        let alert = NSAlert()
-        alert.messageText = "Delete countdown?"
-        alert.informativeText = "This countdown will be removed."
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "Delete")
-        alert.addButton(withTitle: "Cancel")
-        return alert.runModal() == .alertFirstButtonReturn
     }
 
     private func id(from action: String, prefix: String) -> UUID? {

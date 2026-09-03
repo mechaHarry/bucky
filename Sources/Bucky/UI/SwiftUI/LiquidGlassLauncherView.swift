@@ -13,6 +13,7 @@ struct LiquidGlassLauncherView: View {
     @State private var scrollTargetAnchor: UnitPoint?
     @State private var inlineCreationName = ""
     @State private var inlineCreationTargetDate = Date()
+    @State private var inlineCreationNameIsInvalid = false
     @FocusState private var inlineCreationFocus: InlineCreationField?
 
     private enum InlineCreationField: Hashable {
@@ -91,6 +92,13 @@ struct LiquidGlassLauncherView: View {
         .onChange(of: inlineCreationFocus) { _, focus in
             model.isInlineCreationInputFocused = focus != nil
         }
+        .onChange(of: inlineCreationName) { _, _ in
+            inlineCreationNameIsInvalid = false
+        }
+        .onChange(of: model.inlineCreationSubmitRequestID) { _, _ in
+            guard let configuration = model.inlineCreationConfiguration else { return }
+            submitInlineCreation(configuration)
+        }
         .onChange(of: model.filteredItemIDs) {
             preloadApplicationIcons()
         }
@@ -111,6 +119,11 @@ struct LiquidGlassLauncherView: View {
             } else {
                 launcherSurface
                     .transition(settingsModeTransition)
+            }
+
+            if let confirmation = model.providerConfirmation {
+                ConfirmationOverlay(title: confirmation.title, message: confirmation.message)
+                    .transition(.scale(scale: 0.97).combined(with: .opacity))
             }
         }
     }
@@ -279,8 +292,11 @@ struct LiquidGlassLauncherView: View {
                         .textFieldStyle(.plain)
                         .font(.system(size: 15, weight: .medium))
                         .focused($inlineCreationFocus, equals: .name)
-                        .onSubmit {
-                            submitInlineCreation(configuration)
+                        .padding(.bottom, 2)
+                        .overlay(alignment: .bottom) {
+                            Rectangle()
+                                .fill(Color.red.opacity(inlineCreationNameIsInvalid ? 0.82 : 0))
+                                .frame(height: 1.5)
                         }
                         .accessibilityLabel(configuration.namePlaceholder)
 
@@ -338,10 +354,13 @@ struct LiquidGlassLauncherView: View {
                 .foregroundStyle(LauncherModeTintPolicy.activeColor(for: model.mode))
                 .help(configuration.submitHelp)
                 .launcherActionButtonRim()
-                .disabled(!canSubmitInlineCreation)
-                .opacity(canSubmitInlineCreation ? 1 : 0.45)
+                .disabled(!isInlineCreationTargetDateValid)
+                .opacity(isInlineCreationTargetDateValid ? 1 : 0.45)
             }
             .padding(.vertical, 2)
+            .onSubmit {
+                submitInlineCreation(configuration)
+            }
         }
         .background {
             RoundedRectangle(cornerRadius: LauncherResultListLayoutPolicy.rowCornerRadius, style: .continuous)
@@ -353,12 +372,17 @@ struct LiquidGlassLauncherView: View {
         }
     }
 
-    private var canSubmitInlineCreation: Bool {
-        !inlineCreationName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && inlineCreationTargetDate > Date()
+    private var isInlineCreationTargetDateValid: Bool {
+        inlineCreationTargetDate > Date()
     }
 
     private func submitInlineCreation(_ configuration: StoneInlineCreationConfiguration) {
+        guard !inlineCreationName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            inlineCreationNameIsInvalid = true
+            inlineCreationFocus = .name
+            return
+        }
+
         guard model.submitInlineCreation(
             name: inlineCreationName,
             targetDate: inlineCreationTargetDate
@@ -367,6 +391,7 @@ struct LiquidGlassLauncherView: View {
         }
 
         inlineCreationName = ""
+        inlineCreationNameIsInvalid = false
         inlineCreationTargetDate = configuration.defaultTargetDate
         inlineCreationFocus = .name
     }
@@ -379,6 +404,7 @@ struct LiquidGlassLauncherView: View {
         }
 
         inlineCreationName = ""
+        inlineCreationNameIsInvalid = false
         inlineCreationTargetDate = model.inlineCreationConfiguration?.defaultTargetDate ?? Date()
         inlineCreationFocus = .name
     }

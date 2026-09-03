@@ -489,7 +489,22 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
                 return event
             }
 
+            if self.model.providerConfirmation != nil {
+                guard event.type == .keyDown else { return nil }
+                if event.keyCode == UInt16(kVK_Return) || event.keyCode == UInt16(kVK_ANSI_KeypadEnter) {
+                    self.model.confirmProviderConfirmation()
+                } else if event.keyCode == UInt16(kVK_Escape) {
+                    self.model.cancelProviderConfirmation()
+                }
+                return nil
+            }
+
             if self.model.isInlineCreationInputFocused {
+                if event.type == .keyDown,
+                   (event.keyCode == UInt16(kVK_Return) || event.keyCode == UInt16(kVK_ANSI_KeypadEnter)) {
+                    self.model.requestInlineCreationSubmit()
+                    return nil
+                }
                 return event
             }
 
@@ -695,6 +710,18 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     }
 
     private func handleLauncherCommand(_ command: LauncherCommand) -> Bool {
+        if model.providerConfirmation != nil {
+            switch command {
+            case .open:
+                model.confirmProviderConfirmation()
+            case .close:
+                model.cancelProviderConfirmation()
+            default:
+                break
+            }
+            return true
+        }
+
         if model.isShowingSettings {
             switch command {
             case .settings:

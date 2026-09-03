@@ -159,6 +159,26 @@ final class CountdownStoneTests: XCTestCase {
     }
 
     @MainActor
+    func testCountdownDeleteUsesSharedConfirmationThenDeletesOnConfirmation() throws {
+        let store = CountdownStore(fileURL: temporaryFileURL())
+        let countdown = try XCTUnwrap(store.add(name: "Release", targetDate: Date()))
+        let row = try XCTUnwrap(CountdownStone.rows(for: [countdown], now: Date()).last)
+        let stone = CountdownStone(store: store)
+
+        guard case let .confirmation(confirmation) = stone.perform(row.accessoryActivation, for: row) else {
+            return XCTFail("Expected shared confirmation")
+        }
+
+        XCTAssertEqual(confirmation.title, "Delete countdown?")
+        XCTAssertEqual(confirmation.confirmationActivation, .providerAction("delete-confirm:\(countdown.id.uuidString)"))
+        XCTAssertEqual(
+            stone.perform(confirmation.confirmationActivation, for: row),
+            .handled(shouldRefresh: true, resetSelection: true, shouldHide: false)
+        )
+        XCTAssertTrue(store.countdowns.isEmpty)
+    }
+
+    @MainActor
     @available(macOS 26.0, *)
     func testLauncherRefreshesCountdownRowsWhileCountdownStoneIsActive() async throws {
         let clock = MutableCountdownClock(date: Date(timeIntervalSinceReferenceDate: 100))

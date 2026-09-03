@@ -17,11 +17,14 @@ final class LiquidGlassLauncherModel: ObservableObject {
         didSet {
             if !isPresented {
                 cancelLiveStoneRefresh()
+                cancelProviderConfirmation()
             }
         }
     }
     @Published var isWindowKey = false
     @Published var isInlineCreationInputFocused = false
+    @Published private(set) var inlineCreationSubmitRequestID = 0
+    @Published var providerConfirmation: StoneProviderConfirmation?
     @Published var isShowingSettings = false
     @Published var isShowingHelp = false
     @Published var isPinned = false {
@@ -65,6 +68,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private var liveStoneRefreshTask: Task<Void, Never>?
     private var warmCacheTask: Task<Void, Never>?
     private var selectionScrollRequestID = 0
+    private var providerConfirmationRow: StoneResultRow?
 
     init(
         settingsStore: SettingsStore,
@@ -219,6 +223,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
 
     func show(mode: LauncherMode) {
         cancelLiveStoneRefresh()
+        cancelProviderConfirmation()
         isShowingSettings = false
         isShowingHelp = false
         applicationQuery = ""
@@ -494,6 +499,26 @@ final class LiquidGlassLauncherModel: ObservableObject {
 
         applyToolsResults(scheduleHistory: false)
         return true
+    }
+
+    func requestInlineCreationSubmit() {
+        inlineCreationSubmitRequestID &+= 1
+    }
+
+    func confirmProviderConfirmation() {
+        guard let confirmation = providerConfirmation,
+              let row = providerConfirmationRow else {
+            return
+        }
+
+        providerConfirmation = nil
+        providerConfirmationRow = nil
+        perform(confirmation.confirmationActivation, for: row)
+    }
+
+    func cancelProviderConfirmation() {
+        providerConfirmation = nil
+        providerConfirmationRow = nil
     }
 
     func cancelPendingCalculationHistory() {
@@ -1200,6 +1225,10 @@ final class LiquidGlassLauncherModel: ObservableObject {
                     self?.restoreFocusAction?()
                 }
             }
+            return
+        case let .confirmation(confirmation):
+            providerConfirmation = confirmation
+            providerConfirmationRow = row
             return
         case .unhandled:
             break

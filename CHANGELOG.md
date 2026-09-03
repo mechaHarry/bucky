@@ -2,6 +2,14 @@
 
 All notable changes to Bucky are documented here.
 
+## [3.2.5] - 2026-09-03
+
+### Fixed
+
+- Reused the Files-style Liquid Glass confirmation overlay for Countdown deletion instead of opening a separate AppKit modal.
+- Focus the Countdown title field when the stone opens and handle Return from any creation-row field.
+- Refuse empty Countdown titles with a subtle red underline on the title field.
+
 ## [3.2.4] - 2026-09-02
 
 ### Changed
