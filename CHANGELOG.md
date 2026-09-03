@@ -2,6 +2,12 @@
 
 All notable changes to Bucky are documented here.
 
+## [3.2.6] - 2026-09-03
+
+### Fixed
+
+- Focus the Countdown title field after the inline creation row finishes mounting during keyboard mode switches.
+
 ## [3.2.5] - 2026-09-03
 
 ### Fixed

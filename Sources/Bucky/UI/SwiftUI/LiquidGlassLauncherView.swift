@@ -370,6 +370,9 @@ struct LiquidGlassLauncherView: View {
             RoundedRectangle(cornerRadius: LauncherResultListLayoutPolicy.rowCornerRadius, style: .continuous)
                 .stroke(LauncherModeTintPolicy.activeColor(for: model.mode).opacity(0.24), lineWidth: 1)
         }
+        .onAppear {
+            focusInlineCreationTitleWhenMounted()
+        }
     }
 
     private var isInlineCreationTargetDateValid: Bool {
@@ -407,6 +410,18 @@ struct LiquidGlassLauncherView: View {
         inlineCreationNameIsInvalid = false
         inlineCreationTargetDate = model.inlineCreationConfiguration?.defaultTargetDate ?? Date()
         inlineCreationFocus = .name
+    }
+
+    private func focusInlineCreationTitleWhenMounted() {
+        DispatchQueue.main.async {
+            guard model.isPresented,
+                  !model.isShowingSettings,
+                  !model.isShowingHelp,
+                  model.inlineCreationConfiguration != nil else {
+                return
+            }
+            inlineCreationFocus = .name
+        }
     }
 
     private func resultScrollView<Content: View>(
