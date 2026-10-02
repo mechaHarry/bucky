@@ -2,7 +2,13 @@
 
 The no-frills/robust approach to macOS Launchers.
 
+## Purpose And Architecture
+
+Bucky is a local macOS launcher with Apps, Calculator, Dictionary, Files, and a green Countdowns Stone. SwiftUI owns the Liquid Glass UI; AppKit supplies the menu bar item, global hotkey, native text editing, and window hosting. Stone providers supply metadata, stable result rows, and activation intents through shared contracts. Indexing, configuration saves, Files operations, and previews use background workers so the UI remains responsive, with skeleton loading surfaces during asynchronous handoff.
+
 ## Build
+
+Requires macOS 26 or later and an Xcode installation with the macOS 26 SDK and Swift tools compatible with `Package.swift` (Swift 5.9 or later). Select Xcode's developer tools before building; no third-party package installation is required.
 
 ```sh
 make bundle
@@ -18,7 +24,7 @@ open build/Bucky.app
 
 ## Distribution
 
-For a local distributable archive, run the package script. It starts from a clean rebuild, packages only the `.app` bundle, and writes a zip plus SHA-256 checksum under `dist/`.
+For a local distributable archive, run the package script. It builds incrementally without cleaning shared build output, verifies the bundle signature and version, packages only the `.app` bundle, and writes a zip plus SHA-256 checksum under `dist/`. Existing assets are never overwritten; use a new version or explicitly choose a separate output directory with `BUCKY_PACKAGE_DIST_DIR`.
 
 ```sh
 ./package.sh
@@ -30,25 +36,27 @@ The generated archive uses this naming pattern:
 dist/Bucky-<semantic-version>-macos-<architecture>.zip
 ```
 
-To test the archive from Terminal:
+Verify the archive against its adjacent `.sha256` file before opening it. Extract into a fresh directory, then open the contained app. To install, quit any running Bucky instance and use Finder to move the app into Applications; review any replacement prompt yourself.
+
+Local bundles are ad-hoc signed by default, not Developer ID signed or notarized. For broad distribution outside your own machine, configure a suitable signing identity and notarize the app before sharing it.
+
+`./release.sh --dry-run` performs read-only source/ref checks. Publishing with `./release.sh` requires `GITHUB_TOKEN`, a clean default-branch checkout matching the remote, strict semantic versioning, and a valid signed annotated tag (or the ability to create one). Required isolated tests, build, signature, archive-content, and checksum gates run before a tag is pushed or a release is published. API reads use bounded exponential backoff and honor rate-limit pauses; ambiguous writes are reconciled by reads instead of being blindly repeated. Existing tags, draft releases, and assets remain intact on failure for manual review. There is no automatic remote deletion or test-gate bypass.
+
+## Verification
 
 ```sh
-ZIP_PATH="$(ls -t dist/Bucky-*.zip | head -n 1)"
-mkdir -p /tmp/bucky-distribution-test
-ditto -x -k "$ZIP_PATH" /tmp/bucky-distribution-test
-open /tmp/bucky-distribution-test/Bucky.app
+make test
+make tooling-test
 ```
 
-To install it manually from Terminal after unzipping:
+`make test` isolates app configuration in a new temporary directory unless `BUCKY_DATA_DIRECTORY` is explicitly set to an absolute test directory. The temporary data is retained for diagnosis. `make tooling-test` runs offline mocked packaging/release tests; it does not publish to GitHub. For direct Swift test runs, isolate data explicitly:
 
 ```sh
-ZIP_PATH="$(ls -t dist/Bucky-*.zip | head -n 1)"
-ditto -x -k "$ZIP_PATH" /tmp
-mv /tmp/Bucky.app /Applications/Bucky.app
-open /Applications/Bucky.app
+testDataDirectory="$(mktemp -d)"
+BUCKY_DATA_DIRECTORY="$testDataDirectory" swift test
 ```
 
-This zip is a local unsigned build artifact. For broad distribution outside your own machine, sign and notarize the app before sharing it.
+The launcher performance test keeps the checked-in legacy workload baseline and also reports the live row-ID filter on the same workload with ranking-parity checks. Do not refresh the baseline merely to pass a regression. Native keyboard focus, locale-dependent date-picker layout, and OS preview behavior still benefit from manual app testing; unit tests do not replace Instruments memory profiling.
 
 ## Behavior
 
@@ -56,13 +64,15 @@ Use Option+Space to open or hide the floating launcher by default. Type to filte
 
 Use `Cmd+1` for Apps, `Cmd+2` for Calculator, `Cmd+3` for Dictionary, `Cmd+4` for Files, and `Cmd+5` for Countdowns while the launcher is open. Use Command+Left and Command+Right to cycle launcher modes, and Command+/ to open shortcut help. Calculator and Dictionary remain separate modes: arithmetic text such as `1` or `2 + 3` is evaluated inline in Calculator without opening Calculator, while Dictionary lookups use fuzzy spelling and completion matches. Press Return on a calculation result to copy it, or on a dictionary result to open Dictionary at the matching word. Calculator mode includes a clear-history button; pin is available from any mode, can be toggled with Command+P while Bucky is focused, and keeps the window above other apps until unpinned.
 
-Files mode shows mounted volumes alongside folders and files, and supports folders-first sorting when you want directories grouped ahead of other entries.
+Files mode shows mounted volumes alongside folders and files, and supports folders-first sorting when you want directories grouped ahead of other entries. Confirmed file mutations run on a serial background worker with a busy skeleton. Keep Both never replaces an existing destination; only explicit Replace permits replacement. Directory requests coalesce and previews cancel obsolete work. The Files watcher suspends when the Stone is inactive. Normal quit drains approved operations and queued preference saves; forcibly terminating the process cannot provide that guarantee.
 
-Countdowns mode stores named target datetimes in `~/Library/Application Support/Bucky/countdowns.json`. The top row accepts a countdown name plus native date and time fields; press Return or the plus button to create it, and use a countdown's trash button to delete it. Each countdown displays its remaining days, hours, minutes, seconds, and milliseconds, and freezes at zero after its target.
+Countdowns mode stores named target datetimes in `~/Library/Application Support/Bucky/countdowns.json`. The top row accepts a countdown name plus native date and time fields; press Return from any creation field or the plus button to create it, and use a countdown's trash button to request deletion through the shared in-window confirmation. Empty titles are refused with a red underline and accessible hint. Each countdown displays its remaining days, hours, minutes, seconds, and milliseconds. Only visible remaining-time text ticks, without fades, and expired countdowns freeze at zero. New entries are refused at 100 rather than removing existing entries; legacy files above that limit are preserved.
 
 Bucky now uses the SwiftUI-native Liquid Glass launcher with a glass window surface, per-row glass effects, glass buttons, and animated state transitions. macOS 26 is required; the previous AppKit launcher has been removed.
 
 App indexing starts during launcher controller initialization and stays fresh through the source stream, settings changes, and explicit refresh paths. Opening the launcher only presents and focuses the existing window state; while the launcher is open, Command+R reindexes and refreshes the currently displayed results using the current search text. Command+Comma opens Settings.
+
+Focused input boxes support native macOS text editing: Command+X cuts, Command+C copies, Command+V pastes, and Command+A selects all. This includes launcher search, Countdown titles, Settings fields, and Files rename inputs. A shared AppKit Edit menu routes these commands through the responder chain to the focused control; Stones do not implement their own text clipboard handling.
 
 The menu bar item provides Open, Reindex, Settings, and Quit actions. Bucky scans `.app` bundles recursively under `/Applications`, `/System/Applications`, and `~/Applications`, and scans only direct child `.app` bundles under `/System/Library/CoreServices` so native utilities such as Finder stay launchable without walking nested support trees.
 
@@ -79,6 +89,7 @@ To add a new Stone:
 - Use the registry-backed launcher mode and shortcut collections so the new Stone appears in ordering, keyboard navigation, placeholders, icons, surfaces, tints, and update policy without editing a central enum or switch.
 - Keep Stone-specific query/result behavior in a focused Stone helper or boundary, then map its output into shared `StoneResultRow` and `StoneResultSnapshot` values. `.fileBrowser` is reserved for the built-in Files mode; the registry ignores providers that claim that surface or the built-in Files identity, so they cannot bypass provider routing.
 - Reuse shared activation intents where possible and extend `StoneActivation` only if the new Stone needs a genuinely new cross-cutting side effect. Use generic accessory presentation defaults or set a row's `accessoryPresentation` for a domain-specific symbol or help string; do not add Stone cases to the launcher view.
+- Use async provider activations for disk-backed work. `HistoryStoneProvider` exposes shared history/clear behavior; Calculator owns its debounce and history shaping instead of duplicating them in the launcher. Named-datetime creation uses the shared inline creation contract, while confirmations block the background surface and remain bound to the originating Stone.
 - Add focused coverage in `Tests/BuckyTests/StoneCatalogTests.swift`, `Tests/BuckyTests/LauncherModeRoutingTests.swift`, `Tests/BuckyTests/StoneResultsTests.swift`, plus Stone-specific behavior tests for the new domain.
 - Keep domain-specific rules inside the new Stone instead of widening shared launcher policy.
 
@@ -118,7 +129,7 @@ The file format is:
 
 Use Settings to add apps through the macOS file picker or remove included apps from the list.
 
-If `inclusions.json` is missing, Bucky creates it with an empty `includedPaths` array. If the file is malformed, Bucky rewrites it as valid empty JSON and continues with no explicit inclusions. Finder is no longer injected through this file; it is discovered by the direct `/System/Library/CoreServices` scan.
+If `inclusions.json` is missing, Bucky creates it with an empty `includedPaths` array. Malformed or unreadable files are preserved; Bucky keeps its last valid in-memory configuration (or an empty initial default), displays an error, and refuses changes until a successful reload. Explicitly included app parent directories are watched for changes, including existing ancestors of missing roots. Finder is discovered by the direct `/System/Library/CoreServices` scan, not injected through this file.
 
 ## Exclusions
 
@@ -140,7 +151,15 @@ The file format is:
 
 Edit that file manually and press Command+R in Bucky to reload it, or remove hidden apps from Settings.
 
-If `exclusions.json` is missing or malformed, Bucky falls back to an empty exclusion set. The file is only written when exclusions are changed.
+Missing exclusions initialize an empty set. Malformed or unreadable exclusions preserve the last valid state and block writes until a successful reload. New exclusions also carry typed identities for application paths, launch URLs, and stable custom-action IDs; legacy `excludedPaths` entries remain readable. An empty legacy path no longer hides every custom action.
+
+## Persistence And Privacy
+
+Configuration and history stores share a serial JSON worker. Runtime settings and history changes save asynchronously and publish success only after persistence; failures retain drafts and previous data and display controlled diagnostics. JSON replacement is atomic, uses `0600` files and `0700` newly created directories, and does not alter existing ancestor permissions. Reads reject symlinks and nonregular files and are bounded to 8 MiB; Countdowns additionally limits its input file to 128 KiB. Invalid files are not silently repaired or replaced.
+
+Files preferences use a coalescing background writer and optimistic UI updates with error reporting and latest-state rollback. Traversal history is bounded to 128, remembered selections and ordinary bookmarks to 256, and new pins to 128; existing pins and their access bookmarks are protected rather than silently deleted. Text previews allow at most two active reads with a 64 KiB limit and reject pipes/devices. Cancellation suppresses obsolete results but cannot forcibly interrupt a filesystem call already executing.
+
+Diagnostics avoid recording app paths, launch URLs, shell commands, or file contents. Configuration is local JSON with private permissions, not encrypted secret storage; do not save credentials in custom-action commands. Custom actions are explicitly user-configured local shell commands, not a sandbox for untrusted scripts. Review commands before saving them. See [.agents/docs/bucky-architecture.md](.agents/docs/bucky-architecture.md) for implementation boundaries.
 
 ## Fixture And PII Rules
 

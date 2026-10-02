@@ -2,6 +2,33 @@
 
 All notable changes to Bucky are documented here.
 
+## [3.2.8] - 2026-10-01
+
+### Fixed
+
+- Preserve saved configuration and Countdown records on failed reads or writes; reject new Countdowns at capacity instead of evicting existing records.
+- Keep Files operations off the UI thread, prevent Keep Both destination races from replacing files, and suspend inactive directory work.
+- Cancel obsolete directory and preview jobs, bound preview concurrency and retained navigation state, and skip unreadable children without losing readable siblings.
+- Bound calculator input and recursion, and avoid integer formatting overflow.
+- Use typed exclusions for custom actions and watch explicitly included apps and missing source roots.
+- Bind confirmation actions to their originating Stone and block background interaction until dismissed.
+- Restrict persisted files to private permissions and avoid logging private paths, commands, or URLs in diagnostics.
+- Preserve tags and release assets on failure, verify signed tags and packages before publication, and retry API reads with bounded backoff.
+
+### Changed
+
+- Route Calculator history and async Stone actions through shared provider contracts and consolidate launcher shortcut decoding.
+- Precompute app search metadata, generation-scope deferred filters, and replace recurring cache warming with bounded event-driven work.
+- Update Countdown time text independently of stable rows, without fades or hidden/expired clock work.
+- Save settings and history asynchronously, surface failures, and drain Files operations and queued persistence on normal quit.
+- Package incrementally without cleaning shared build output, and isolate test data from normal app configuration.
+
+## [3.2.7] - 2026-10-01
+
+### Fixed
+
+- Added native Cut, Copy, Paste, and Select All commands for focused input boxes throughout the app.
+
 ## [3.2.6] - 2026-09-03
 
 ### Fixed
