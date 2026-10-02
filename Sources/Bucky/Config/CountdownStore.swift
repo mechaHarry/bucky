@@ -5,11 +5,14 @@ struct CountdownsFile: Codable {
 }
 
 final class CountdownStore {
-    private static let maximumCountdowns = 100
+    static let maximumCountdowns = 100
     private static let maximumFileBytes = 128 * 1_024
     private let fileManager = FileManager.default
 
     private(set) var countdowns: [Countdown] = []
+    private(set) var lastError: String?
+    private var canWrite = true
+    private var isSaving = false
     let fileURL: URL
 
     init(fileURL: URL? = nil) {
@@ -18,6 +21,7 @@ final class CountdownStore {
     }
 
     func load() {
+        guard !isSaving else { return }
         do {
             let fileSize = try fileManager.attributesOfItem(atPath: fileURL.path)[.size] as? NSNumber
             guard fileSize?.intValue ?? 0 <= Self.maximumFileBytes else {
@@ -29,26 +33,24 @@ final class CountdownStore {
                 decoder: JSONFilePersistence.makeDecoder()
             )
             countdowns = Self.sanitized(file.countdowns)
-            if countdowns != file.countdowns {
-                save()
-            }
+            canWrite = countdowns.count == file.countdowns.count
+            lastError = canWrite ? nil : "Some saved countdowns have invalid titles or duplicate IDs. The file is preserved; repair it before making changes."
         } catch CocoaError.fileReadNoSuchFile {
             countdowns = []
+            canWrite = true
+            lastError = nil
         } catch {
-            NSLog("Bucky could not read countdowns: %@", error.localizedDescription)
-            countdowns = []
+            canWrite = false
+            lastError = "Could not read countdowns. The existing file has been preserved; repair it before making changes."
         }
     }
 
     @discardableResult
     func add(name: String, targetDate: Date) -> Countdown? {
-        guard let name = Self.normalizedName(name) else { return nil }
+        guard let name = validatedNameForAddition(name) else { return nil }
 
         let countdown = Countdown(name: name, targetDate: targetDate)
-        countdowns.insert(countdown, at: 0)
-        countdowns = Array(countdowns.prefix(Self.maximumCountdowns))
-        save()
-        return countdown
+        return save([countdown] + countdowns) ? countdown : nil
     }
 
     @discardableResult
@@ -58,10 +60,10 @@ final class CountdownStore {
             return false
         }
 
-        countdowns[index].name = name
-        countdowns[index].targetDate = targetDate
-        save()
-        return true
+        var next = countdowns
+        next[index].name = name
+        next[index].targetDate = targetDate
+        return save(next)
     }
 
     @discardableResult
@@ -70,22 +72,71 @@ final class CountdownStore {
             return false
         }
 
-        countdowns.remove(at: index)
-        save()
-        return true
+        var next = countdowns
+        next.remove(at: index)
+        return save(next)
     }
 
-    private func save() {
+    private func save(_ next: [Countdown]) -> Bool {
+        guard canWrite, !isSaving else { return false }
         do {
             try JSONFilePersistence.write(
-                CountdownsFile(countdowns: countdowns),
+                CountdownsFile(countdowns: next),
                 to: fileURL,
                 fileManager: fileManager,
                 encoder: JSONFilePersistence.makeEncoder()
             )
+            countdowns = next
+            lastError = nil
+            return true
         } catch {
-            NSLog("Bucky could not save countdowns: %@", error.localizedDescription)
+            lastError = "Could not save countdowns. Check available disk space and permissions, then try again."
+            return false
         }
+    }
+
+    @MainActor
+    func addAsync(name: String, targetDate: Date) async -> Countdown? {
+        guard let name = validatedNameForAddition(name) else { return nil }
+        let countdown = Countdown(name: name, targetDate: targetDate)
+        return await saveAsync([countdown] + countdowns) ? countdown : nil
+    }
+
+    @MainActor
+    func removeAsync(id: UUID) async -> Bool {
+        guard let index = countdowns.firstIndex(where: { $0.id == id }) else { return false }
+        var next = countdowns
+        next.remove(at: index)
+        return await saveAsync(next)
+    }
+
+    @MainActor
+    private func saveAsync(_ next: [Countdown]) async -> Bool {
+        guard canWrite, !isSaving else { return false }
+        isSaving = true
+        defer { isSaving = false }
+        do {
+            try await JSONFilePersistence.writeAsync(CountdownsFile(countdowns: next), to: fileURL)
+            countdowns = next
+            lastError = nil
+            return true
+        } catch {
+            lastError = "Could not save countdowns. Check available disk space and permissions, then try again."
+            return false
+        }
+    }
+
+    private func validatedNameForAddition(_ value: String) -> String? {
+        guard canWrite, !isSaving else { return nil }
+        guard countdowns.count < Self.maximumCountdowns else {
+            lastError = "You already have \(Self.maximumCountdowns) countdowns. Delete one before adding another."
+            return nil
+        }
+        guard let name = Self.normalizedName(value) else {
+            lastError = "Enter a countdown title."
+            return nil
+        }
+        return name
     }
 
     private static func normalizedName(_ value: String) -> String? {
@@ -103,6 +154,6 @@ final class CountdownStore {
                 return nil
             }
             return Countdown(id: countdown.id, name: name, targetDate: countdown.targetDate)
-        }.prefix(maximumCountdowns).map { $0 }
+        }
     }
 }
