@@ -1,4 +1,4 @@
-enum LauncherCommand {
+enum LauncherCommand: Equatable {
     case up
     case down
     case left

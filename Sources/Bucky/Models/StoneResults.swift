@@ -103,6 +103,7 @@ struct StoneResultRow: Identifiable, Equatable, Hashable {
     let iconURL: URL?
     let iconSystemImage: String?
     let accessoryText: String?
+    let countdownTarget: Date?
 
     init(
         id: ID,
@@ -115,7 +116,8 @@ struct StoneResultRow: Identifiable, Equatable, Hashable {
         iconURL: URL? = nil,
         iconSystemImage: String? = nil,
         accessoryText: String? = nil,
-        accessoryPresentation: AccessoryPresentation? = nil
+        accessoryPresentation: AccessoryPresentation? = nil,
+        countdownTarget: Date? = nil
     ) {
         self.id = id
         self.display = display
@@ -128,6 +130,7 @@ struct StoneResultRow: Identifiable, Equatable, Hashable {
         self.iconURL = iconURL
         self.iconSystemImage = iconSystemImage
         self.accessoryText = accessoryText
+        self.countdownTarget = countdownTarget
     }
 
     var identityKey: String {
@@ -140,7 +143,8 @@ struct StoneResultRow: Identifiable, Equatable, Hashable {
             iconSystemImage ?? "",
             accessoryText ?? "",
             accessoryPresentation?.systemImage ?? "",
-            accessoryPresentation?.help ?? ""
+            accessoryPresentation?.help ?? "",
+            countdownTarget.map { String($0.timeIntervalSinceReferenceDate) } ?? ""
         ].joined(separator: "\u{1E}")
     }
 

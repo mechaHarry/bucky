@@ -337,6 +337,7 @@ final class StoneResultsTests: XCTestCase {
         model.queryDidChange()
         model.exclude(alpha)
 
+        waitUntil(model.resultSnapshot.rows.map(\.display) == ["Beta Tool"])
         XCTAssertEqual(model.resultSnapshot.rows.map(\.display), ["Beta Tool"])
 
         RunLoop.current.run(until: Date().addingTimeInterval(0.08))
@@ -393,7 +394,8 @@ final class StoneResultsTests: XCTestCase {
             settingsStore: SettingsStore(),
             inclusionStore: InclusionStore(),
             exclusionStore: ExclusionStore(),
-            calculationHistoryStore: CalculationHistoryStore(),
+            calculationHistoryStore: CalculationHistoryStore(fileURL: FileManager.default.temporaryDirectory
+                .appendingPathComponent("BuckyCalculationHistory-\(UUID().uuidString).json")),
             dictionaryHistoryStore: DictionaryHistoryStore(fileURL: temporaryDictionaryHistoryFileURL()),
             dictionaryLookup: dictionaryLookup,
             dictionaryOpenHandler: { _ in },

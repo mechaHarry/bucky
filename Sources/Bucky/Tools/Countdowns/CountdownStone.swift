@@ -29,7 +29,6 @@ final class CountdownStone: InlineCreationStoneProvider {
                 iconHex: 0x0B5D2A,
                 darkModeIconHex: 0x8FF0A8
             ),
-            refreshIntervalNanoseconds: Self.refreshIntervalNanoseconds,
             animatesResultUpdates: false
         )
     }
@@ -65,6 +64,24 @@ final class CountdownStone: InlineCreationStoneProvider {
         return true
     }
 
+    var inlineCreationError: String? { store.lastError }
+
+    func submitInlineCreationAsync(name: String, targetDate: Date) async -> Bool {
+        guard targetDate > now() else { return false }
+        return await store.addAsync(name: name, targetDate: targetDate) != nil
+    }
+
+    func performAsync(_ activation: StoneActivation, for row: StoneResultRow) async -> StoneProviderActivationResult {
+        if case let .providerAction(action) = activation,
+           let id = id(from: action, prefix: "delete-confirm:") {
+            guard await store.removeAsync(id: id) else {
+                return .failed(message: store.lastError ?? "Could not delete this countdown.")
+            }
+            return .handled(shouldRefresh: true, resetSelection: true, shouldHide: false)
+        }
+        return perform(activation, for: row)
+    }
+
     func perform(_ activation: StoneActivation, for row: StoneResultRow) -> StoneProviderActivationResult {
         guard case let .providerAction(action) = activation else { return .unhandled }
 
@@ -77,7 +94,9 @@ final class CountdownStone: InlineCreationStoneProvider {
         }
 
         if let id = id(from: action, prefix: "delete-confirm:") {
-            _ = store.remove(id: id)
+            guard store.remove(id: id) else {
+                return .failed(message: store.lastError ?? "Could not delete this countdown.")
+            }
             return .handled(shouldRefresh: true, resetSelection: true, shouldHide: false)
         }
 
@@ -96,7 +115,8 @@ final class CountdownStone: InlineCreationStoneProvider {
                 accessoryActivation: .providerAction("delete:\(countdown.id.uuidString)"),
                 iconSystemImage: "timer",
                 accessoryText: "Target \(targetDateFormatter.string(from: countdown.targetDate))",
-                accessoryPresentation: .init(systemImage: "trash", help: "Delete countdown")
+                accessoryPresentation: .init(systemImage: "trash", help: "Delete countdown"),
+                countdownTarget: countdown.targetDate
             )
         }
 

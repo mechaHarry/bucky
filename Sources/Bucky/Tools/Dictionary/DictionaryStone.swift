@@ -25,6 +25,26 @@ final class DictionaryStone: TextStoneProvider {
         StoneCatalog.definition(for: .dictionary)
     }
 
+    var performsActivationsAsynchronously: Bool { true }
+
+    func performAsync(_ activation: StoneActivation, for row: StoneResultRow) async -> StoneProviderActivationResult {
+        switch activation {
+        case .open where row.kind == .dictionary || row.kind == .dictionaryHistory:
+            guard await historyStore.addAsync(term: row.display) else {
+                return .failed(message: historyStore.lastError ?? "Could not save Dictionary history.")
+            }
+            openHandler(row.display)
+            return .handled(shouldRefresh: true, resetSelection: row.kind == .dictionaryHistory, shouldHide: true)
+        case let .removeHistory(rowID) where row.kind == .dictionaryHistory && rowID == row.id:
+            guard await historyStore.removeAsync(term: row.display) else {
+                return .failed(message: historyStore.lastError ?? "Could not remove Dictionary history.")
+            }
+            return .handled(shouldRefresh: true, resetSelection: true, shouldHide: false)
+        default:
+            return .unhandled
+        }
+    }
+
     func snapshot(for query: String) -> StoneResultSnapshot {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedQuery.isEmpty else {

@@ -516,7 +516,7 @@ final class LauncherModeRoutingTests: XCTestCase {
 
     @MainActor
     @available(macOS 26.0, *)
-    func testBackgroundWarmerActivatesFileBrowserCacheBeforeFilesModeIsShown() {
+    func testBackgroundWarmerLeavesFilesLazyUntilFilesIsShown() {
         var activationCount = 0
         let model = LiquidGlassLauncherModel(
             settingsStore: SettingsStore(),
@@ -536,20 +536,21 @@ final class LauncherModeRoutingTests: XCTestCase {
         XCTAssertEqual(activationCount, 0)
         model.startBackgroundWarmCaches()
         RunLoop.current.run(until: Date().addingTimeInterval(0.12))
-        XCTAssertEqual(activationCount, 1)
+        XCTAssertEqual(activationCount, 0)
 
         model.show(mode: .applications)
-        XCTAssertEqual(activationCount, 1)
+        XCTAssertEqual(activationCount, 0)
         _ = model.handle(command: .switchMode(.calculator))
-        XCTAssertEqual(activationCount, 1)
+        XCTAssertEqual(activationCount, 0)
 
         _ = model.handle(command: .switchMode(.dictionary))
-        XCTAssertEqual(activationCount, 1)
+        XCTAssertEqual(activationCount, 0)
 
         _ = model.handle(command: .switchMode(.applications))
-        XCTAssertEqual(activationCount, 1)
+        XCTAssertEqual(activationCount, 0)
 
         _ = model.handle(command: .switchMode(.files))
+        model.prepareFileBrowserMode()
         XCTAssertEqual(activationCount, 1)
 
         _ = model.handle(command: .switchMode(.applications))
@@ -667,7 +668,7 @@ final class LauncherModeRoutingTests: XCTestCase {
 
     @MainActor
     @available(macOS 26.0, *)
-    func testDictionaryHistoryRowCanBeRemovedIndividually() {
+    func testDictionaryHistoryRowCanBeRemovedIndividually() async throws {
         let dictionaryHistoryStore = DictionaryHistoryStore(fileURL: temporaryDictionaryHistoryFileURL())
         dictionaryHistoryStore.add(term: "apple")
         dictionaryHistoryStore.add(term: "banana")
@@ -679,6 +680,10 @@ final class LauncherModeRoutingTests: XCTestCase {
         }
 
         model.performAccessoryActivation(for: banana)
+        for _ in 0..<100 where model.isPerformingProviderAction {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertFalse(model.isPerformingProviderAction)
 
         XCTAssertEqual(model.resultSnapshot.rows.map(\.display), ["apple"])
         XCTAssertEqual(dictionaryHistoryStore.words.map(\.term), ["apple"])
@@ -687,7 +692,7 @@ final class LauncherModeRoutingTests: XCTestCase {
 
     @MainActor
     @available(macOS 26.0, *)
-    func testDictionaryHistoryActivationMovesTermToTop() {
+    func testDictionaryHistoryActivationMovesTermToTop() async throws {
         let dictionaryHistoryStore = DictionaryHistoryStore(fileURL: temporaryDictionaryHistoryFileURL())
         dictionaryHistoryStore.add(term: "apple")
         dictionaryHistoryStore.add(term: "banana")
@@ -698,6 +703,10 @@ final class LauncherModeRoutingTests: XCTestCase {
         model.selectedIndex = 1
         model.selectionScrollRequest = nil
         _ = model.handle(command: .open)
+        for _ in 0..<100 where model.isPerformingProviderAction {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertFalse(model.isPerformingProviderAction)
 
         XCTAssertEqual(dictionaryHistoryStore.words.map(\.term), ["apple", "banana"])
         XCTAssertEqual(model.resultSnapshot.rows.first?.display, "apple")

@@ -8,7 +8,8 @@ struct StoneID: RawRepresentable, CaseIterable, Identifiable, Hashable {
     static let dictionary = StoneID(rawValue: 3)
     static let files = StoneID(rawValue: 4)
     static let countdowns = StoneID(rawValue: 5)
-    static let allCases: [StoneID] = [.applications, .calculator, .dictionary, .files]
+    // CaseIterable describes the built-in catalog, not dynamically registered providers.
+    static var allCases: [StoneID] { StoneCatalog.orderedDefinitions.map(\.id) }
 
     var id: Self { self }
 }
@@ -100,17 +101,35 @@ struct StoneDefinition: Identifiable, Equatable, Hashable {
 @MainActor
 protocol StoneProvider: AnyObject {
     var definition: StoneDefinition { get }
+    var performsActivationsAsynchronously: Bool { get }
 
     func snapshot(for query: String) -> StoneResultSnapshot
     func updateSnapshot(for query: String) async -> StoneResultSnapshot
     func cancel()
     func activation(for row: StoneResultRow) -> StoneActivation
     func perform(_ activation: StoneActivation, for row: StoneResultRow) -> StoneProviderActivationResult
+    func performAsync(_ activation: StoneActivation, for row: StoneResultRow) async -> StoneProviderActivationResult
+}
+
+extension StoneProvider {
+    var performsActivationsAsynchronously: Bool { false }
+    func performAsync(_ activation: StoneActivation, for row: StoneResultRow) async -> StoneProviderActivationResult {
+        perform(activation, for: row)
+    }
 }
 
 typealias TextStoneProvider = StoneProvider
 
+@MainActor
+protocol HistoryStoneProvider: StoneProvider {
+    var canClearHistory: Bool { get }
+    var historyError: String? { get }
+    func clearHistory() async -> Bool
+    func snapshot(for query: String, recordingHistory: Bool) -> StoneResultSnapshot
+}
+
 struct StoneInlineCreationConfiguration: Equatable, Hashable {
+    // Deliberately a named-datetime creation contract, not a general form framework.
     let namePlaceholder: String
     let targetDateLabel: String
     let submitHelp: String
@@ -127,14 +146,25 @@ struct StoneProviderConfirmation: Equatable, Hashable {
 @MainActor
 protocol InlineCreationStoneProvider: StoneProvider {
     var inlineCreationConfiguration: StoneInlineCreationConfiguration { get }
+    var inlineCreationError: String? { get }
 
     func submitInlineCreation(name: String, targetDate: Date) -> Bool
+    func submitInlineCreationAsync(name: String, targetDate: Date) async -> Bool
+}
+
+extension InlineCreationStoneProvider {
+    var inlineCreationError: String? { nil }
+
+    func submitInlineCreationAsync(name: String, targetDate: Date) async -> Bool {
+        submitInlineCreation(name: name, targetDate: targetDate)
+    }
 }
 
 enum StoneProviderActivationResult: Equatable {
     case unhandled
     case handled(shouldRefresh: Bool, resetSelection: Bool, shouldHide: Bool)
     case confirmation(StoneProviderConfirmation)
+    case failed(message: String)
 }
 
 typealias TextStoneActivationResult = StoneProviderActivationResult
@@ -171,7 +201,7 @@ final class StoneProviderRegistry {
         self.orderedDefinitions = orderedDefinitions
     }
 
-    private static func canRegister(_ definition: StoneDefinition) -> Bool {
+    static func canRegister(_ definition: StoneDefinition) -> Bool {
         definition.id != .files && !definition.surface.usesFileBrowser
     }
 

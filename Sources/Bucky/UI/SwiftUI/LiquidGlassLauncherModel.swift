@@ -7,7 +7,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
     @Published var mode: LauncherMode = .applications
     @Published var query = ""
     @Published var filteredItemIDs: [AppRowID] = []
-    @Published var toolItems: [ToolItem] = []
     @Published private var activatedFileBrowserModel: FileBrowserModel?
     @Published var selectedIndex = 0
     @Published var selectionScrollRequest: SelectionScrollRequest?
@@ -18,15 +17,24 @@ final class LiquidGlassLauncherModel: ObservableObject {
             if !isPresented {
                 cancelLiveStoneRefresh()
                 cancelProviderConfirmation()
+                warmCacheTask?.cancel()
             }
+            updateActiveStoneLifecycle()
         }
     }
     @Published var isWindowKey = false
     @Published var isInlineCreationInputFocused = false
     @Published private(set) var inlineCreationSubmitRequestID = 0
     @Published var providerConfirmation: StoneProviderConfirmation?
-    @Published var isShowingSettings = false
-    @Published var isShowingHelp = false
+    @Published var interactionError: String?
+    @Published private(set) var isSubmittingInlineCreation = false
+    @Published private(set) var isPerformingProviderAction = false
+    @Published var isShowingSettings = false {
+        didSet { updateActiveStoneLifecycle() }
+    }
+    @Published var isShowingHelp = false {
+        didSet { updateActiveStoneLifecycle() }
+    }
     @Published var isPinned = false {
         didSet { pinnedChangedAction?(isPinned) }
     }
@@ -36,6 +44,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     var openHelpAction: (() -> Void)?
     var returnToLauncherAction: (() -> Void)?
     var reindexAction: (() -> Void)?
+    var indexWatchPathsChanged: ((Set<String>) -> Void)?
     var pinnedChangedAction: ((Bool) -> Void)?
     var modeWillSwitchAction: ((LauncherMode, LauncherMode) -> Void)?
     var restoreFocusAction: (() -> Void)?
@@ -43,7 +52,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private let settingsStore: SettingsStore
     private let inclusionStore: InclusionStore
     private let exclusionStore: ExclusionStore
-    private let calculationHistoryStore: CalculationHistoryStore
+    private let calculatorStone: CalculatorStone
     private let dictionaryHistoryStore: DictionaryHistoryStore
     private let stoneProviders: StoneProviderRegistry
     private let fileBrowserModelFactory: () -> FileBrowserModel
@@ -52,13 +61,9 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private var indexedItems: [LaunchItem] = []
     private var filterCache = ApplicationFilterCache()
     private var applicationQuery = ""
-    private var calculatorQuery = ""
     private var textStoneQueries: [StoneID: String] = [:]
     private var textStoneResultSnapshots: [StoneID: StoneResultSnapshot] = [:]
     private var needsReindexAfterCurrent = false
-    private var pendingCalculationHistoryTimer: Timer?
-    private var pendingCalculationHistoryExpression: String?
-    private var pendingCalculationHistoryResult: String?
     private var pendingApplicationFilterTask: Task<Void, Never>?
     private var applicationFilterRequestGate = StoneResultRequestGate()
     private var pendingTextStoneUpdateTasks: [StoneID: Task<Void, Never>] = [:]
@@ -69,6 +74,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private var warmCacheTask: Task<Void, Never>?
     private var selectionScrollRequestID = 0
     private var providerConfirmationRow: StoneResultRow?
+    private var providerConfirmationStoneID: StoneID?
 
     init(
         settingsStore: SettingsStore,
@@ -87,15 +93,21 @@ final class LiquidGlassLauncherModel: ObservableObject {
         self.settingsStore = settingsStore
         self.inclusionStore = inclusionStore
         self.exclusionStore = exclusionStore
-        self.calculationHistoryStore = calculationHistoryStore
+        let calculatorStone = CalculatorStone(store: calculationHistoryStore)
+        self.calculatorStone = calculatorStone
         self.dictionaryHistoryStore = dictionaryHistoryStore
         let dictionaryStone = DictionaryStone(
             historyStore: dictionaryHistoryStore,
             lookup: dictionaryLookup,
             openHandler: dictionaryOpenHandler
         )
+        let suppliedProviders = textStoneProviders + stoneProviders
+        let suppliedIDs = Set(suppliedProviders.filter { StoneProviderRegistry.canRegister($0.definition) }
+            .map { $0.definition.id })
+        let builtInProviders: [any StoneProvider] = [calculatorStone, dictionaryStone]
         self.stoneProviders = StoneProviderRegistry(
-            providers: [dictionaryStone] + textStoneProviders + stoneProviders
+            providers: builtInProviders.filter { !suppliedIDs.contains($0.definition.id) }
+                + suppliedProviders
         )
         self.applicationIndexSnapshotCache = applicationIndexSnapshotCache
         self.activatedFileBrowserModel = fileBrowserModel
@@ -105,6 +117,11 @@ final class LiquidGlassLauncherModel: ObservableObject {
             }
         }
         animationTiming = settingsStore.settings.animationTiming
+        calculatorStone.historyChanged = { [weak self, weak calculatorStone] in
+            guard let self, let calculatorStone, self.mode.stoneID == calculatorStone.definition.id else { return }
+            self.interactionError = calculatorStone.historyError
+            self.applyToolsResults(scheduleHistory: false)
+        }
         loadCachedApplicationSnapshot()
     }
 
@@ -165,7 +182,21 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     var canClearHistory: Bool {
-        mode == .calculator && !calculationHistoryStore.calculations.isEmpty
+        (stoneProviders.provider(for: mode.stoneID) as? any HistoryStoneProvider)?.canClearHistory == true
+    }
+
+    // Compatibility projection for existing callers; providers own the actual result state.
+    var toolItems: [ToolItem] {
+        resultSnapshot.rows.compactMap { row in
+            let kind: ToolItem.Kind
+            switch row.kind {
+            case .calculation: kind = .calculation
+            case .calculationHistory: kind = .calculationHistory
+            case .message: kind = .message
+            default: return nil
+            }
+            return ToolItem(title: row.display, subtitle: row.subtitle, copyText: row.copyText, kind: kind, stoneResultID: row.id)
+        }
     }
 
     var emptyMessage: String? {
@@ -197,13 +228,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
             })
         }
 
-        if mode == .calculator {
-            if toolItems.isEmpty {
-                return .empty(message: inputIsBlank ? "No calculation history" : "No tool results")
-            }
-            return toolResultSnapshot()
-        }
-
         if mode.stoneDefinition.surface.usesFileBrowser {
             return .loaded(rows: MainActor.assumeIsolated { fileBrowserModel.entries.map(StoneResultRow.file) })
         }
@@ -223,17 +247,20 @@ final class LiquidGlassLauncherModel: ObservableObject {
 
     func show(mode: LauncherMode) {
         cancelLiveStoneRefresh()
+        cancelPendingModeSnapshot()
+        cancelPendingApplicationFilter()
+        cancelPendingTextStoneUpdates()
         cancelProviderConfirmation()
         isShowingSettings = false
         isShowingHelp = false
         applicationQuery = ""
-        calculatorQuery = ""
         textStoneQueries.removeAll()
         self.mode = mode
         query = storedQuery(for: mode)
         selectedIndex = 0
         isPinned = false
         applyCurrentMode()
+        updateActiveStoneLifecycle()
         requestSelectionScroll(anchor: .top)
     }
 
@@ -291,6 +318,14 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     func handle(command: LauncherCommand) -> Bool {
+        if providerConfirmation != nil {
+            switch command {
+            case .open: confirmProviderConfirmation()
+            case .close: cancelProviderConfirmation()
+            default: break
+            }
+            return true
+        }
         switch command {
         case .up:
             if mode.stoneDefinition.surface.usesFileBrowser {
@@ -360,32 +395,38 @@ final class LiquidGlassLauncherModel: ObservableObject {
 
         isIndexing = true
         needsReindexAfterCurrent = false
-        inclusionStore.load()
-        exclusionStore.load()
+        Task { [weak self] in
+            guard let self else { return }
+            let inclusionsLoaded = await inclusionStore.loadAsync()
+            let exclusionsLoaded = await exclusionStore.loadAsync()
+            if !inclusionsLoaded || !exclusionsLoaded {
+                interactionError = "Could not reload configuration. Preserved the last valid configuration and files."
+            }
+            let includedPaths = inclusionStore.includedPaths
+            indexWatchPathsChanged?(includedPaths)
+            let applicationIndexSnapshotCache = applicationIndexSnapshotCache
+            DispatchQueue.global(qos: .userInitiated).async { [weak self, applicationIndexSnapshotCache] in
+                let items = ApplicationIndexer().load(includedPaths: includedPaths)
+                applicationIndexSnapshotCache.save(items)
 
-        let includedPaths = inclusionStore.includedPaths
-        let applicationIndexSnapshotCache = applicationIndexSnapshotCache
-        DispatchQueue.global(qos: .userInitiated).async { [applicationIndexSnapshotCache] in
-            let items = ApplicationIndexer().load(includedPaths: includedPaths)
-            applicationIndexSnapshotCache.save(items)
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    self.publishApplicationSnapshot(items)
+                    self.isIndexing = false
 
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                self.publishApplicationSnapshot(items)
-                self.isIndexing = false
-
-                if self.needsReindexAfterCurrent {
-                    self.reindex()
-                } else if self.mode == .applications {
-                    self.applyFilter()
+                    if self.needsReindexAfterCurrent {
+                        self.reindex()
+                    } else if self.mode == .applications {
+                        self.applyFilter()
+                    }
+                    self.warmCurrentCaches()
                 }
-                self.warmCurrentCaches()
             }
         }
     }
 
     private func loadCachedApplicationSnapshot() {
-        DispatchQueue.global(qos: .utility).async { [applicationIndexSnapshotCache] in
+        DispatchQueue.global(qos: .utility).async { [weak self, applicationIndexSnapshotCache] in
             let items = applicationIndexSnapshotCache.load()
             guard !items.isEmpty else { return }
 
@@ -401,6 +442,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     private func publishApplicationSnapshot(_ items: [LaunchItem]) {
+        cancelPendingApplicationFilter()
         let previousItems = indexedItems
         indexedItems = items
         if previousItems != items {
@@ -411,39 +453,22 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     func startBackgroundWarmCaches() {
-        guard warmCacheTask == nil else { return }
+        warmNonApplicationCaches()
+        prewarmFilterCache(for: normalized(query))
+    }
 
-        warmCacheTask = Task(priority: .utility) { [weak self] in
-            while !Task.isCancelled {
-                let snapshot = await MainActor.run { [weak self] in
-                    self?.applicationWarmCacheSnapshot()
-                }
-
-                guard let snapshot else {
-                    await MainActor.run { [weak self] in
-                        self?.warmNonApplicationCaches()
-                    }
-                    try? await Task.sleep(nanoseconds: 2_000_000_000)
-                    continue
-                }
-
-                do {
-                    let entries = await Task.detached(priority: .utility) {
-                        Self.warmFilterEntries(
-                            rowStore: snapshot.rowStore,
-                            ids: snapshot.ids,
-                            normalizedQuery: snapshot.normalizedQuery
-                        )
-                    }.value
-
-                    await MainActor.run { [weak self] in
-                        self?.storeWarmFilterEntries(entries, generation: snapshot.generation)
-                        self?.warmNonApplicationCaches()
-                    }
-                }
-
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
+    func flushPersistence(completion: @escaping () -> Void) {
+        // Flush only an already activated Files model; quitting must not initialize a Stone.
+        let flushJSON: () -> Void = {
+            Task { @MainActor in
+                await JSONFilePersistence.flushAsync()
+                completion()
             }
+        }
+        if let activatedFileBrowserModel {
+            activatedFileBrowserModel.flushPersistence(completion: flushJSON)
+        } else {
+            flushJSON()
         }
     }
 
@@ -454,16 +479,28 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     func refreshAfterSettingsChanged() {
-        settingsStore.load()
-        animationTiming = settingsStore.settings.animationTiming
-        reindex()
+        Task { [weak self] in
+            guard let self else { return }
+            guard await settingsStore.loadAsync() else {
+                interactionError = settingsStore.lastError ?? "Could not reload settings."
+                return
+            }
+            animationTiming = settingsStore.settings.animationTiming
+            reindex()
+        }
     }
 
     func exclude(_ item: LaunchItem) {
         cancelPendingApplicationFilter()
-        exclusionStore.exclude(item)
-        rebuildVisibleItems()
-        applyFilter()
+        Task { [weak self] in
+            guard let self else { return }
+            guard await exclusionStore.excludeAsync(item) else {
+                interactionError = exclusionStore.lastError ?? "Could not hide this item."
+                return
+            }
+            rebuildVisibleItems()
+            if mode == .applications { applyFilter() }
+        }
     }
 
     func exclude(_ row: StoneResultRow) {
@@ -477,8 +514,14 @@ final class LiquidGlassLauncherModel: ObservableObject {
 
     func clearHistory() {
         cancelPendingTextStoneUpdates()
-        calculationHistoryStore.clear()
-        applyToolsResults(scheduleHistory: false)
+        guard let provider = stoneProviders.provider(for: mode.stoneID) as? any HistoryStoneProvider else { return }
+        let stoneID = mode.stoneID
+        Task { [weak self, provider] in
+            let saved = await provider.clearHistory()
+            guard let self, self.mode.stoneID == stoneID else { return }
+            if !saved { self.interactionError = provider.historyError ?? "Could not clear history." }
+            self.applyToolsResults(scheduleHistory: false)
+        }
     }
 
     func activate(_ row: StoneResultRow) {
@@ -501,31 +544,56 @@ final class LiquidGlassLauncherModel: ObservableObject {
         return true
     }
 
+    func submitInlineCreationAsync(name: String, targetDate: Date) async -> Bool {
+        guard providerConfirmation == nil, !isSubmittingInlineCreation,
+              let provider = stoneProviders.provider(for: mode.stoneID) as? any InlineCreationStoneProvider else {
+            return false
+        }
+        let stoneID = mode.stoneID
+        isSubmittingInlineCreation = true
+        interactionError = nil
+        defer { isSubmittingInlineCreation = false }
+        let saved = await provider.submitInlineCreationAsync(name: name, targetDate: targetDate)
+        guard mode.stoneID == stoneID else { return false }
+        guard saved else {
+            interactionError = provider.inlineCreationError ?? "Choose a future target date and try again."
+            return false
+        }
+        applyToolsResults(scheduleHistory: false)
+        return true
+    }
+
     func requestInlineCreationSubmit() {
         inlineCreationSubmitRequestID &+= 1
     }
 
     func confirmProviderConfirmation() {
         guard let confirmation = providerConfirmation,
-              let row = providerConfirmationRow else {
+              let row = providerConfirmationRow,
+              let stoneID = providerConfirmationStoneID,
+              let provider = stoneProviders.provider(for: stoneID) else {
             return
         }
 
-        providerConfirmation = nil
-        providerConfirmationRow = nil
-        perform(confirmation.confirmationActivation, for: row)
+        cancelProviderConfirmation()
+        isPerformingProviderAction = true
+        Task { [weak self, provider] in
+            let result = await provider.performAsync(confirmation.confirmationActivation, for: row)
+            guard let self else { return }
+            self.isPerformingProviderAction = false
+            guard self.mode.stoneID == stoneID else { return }
+            self.handleProviderResult(result, activation: confirmation.confirmationActivation, row: row, stoneID: stoneID)
+        }
     }
 
     func cancelProviderConfirmation() {
         providerConfirmation = nil
         providerConfirmationRow = nil
+        providerConfirmationStoneID = nil
     }
 
     func cancelPendingCalculationHistory() {
-        pendingCalculationHistoryTimer?.invalidate()
-        pendingCalculationHistoryTimer = nil
-        pendingCalculationHistoryExpression = nil
-        pendingCalculationHistoryResult = nil
+        calculatorStone.cancel()
     }
 
     private func cancelPendingTextStoneUpdates() {
@@ -573,7 +641,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private func scheduleLiveStoneRefresh(for provider: any StoneProvider) {
         cancelLiveStoneRefresh()
 
-        guard let interval = provider.definition.refreshIntervalNanoseconds else { return }
+        guard isPresented, !isShowingSettings, !isShowingHelp,
+              let interval = provider.definition.refreshIntervalNanoseconds else { return }
         let stoneID = provider.definition.id
         liveStoneRefreshTask = Task { [weak self, provider] in
             while !Task.isCancelled {
@@ -585,7 +654,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
 
                 guard !Task.isCancelled else { return }
                 await MainActor.run { [weak self] in
-                    guard let self, self.mode.stoneID == stoneID else { return }
+                    guard let self, self.isPresented, !self.isShowingSettings, !self.isShowingHelp,
+                          self.mode.stoneID == stoneID else { return }
                     self.applyTextStoneSnapshot(provider.snapshot(for: self.query), for: stoneID)
                 }
             }
@@ -597,6 +667,19 @@ final class LiquidGlassLauncherModel: ObservableObject {
         liveStoneRefreshTask = nil
     }
 
+    private func updateActiveStoneLifecycle() {
+        let visible = isPresented && !isShowingSettings && !isShowingHelp
+        activatedFileBrowserModel?.setActive(visible && mode == .files)
+        guard visible else {
+            cancelLiveStoneRefresh()
+            cancelProviderConfirmation()
+            return
+        }
+        if let provider = stoneProviders.provider(for: mode.stoneID) {
+            scheduleLiveStoneRefresh(for: provider)
+        }
+    }
+
     private func activateFileBrowserModel() -> FileBrowserModel {
         if let activatedFileBrowserModel {
             return activatedFileBrowserModel
@@ -604,6 +687,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
 
         let model = fileBrowserModelFactory()
         activatedFileBrowserModel = model
+        model.setActive(isPresented && !isShowingSettings && !isShowingHelp && mode == .files)
         return model
     }
 
@@ -621,12 +705,9 @@ final class LiquidGlassLauncherModel: ObservableObject {
                 rebuildVisibleItems()
             }
             applyApplicationFilter(preservePreviousOnEmpty: preservePreviousOnEmpty)
-        case .calculator:
-            applyToolsResults()
         case .files:
             cancelPendingCalculationHistory()
             cancelPendingTextStoneUpdates()
-            toolItems = []
             selectedIndex = MainActor.assumeIsolated {
                 fileBrowserModel.selectedIndex
             }
@@ -676,6 +757,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         let token = applicationFilterRequestGate.begin(query: cacheKey)
         let rowStore = appRowStore
         let ids = appRowStore.visibleIDs
+        let generation = appRowStore.generation
         pendingApplicationFilterTask?.cancel()
         pendingApplicationFilterTask = Task { [weak self] in
             do {
@@ -693,12 +775,13 @@ final class LiquidGlassLauncherModel: ObservableObject {
             await MainActor.run { [weak self] in
                 guard let self,
                       self.mode == .applications,
+                      self.appRowStore.generation == generation,
                       self.applicationFilterRequestGate.accepts(token, currentQuery: normalized(self.query)) else {
                     return
                 }
 
                 self.pendingApplicationFilterTask = nil
-                self.filterCache.store(nextItems, for: cacheKey)
+                self.filterCache.store(nextItems, for: cacheKey, generation: generation)
                 if preservePreviousOnEmpty,
                    nextItems.isEmpty,
                    !self.filteredItemIDs.isEmpty,
@@ -714,15 +797,26 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     private func rebuildVisibleItems() {
+        cancelPendingApplicationFilter()
+        warmCacheTask?.cancel()
         appRowStore.rebuildVisibleIDs { !exclusionStore.isExcluded($0) }
         filterCache.removeAll()
     }
 
     private func prewarmFilterCache(for normalizedQuery: String) {
-        guard !normalizedQuery.isEmpty else { return }
-
-        filterCache.prewarmDeletionPath(for: normalizedQuery, generation: appRowStore.generation) { prefix in
-            Self.filterIDs(appRowStore.visibleIDs, rowStore: appRowStore, normalizedQuery: prefix)
+        warmCacheTask?.cancel()
+        guard let snapshot = applicationWarmCacheSnapshot() else { return }
+        let job = Task.detached(priority: .utility) {
+            Self.warmFilterEntries(rowStore: snapshot.rowStore, ids: snapshot.ids, normalizedQuery: normalizedQuery)
+        }
+        warmCacheTask = Task { [weak self] in
+            let entries = await withTaskCancellationHandler {
+                await job.value
+            } onCancel: {
+                job.cancel()
+            }
+            guard !Task.isCancelled else { return }
+            self?.storeWarmFilterEntries(entries, generation: snapshot.generation)
         }
     }
 
@@ -731,9 +825,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     private func warmNonApplicationCaches() {
-        _ = calculationHistoryItems()
+        _ = calculatorStone.snapshot(for: "", recordingHistory: false)
         _ = dictionaryHistoryStore.words
-        _ = activateFileBrowserModel()
     }
 
     private func applicationWarmCacheSnapshot() -> (
@@ -754,7 +847,8 @@ final class LiquidGlassLauncherModel: ObservableObject {
         var entries: [(query: String, results: [AppRowID])] = []
         var prefix = normalizedQuery
 
-        while !prefix.isEmpty {
+        // Only a short deletion path is useful; never scan every prefix of a pasted document.
+        while !prefix.isEmpty && entries.count < 8 && !Task.isCancelled {
             entries.append((prefix, filterIDs(ids, rowStore: rowStore, normalizedQuery: prefix)))
             prefix.removeLast()
         }
@@ -764,6 +858,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     private func storeWarmFilterEntries(_ entries: [(query: String, results: [AppRowID])], generation: Int) {
+        guard generation == appRowStore.generation else { return }
         for entry in entries {
             filterCache.store(entry.results, for: entry.query, generation: generation)
         }
@@ -789,11 +884,16 @@ final class LiquidGlassLauncherModel: ObservableObject {
             scheduleLiveStoneRefresh(for: provider)
             let stoneID = provider.definition.id
             cancelPendingTextStoneUpdate(for: stoneID)
-            toolItems = []
 
             switch ToolResultsSnapshotPolicy.update(for: mode, query: query) {
             case .immediate:
-                applyTextStoneSnapshot(provider.snapshot(for: trimmedQuery), for: stoneID)
+                let snapshot = (provider as? any HistoryStoneProvider)?.snapshot(for: trimmedQuery, recordingHistory: scheduleHistory)
+                    ?? provider.snapshot(for: trimmedQuery)
+                applyTextStoneSnapshot(snapshot, for: stoneID)
+                if scheduleHistory, snapshot.rows.first?.kind == .calculation {
+                    selectedIndex = 0
+                    requestSelectionScroll(anchor: .top)
+                }
             case let .deferred(delayNanoseconds):
                 applyDeferredTextStoneResults(
                     for: provider,
@@ -806,31 +906,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
 
         cancelLiveStoneRefresh()
 
-        switch ToolResultsSnapshotPolicy.update(for: mode, query: query) {
-        case .immediate:
-            cancelPendingTextStoneUpdates()
-            applyToolResultsSnapshot(
-                makeToolItems(for: trimmedQuery, scheduleHistory: scheduleHistory),
-                selectLiveCalculation: scheduleHistory
-            )
-        case let .deferred(delayNanoseconds):
-            applyDeferredToolResults(
-                for: trimmedQuery,
-                delayNanoseconds: delayNanoseconds
-            )
-        }
-    }
-
-    private func applyDeferredToolResults(
-        for trimmedQuery: String,
-        delayNanoseconds: UInt64
-    ) {
-        guard let provider = stoneProviders.provider(for: mode.stoneID) else { return }
-        applyDeferredTextStoneResults(
-            for: provider,
-            query: trimmedQuery,
-            delayNanoseconds: delayNanoseconds
-        )
     }
 
     private func applyDeferredTextStoneResults(
@@ -858,55 +933,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
         }
     }
 
-    private func makeToolItems(for trimmedQuery: String, scheduleHistory: Bool) -> [ToolItem] {
-        switch mode {
-        case .applications, .files:
-            return []
-        case .calculator:
-            if trimmedQuery.isEmpty {
-                return calculationHistoryItems()
-            }
-
-            let expression = ArithmeticEvaluator.normalizedExpression(trimmedQuery)
-            guard ArithmeticEvaluator.isArithmeticInput(expression) else {
-                return [
-                    ToolItem(
-                        title: "Enter a calculation",
-                        subtitle: trimmedQuery,
-                        copyText: nil,
-                        kind: .message
-                    )
-                ]
-            }
-
-            if let result = ArithmeticEvaluator.evaluate(expression) {
-                let items = [
-                    ToolItem(
-                        title: result,
-                        subtitle: "\(expression) =",
-                        copyText: result,
-                        kind: .calculation
-                    )
-                ] + calculationHistoryItems(excludingExpression: expression, result: result)
-
-                if scheduleHistory, ArithmeticEvaluator.shouldStoreInHistory(expression) {
-                    scheduleCalculationHistory(expression: expression, result: result)
-                }
-                return items
-            } else {
-                return [
-                    ToolItem(
-                        title: "Complete the calculation",
-                        subtitle: trimmedQuery,
-                        copyText: nil,
-                        kind: .message
-                    )
-                ] + calculationHistoryItems()
-            }
-        default:
-            return []
-        }
-    }
 
     private func applyTextStoneUpdate(
         _ snapshot: StoneResultSnapshot,
@@ -928,64 +954,11 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     private func applyTextStoneSnapshot(_ snapshot: StoneResultSnapshot, for stoneID: StoneID) {
+        guard textStoneResultSnapshots[stoneID] != snapshot else { return }
         textStoneResultSnapshots[stoneID] = snapshot
         clampSelection()
     }
 
-    private func applyToolResultsSnapshot(_ nextItems: [ToolItem], selectLiveCalculation: Bool) {
-        toolItems = nextItems
-        if selectLiveCalculation, mode == .calculator, toolItems.first?.kind == .calculation {
-            selectedIndex = 0
-            requestSelectionScroll(anchor: .top)
-            return
-        }
-        clampSelection()
-    }
-
-    private func calculationHistoryItems(
-        excludingExpression expression: String? = nil,
-        result excludedResult: String? = nil
-    ) -> [ToolItem] {
-        calculationHistoryStore.calculations.compactMap { entry in
-            if entry.expression == expression && entry.result == excludedResult {
-                return nil
-            }
-
-            return ToolItem(
-                title: "\(entry.expression) = \(entry.result)",
-                subtitle: "Calculated \(Self.calculationHistoryDateFormatter.string(from: entry.date))",
-                copyText: entry.result,
-                kind: .calculationHistory
-            )
-        }
-    }
-
-    private func scheduleCalculationHistory(expression: String, result: String) {
-        pendingCalculationHistoryExpression = expression
-        pendingCalculationHistoryResult = result
-        pendingCalculationHistoryTimer = Timer.scheduledTimer(
-            withTimeInterval: 0.7,
-            repeats: false
-        ) { [weak self] _ in
-            Task { @MainActor in
-                self?.commitPendingCalculationHistory(refreshResults: true)
-            }
-        }
-    }
-
-    private func commitPendingCalculationHistory(refreshResults: Bool) {
-        guard let expression = pendingCalculationHistoryExpression,
-              let result = pendingCalculationHistoryResult else {
-            return
-        }
-
-        cancelPendingCalculationHistory()
-        calculationHistoryStore.add(expression: expression, result: result)
-
-        if refreshResults, mode == .calculator {
-            applyToolsResults(scheduleHistory: false)
-        }
-    }
 
     private func clearInputOrHide() {
         if inputIsBlank {
@@ -1011,8 +984,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
         switch mode {
         case .applications:
             applicationQuery = query
-        case .calculator:
-            calculatorQuery = query
         case .files:
             break
         default:
@@ -1028,8 +999,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
         switch mode {
         case .applications:
             return applicationQuery
-        case .calculator:
-            return calculatorQuery
         case .files:
             return ""
         default:
@@ -1038,6 +1007,9 @@ final class LiquidGlassLauncherModel: ObservableObject {
     }
 
     private func switchMode(_ nextMode: LauncherMode) -> Bool {
+        cancelProviderConfirmation()
+        interactionError = nil
+        isInlineCreationInputFocused = false
         if mode != nextMode {
             modeWillSwitchAction?(mode, nextMode)
         }
@@ -1046,6 +1018,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
         cancelPendingApplicationFilter()
         storeCurrentQuery()
         mode = nextMode
+        updateActiveStoneLifecycle()
         query = storedQuery(for: nextMode)
         selectedIndex = 0
         publishLightweightModeSnapshot(for: nextMode)
@@ -1062,16 +1035,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private func publishLightweightModeSnapshot(for mode: LauncherMode) {
         if stoneProviders.provider(for: mode.stoneID) != nil {
             textStoneResultSnapshots[mode.stoneID] = .loaded(rows: [])
-            return
-        }
-
-        switch mode {
-        case .applications:
-            break
-        case .calculator, .files:
-            toolItems = []
-        default:
-            break
         }
     }
 
@@ -1181,12 +1144,12 @@ final class LiquidGlassLauncherModel: ObservableObject {
             configuration.activates = true
             NSWorkspace.shared.openApplication(at: url, configuration: configuration) { _, error in
                 if let error {
-                    NSLog("Bucky failed to open %@: %@", url.path, error.localizedDescription)
+                    NSLog("Bucky failed to open an application (error code %ld)", (error as NSError).code)
                 }
             }
         case let .url(url):
             if !NSWorkspace.shared.open(url) {
-                NSLog("Bucky failed to open %@", url.absoluteString)
+                NSLog("Bucky failed to open a URL")
             }
         case let .shellCommand(command):
             runShellCommand(command)
@@ -1202,13 +1165,48 @@ final class LiquidGlassLauncherModel: ObservableObject {
             do {
                 try process.run()
             } catch {
-                NSLog("Bucky failed to run custom action: %@", error.localizedDescription)
+                NSLog("Bucky failed to run a custom action (error code %ld)", (error as NSError).code)
             }
         }
     }
 
     private func perform(_ activation: StoneActivation, for row: StoneResultRow) {
-        switch stoneProviders.perform(activation, for: mode.stoneID, row: row) {
+        guard providerConfirmation == nil, !isPerformingProviderAction else { return }
+        if let provider = stoneProviders.provider(for: mode.stoneID), provider.performsActivationsAsynchronously {
+            let stoneID = mode.stoneID
+            isPerformingProviderAction = true
+            Task { [weak self, provider] in
+                let result = await provider.performAsync(activation, for: row)
+                guard let self else { return }
+                self.isPerformingProviderAction = false
+                guard self.mode.stoneID == stoneID else { return }
+                if !self.handleProviderResult(result, activation: activation, row: row, stoneID: stoneID) {
+                    self.performSharedActivation(activation)
+                }
+            }
+            return
+        }
+        let result = stoneProviders.perform(activation, for: mode.stoneID, row: row)
+        if handleProviderResult(result, activation: activation, row: row, stoneID: mode.stoneID) { return }
+        performSharedActivation(activation)
+    }
+
+    private func performSharedActivation(_ activation: StoneActivation) {
+        switch activation {
+        case let .copy(value):
+            copyToPasteboard(value)
+        case let .open(target):
+            launch(target)
+        case .removeHistory, .providerAction, .none:
+            return
+        }
+
+        if !isPinned { hideAction?() }
+    }
+
+    @discardableResult
+    private func handleProviderResult(_ result: StoneProviderActivationResult, activation: StoneActivation, row: StoneResultRow, stoneID: StoneID) -> Bool {
+        switch result {
         case let .handled(shouldRefresh, resetSelection, shouldHide):
             if shouldRefresh, inputIsBlank {
                 applyToolsResults(scheduleHistory: false)
@@ -1225,37 +1223,17 @@ final class LiquidGlassLauncherModel: ObservableObject {
                     self?.restoreFocusAction?()
                 }
             }
-            return
+            return true
         case let .confirmation(confirmation):
             providerConfirmation = confirmation
             providerConfirmationRow = row
-            return
+            providerConfirmationStoneID = stoneID
+            return true
+        case let .failed(message):
+            interactionError = message
+            return true
         case .unhandled:
-            break
-        }
-
-        switch activation {
-        case let .copy(value):
-            if row.kind == .calculation {
-                commitPendingCalculationHistory(refreshResults: false)
-            }
-            copyToPasteboard(value)
-        case let .open(target):
-            launch(target)
-        case .removeHistory:
-            return
-        case .providerAction:
-            return
-        case .none:
-            return
-        }
-
-        if row.kind == .application, !isPinned {
-            hideAction?()
-        }
-
-        if row.kind != .application, !isPinned {
-            hideAction?()
+            return false
         }
     }
 
@@ -1275,21 +1253,6 @@ final class LiquidGlassLauncherModel: ObservableObject {
         NSWorkspace.shared.open(url)
     }
 
-    private static let calculationHistoryDateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .short
-        formatter.timeStyle = .short
-        return formatter
-    }()
-
-    private func toolResultSnapshot() -> StoneResultSnapshot {
-        let rows = toolItems.map(StoneResultRow.tool)
-        if rows.count == 1, rows[0].kind == .message {
-            return .message(rows[0])
-        }
-
-        return .loaded(rows: rows)
-    }
 }
 
 @available(macOS 26.0, *)

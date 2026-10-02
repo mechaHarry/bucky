@@ -71,14 +71,20 @@ final class CountdownStoneTests: XCTestCase {
         let countdown = try XCTUnwrap(store.add(name: "  Project   launch  ", targetDate: Date()))
         XCTAssertEqual(countdown.name, "Project launch")
 
+        let capped = try XCTUnwrap(store.add(name: longName, targetDate: Date()))
+        XCTAssertEqual(capped.name.count, 200)
+
         for index in 0..<105 {
             _ = store.add(name: "Countdown \(index)", targetDate: Date())
         }
         XCTAssertEqual(store.countdowns.count, 100)
 
-        let capped = try XCTUnwrap(store.add(name: longName, targetDate: Date()))
-        XCTAssertEqual(capped.name.count, 200)
+        let before = store.countdowns
+        XCTAssertNil(store.add(name: "Overflow", targetDate: Date()))
+        XCTAssertEqual(store.countdowns, before)
+        XCTAssertTrue(store.countdowns.contains { $0.id == countdown.id })
         XCTAssertEqual(store.countdowns.count, 100)
+        XCTAssertNotNil(store.lastError)
     }
 
     func testMalformedCountdownFileFallsBackToEmptyStore() throws {
@@ -105,6 +111,9 @@ final class CountdownStoneTests: XCTestCase {
 
         XCTAssertEqual(store.countdowns.count, 1)
         XCTAssertEqual(store.countdowns.first?.name, "First target")
+        XCTAssertNotNil(store.lastError)
+        XCTAssertNil(store.add(name: "Another target", targetDate: Date().addingTimeInterval(60)))
+        XCTAssertEqual(try Data(contentsOf: fileURL), data)
     }
 
     @MainActor
@@ -116,7 +125,7 @@ final class CountdownStoneTests: XCTestCase {
         XCTAssertEqual(stone.definition.presentation.title, "Countdowns")
         XCTAssertEqual(stone.definition.surface, .sharedResults)
         XCTAssertEqual(stone.definition.tint.activeHex, 0x34C759)
-        XCTAssertEqual(stone.definition.refreshIntervalNanoseconds, CountdownStone.refreshIntervalNanoseconds)
+        XCTAssertNil(stone.definition.refreshIntervalNanoseconds, "Visible rows own the clock, not the launcher model")
         XCTAssertFalse(stone.definition.animatesResultUpdates)
     }
 
@@ -180,7 +189,7 @@ final class CountdownStoneTests: XCTestCase {
 
     @MainActor
     @available(macOS 26.0, *)
-    func testLauncherRefreshesCountdownRowsWhileCountdownStoneIsActive() async throws {
+    func testCountdownClockDoesNotRebuildTheLauncherSnapshot() async throws {
         let clock = MutableCountdownClock(date: Date(timeIntervalSinceReferenceDate: 100))
         let store = CountdownStore(fileURL: temporaryFileURL())
         _ = try XCTUnwrap(store.add(name: "Release", targetDate: clock.date.addingTimeInterval(0.2)))
@@ -202,8 +211,12 @@ final class CountdownStoneTests: XCTestCase {
         model.show(mode: mode)
         XCTAssertEqual(model.resultSnapshot.rows[0].subtitle, "0d 00h 00m 00s 200ms")
 
+        let initial = model.resultSnapshot
+        XCTAssertEqual(initial.rows[0].countdownTarget, clock.date.addingTimeInterval(0.2))
         clock.date = clock.date.addingTimeInterval(0.2)
-        await waitUntil(model.resultSnapshot.rows[0].subtitle == "0d 00h 00m 00s 000ms")
+        try await Task.sleep(nanoseconds: 120_000_000)
+        XCTAssertEqual(model.resultSnapshot, initial)
+        XCTAssertEqual(CountdownRemaining(until: try XCTUnwrap(initial.rows[0].countdownTarget), now: clock.date), .zero)
     }
 
     @MainActor
