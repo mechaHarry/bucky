@@ -91,8 +91,8 @@ final class ApplicationIndexer {
             at: root,
             includingPropertiesForKeys: keys,
             options: [.skipsHiddenFiles],
-            errorHandler: { url, error in
-                NSLog("Bucky index skipped %@: %@", url.path, error.localizedDescription)
+            errorHandler: { _, error in
+                NSLog("Bucky index skipped an entry (error code %ld)", (error as NSError).code)
                 return true
             }
         ) else {

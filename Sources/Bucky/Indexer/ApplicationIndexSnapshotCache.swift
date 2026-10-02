@@ -1,6 +1,7 @@
 import Foundation
 
-struct ApplicationIndexSnapshotCache {
+// Immutable cache location; all FileManager use is serialized by JSONFilePersistence.
+struct ApplicationIndexSnapshotCache: @unchecked Sendable {
     private let fileURL: URL
     private let fileManager: FileManager
     private let schemaVersion = 1
@@ -14,8 +15,8 @@ struct ApplicationIndexSnapshotCache {
     }
 
     func load() -> [LaunchItem] {
-        guard let data = try? Data(contentsOf: fileURL),
-              let snapshot = try? JSONDecoder().decode(ApplicationIndexSnapshot.self, from: data),
+        guard let snapshot = try? JSONFilePersistence.read(ApplicationIndexSnapshot.self, from: fileURL,
+                                                         decoder: JSONDecoder()),
               snapshot.schemaVersion == schemaVersion else {
             return []
         }
@@ -30,14 +31,9 @@ struct ApplicationIndexSnapshotCache {
         )
 
         do {
-            try fileManager.createDirectory(
-                at: fileURL.deletingLastPathComponent(),
-                withIntermediateDirectories: true
-            )
-            let data = try JSONEncoder().encode(snapshot)
-            try data.write(to: fileURL, options: .atomic)
+            try JSONFilePersistence.write(snapshot, to: fileURL, fileManager: fileManager, encoder: JSONEncoder())
         } catch {
-            NSLog("Bucky could not save app index snapshot: %@", error.localizedDescription)
+            NSLog("Bucky could not save app index snapshot (error code %ld)", (error as NSError).code)
         }
     }
 }

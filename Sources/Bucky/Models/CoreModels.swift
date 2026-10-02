@@ -28,6 +28,9 @@ struct LaunchItem: Hashable {
     let launchTarget: LaunchTarget
     let category: LaunchItemCategory
     let searchText: String
+    let normalizedTitle: String
+    let titleWords: [Substring]
+    let titleLengthPenalty: Int
 
     init(
         title: String,
@@ -43,6 +46,9 @@ struct LaunchItem: Hashable {
         self.launchTarget = launchTarget ?? .application(url)
         self.category = category
         self.searchText = searchText
+        normalizedTitle = normalized(title)
+        titleWords = normalizedTitle.split(separator: " ")
+        titleLengthPenalty = min(title.count, 120)
     }
 }
 struct ToolItem: Hashable {
@@ -126,9 +132,9 @@ struct LauncherMode: RawRepresentable, CaseIterable, Hashable {
     static let calculator = LauncherMode(stoneID: .calculator)
     static let dictionary = LauncherMode(stoneID: .dictionary)
     static let files = LauncherMode(stoneID: .files)
-    static let allCases: [LauncherMode] = [.applications, .calculator, .dictionary, .files]
+    static var allCases: [LauncherMode] { StoneCatalog.orderedDefinitions.map(LauncherMode.init(definition:)) }
 
-    static let ordered = allCases
+    static var ordered: [LauncherMode] { allCases }
 
     var rawValue: Int {
         stoneDefinition.shortcutNumber

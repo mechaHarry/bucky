@@ -2,6 +2,30 @@ import XCTest
 @testable import Bucky
 
 final class ApplicationIndexSourceStreamTests: XCTestCase {
+    func testIncludedAppsAddParentCoverageAndDeduplicateParents() {
+        let urls = ApplicationIndexWatchPolicy.watchURLs(
+            applicationRoots: [],
+            includedPaths: ["/tmp/Examples/First.app", "/tmp/Examples/Second.app"],
+            appSupportDirectory: URL(fileURLWithPath: "/tmp/Config"),
+            systemSettingsResourcesDirectory: URL(fileURLWithPath: "/tmp/Resources"),
+            systemSettingsExtensionRoots: [])
+        XCTAssertEqual(urls.map(\.path), ["/tmp/Resources", "/tmp/Config", "/tmp/Examples"])
+        XCTAssertTrue(ApplicationIndexWatchPolicy.shouldTriggerChange(
+            eventPath: "/tmp/Examples/First.app/Contents/Info.plist", watchURLs: urls))
+    }
+
+    func testMissingRootsUseNearestExistingAncestorWithoutCreatingDirectories() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("SourceAudit-\(UUID())")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let missing = directory.appendingPathComponent("missing/nested")
+        XCTAssertEqual(ApplicationIndexWatchPolicy.existingWatchURLs(for: [missing]).map(\.path), [directory.path])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: missing.path))
+        XCTAssertTrue(ApplicationIndexWatchPolicy.shouldTriggerChange(eventPath: directory.path, watchURLs: [missing]))
+        let unrelated = directory.appendingPathComponent("unrelated").path
+        XCTAssertFalse(ApplicationIndexWatchPolicy.shouldTriggerChange(eventPath: unrelated, watchURLs: [missing]))
+    }
+
     func testWatchPolicyIncludesApplicationSettingsAndConfigurationSources() {
         let appRoot = URL(fileURLWithPath: "/tmp/Applications", isDirectory: true)
         let coreServicesRoot = URL(fileURLWithPath: "/tmp/CoreServices", isDirectory: true)

@@ -2,6 +2,21 @@ import XCTest
 @testable import Bucky
 
 final class ApplicationRowStoreTests: XCTestCase {
+    func testVisibilityChangesInvalidateCachedSearchResultsOnlyWhenChanged() {
+        var store = ApplicationRowStore()
+        let item = launchItem(title: "Example", path: "/Applications/Example.app")
+        store.replaceAll([item])
+        let originalGeneration = store.generation
+        store.rebuildVisibleIDs { _ in true }
+        XCTAssertEqual(store.generation, originalGeneration)
+        store.rebuildVisibleIDs { _ in false }
+        XCTAssertEqual(store.generation, originalGeneration + 1)
+        store.rebuildVisibleIDs { _ in false }
+        XCTAssertEqual(store.generation, originalGeneration + 1)
+        store.rebuildVisibleIDs { _ in true }
+        XCTAssertEqual(store.generation, originalGeneration + 2)
+    }
+
     func testStoresRowsByStableIDAndPublishesIDLists() {
         var store = ApplicationRowStore()
         let first = launchItem(title: "Finder", path: "/System/Library/CoreServices/Finder.app")

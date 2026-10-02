@@ -23,7 +23,7 @@ enum ApplicationSearchEngine {
             return RankedApplicationMatch(
                 sourceIndex: index,
                 title: item.title,
-                score: score(title: item.title, tokens: queryTokens)
+                score: score(item: item, tokens: queryTokens)
             )
         }
         .sorted(by: ranksBefore)
@@ -50,7 +50,8 @@ enum ApplicationSearchEngine {
             return RankedApplicationMatch(
                 sourceIndex: index,
                 title: item.title,
-                score: score(title: item.title, tokens: queryTokens)
+                score: score(item: item, tokens: queryTokens),
+                titleOrder: rowStore.titleOrder(for: ids[index])
             )
         }
         .sorted(by: ranksBefore)
@@ -62,6 +63,9 @@ enum ApplicationSearchEngine {
             return left.score > right.score
         }
 
+        if let leftOrder = left.titleOrder, let rightOrder = right.titleOrder {
+            return leftOrder == rightOrder ? left.sourceIndex < right.sourceIndex : leftOrder < rightOrder
+        }
         let titleOrder = left.title.localizedStandardCompare(right.title)
         if titleOrder != .orderedSame {
             return titleOrder == .orderedAscending
@@ -70,9 +74,8 @@ enum ApplicationSearchEngine {
         return left.sourceIndex < right.sourceIndex
     }
 
-    private static func score(title originalTitle: String, tokens: [String]) -> Int {
-        let title = normalized(originalTitle)
-        var titleWords: [String.SubSequence]?
+    private static func score(item: LaunchItem, tokens: [String]) -> Int {
+        let title = item.normalizedTitle
         var score = 0
 
         for token in tokens {
@@ -80,7 +83,7 @@ enum ApplicationSearchEngine {
                 score += 1200
             } else if title.hasPrefix(token) {
                 score += 1000
-            } else if words(in: title, cachedWords: &titleWords).contains(where: { $0.hasPrefix(token) }) {
+            } else if item.titleWords.contains(where: { $0.hasPrefix(token) }) {
                 score += 850
             } else if title.contains(token) {
                 score += 650
@@ -89,26 +92,15 @@ enum ApplicationSearchEngine {
             }
         }
 
-        score -= min(originalTitle.count, 120)
+        score -= item.titleLengthPenalty
         return score
     }
 
-    private static func words(
-        in title: String,
-        cachedWords: inout [String.SubSequence]?
-    ) -> [String.SubSequence] {
-        if let cachedWords {
-            return cachedWords
-        }
-
-        let words = title.split(separator: " ")
-        cachedWords = words
-        return words
-    }
 }
 
 private struct RankedApplicationMatch {
     let sourceIndex: Int
     let title: String
     let score: Int
+    var titleOrder: Int? = nil
 }

@@ -9,6 +9,7 @@ struct ApplicationRowStore {
     private(set) var visibleIDs: [AppRowID] = []
     private(set) var generation = 0
     private var itemsByID: [AppRowID: LaunchItem] = [:]
+    private var titleOrderByID: [AppRowID: Int] = [:]
     private var idByKey: [String: AppRowID] = [:]
     private var nextID = 0
 
@@ -40,21 +41,39 @@ struct ApplicationRowStore {
         allIDs = nextAllIDs
         visibleIDs = nextAllIDs
         itemsByID = nextItemsByID
+        // Locale-aware natural collation is index work, not per-query sort work.
+        let titleOrderedIDs = nextAllIDs.sorted {
+            nextItemsByID[$0]!.title.localizedStandardCompare(nextItemsByID[$1]!.title) == .orderedAscending
+        }
+        var rank = 0
+        var previousTitle: String?
+        titleOrderByID.removeAll(keepingCapacity: true)
+        for id in titleOrderedIDs {
+            let title = nextItemsByID[id]!.title
+            if let previousTitle, previousTitle.localizedStandardCompare(title) != .orderedSame { rank += 1 }
+            titleOrderByID[id] = rank
+            previousTitle = title
+        }
         idByKey = nextIDByKey
         generation += 1
         return true
     }
 
     mutating func rebuildVisibleIDs(isVisible: (LaunchItem) -> Bool) {
-        visibleIDs = allIDs.filter { id in
+        let nextVisibleIDs = allIDs.filter { id in
             guard let item = itemsByID[id] else { return false }
             return isVisible(item)
         }
+        guard nextVisibleIDs != visibleIDs else { return }
+        visibleIDs = nextVisibleIDs
+        generation += 1
     }
 
     func item(for id: AppRowID) -> LaunchItem? {
         itemsByID[id]
     }
+
+    func titleOrder(for id: AppRowID) -> Int? { titleOrderByID[id] }
 
     func items(for ids: [AppRowID]) -> [LaunchItem] {
         ids.compactMap { itemsByID[$0] }

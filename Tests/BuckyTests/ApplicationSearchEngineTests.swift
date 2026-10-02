@@ -3,6 +3,32 @@ import XCTest
 
 @available(macOS 26.0, *)
 final class ApplicationSearchEngineTests: XCTestCase {
+    func testCachedCollationMatchesLocaleRankingForReorderedAndFilteredIDs() {
+        let items = ["Tool 10", "Tool 2", "Tóol 2", "TOOL 2", "Tool 1", "tool 10"].enumerated().map {
+            launchItem(title: $0.element, subtitle: "/Applications/Sample\($0.offset).app")
+        }
+        var rowStore = ApplicationRowStore()
+        rowStore.replaceAll(items)
+        for ids in [rowStore.allIDs, Array(rowStore.allIDs.reversed()), Array(rowStore.allIDs.dropFirst(2))] {
+            for query in ["", "tool", "t", "tool 2"] {
+                let filtered = ApplicationSearchEngine.filterIDs(ids, rowStore: rowStore, normalizedQuery: query)
+                XCTAssertEqual(rowStore.items(for: filtered), ApplicationSearchEngine.filter(rowStore.items(for: ids), normalizedQuery: query))
+            }
+        }
+    }
+
+    func testCachedCollationRefreshesWhenAnExistingRowTitleChanges() {
+        var rowStore = ApplicationRowStore()
+        let first = launchItem(title: "Tool 9", subtitle: "/Applications/First.app")
+        let second = launchItem(title: "Tool 2", subtitle: "/Applications/Second.app")
+        rowStore.replaceAll([first, second])
+        let originalIDs = rowStore.allIDs
+        rowStore.replaceAll([launchItem(title: "Tool 1", subtitle: first.subtitle), second])
+        XCTAssertEqual(rowStore.allIDs, originalIDs)
+        let filtered = ApplicationSearchEngine.filterIDs(rowStore.allIDs, rowStore: rowStore, normalizedQuery: "tool")
+        XCTAssertEqual(rowStore.items(for: filtered).map(\.title), ["Tool 1", "Tool 2"])
+    }
+
     func testEmptyQueryReturnsInMemoryItemsInSourceOrder() {
         let items = [
             launchItem(title: "Calendar"),

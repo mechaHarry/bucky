@@ -59,6 +59,25 @@ final class LauncherFilterPerformanceRunner {
             updateBaseline: updateBaseline
         )
         print(report)
+        var rowStore = ApplicationRowStore()
+        rowStore.replaceAll(workload.items)
+        for query in workload.queries {
+            let ids = LiquidGlassLauncherModel.filterIDs(rowStore.visibleIDs, rowStore: rowStore, normalizedQuery: query)
+            XCTAssertEqual(rowStore.items(for: ids), LiquidGlassLauncherModel.filter(workload.items, normalizedQuery: query))
+        }
+        let liveSamples = (0..<measuredSampleCount).map { _ -> Double in
+            var checksum = 0
+            let start = DispatchTime.now().uptimeNanoseconds
+            for _ in 0..<queryLoopCount {
+                for query in workload.queries {
+                    checksum &+= LiquidGlassLauncherModel.filterIDs(rowStore.visibleIDs, rowStore: rowStore, normalizedQuery: query).count
+                }
+            }
+            precondition(checksum >= 0)
+            return Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000
+        }
+        print(String(format: "Bucky performance live-ID-filter median %.3f ms (same workload; legacy baseline unchanged)", median(liveSamples)))
+        print("Bucky benchmark OS: \(ProcessInfo.processInfo.operatingSystemVersionString); processors: \(ProcessInfo.processInfo.processorCount)")
 
         return LauncherFilterPerformanceResult(
             samplesMilliseconds: samples,

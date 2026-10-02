@@ -10,6 +10,7 @@ struct ApplicationIndexWatchPolicy {
 
     static func watchURLs(
         applicationRoots: [URL] = ApplicationIndexer.defaultRoots,
+        includedPaths: Set<String> = [],
         appSupportDirectory: URL = BuckyPaths.appSupportDirectory,
         systemSettingsResourcesDirectory: URL = URL(
             fileURLWithPath: "/System/Applications/System Settings.app/Contents/Resources",
@@ -20,13 +21,30 @@ struct ApplicationIndexWatchPolicy {
         var seenPaths = Set<String>()
         var urls: [URL] = []
 
-        for url in applicationRoots + [systemSettingsResourcesDirectory] + systemSettingsExtensionRoots + [appSupportDirectory] {
+        let includedParents = includedPaths.sorted().map {
+            URL(fileURLWithPath: $0).standardizedFileURL.deletingLastPathComponent()
+        }
+        for url in applicationRoots + [systemSettingsResourcesDirectory] + systemSettingsExtensionRoots + [appSupportDirectory] + includedParents {
             let path = url.standardizedFileURL.path
             guard seenPaths.insert(path).inserted else { continue }
             urls.append(url)
         }
 
         return urls
+    }
+
+    static func existingWatchURLs(for urls: [URL], fileManager: FileManager = .default) -> [URL] {
+        var seen = Set<String>()
+        return urls.compactMap { url in
+            var ancestor = url.standardizedFileURL
+            var isDirectory: ObjCBool = false
+            while !fileManager.fileExists(atPath: ancestor.path, isDirectory: &isDirectory) || !isDirectory.boolValue {
+                let parent = ancestor.deletingLastPathComponent()
+                guard parent.path != ancestor.path else { return nil }
+                ancestor = parent
+            }
+            return seen.insert(ancestor.path).inserted ? ancestor : nil
+        }
     }
 
     static func shouldTriggerChange(
@@ -46,6 +64,7 @@ struct ApplicationIndexWatchPolicy {
             let watchedPath = watchedURL.standardizedFileURL.path
             guard watchedPath != appSupportPath else { return false }
             return eventPath == watchedPath || eventPath.hasPrefix(watchedPath + "/")
+                || watchedPath.hasPrefix(eventPath == "/" ? "/" : eventPath + "/")
         }
     }
 }
@@ -56,13 +75,19 @@ struct ApplicationIndexSourceStreamPolicy {
 }
 
 final class ApplicationIndexSourceStream {
-    private let urls: [URL]
+    private let baseURLs: [URL]
+    private var urls: [URL]
+    private var includedPaths: Set<String> = []
     private let debounceInterval: TimeInterval
     private let fileManager: FileManager
     private let queue: DispatchQueue
+    private let queueKey = DispatchSpecificKey<Bool>()
     private let onChange: @MainActor () -> Void
     private var stream: FSEventStreamRef?
     private var pendingChange: DispatchWorkItem?
+    private var isStarted = false
+    private var actualWatchPaths: [String] = []
+    private var changeGeneration = 0
 
     init(
         urls: [URL] = ApplicationIndexWatchPolicy.watchURLs(),
@@ -75,10 +100,12 @@ final class ApplicationIndexSourceStream {
         onChange: @escaping @MainActor () -> Void
     ) {
         self.urls = urls
+        baseURLs = urls
         self.debounceInterval = debounceInterval
         self.fileManager = fileManager
         self.queue = queue
         self.onChange = onChange
+        queue.setSpecific(key: queueKey, value: true)
     }
 
     deinit {
@@ -86,20 +113,51 @@ final class ApplicationIndexSourceStream {
     }
 
     func start() {
-        stop()
+        queue.async { [weak self] in
+            guard let self else { return }
+            self.isStarted = true
+            self.restartOnQueue()
+        }
+    }
 
-        let paths = existingWatchPaths()
+    /// Controller calls this after reindexing and inclusion changes.
+    func updateIncludedPaths(_ paths: Set<String>) {
+        queue.async { [weak self] in
+            guard let self, paths != self.includedPaths else { return }
+            self.includedPaths = paths
+            let parents = paths.sorted().map {
+                URL(fileURLWithPath: $0).standardizedFileURL.deletingLastPathComponent()
+            }
+            var seen = Set<String>()
+            self.urls = (self.baseURLs + parents).filter { seen.insert($0.standardizedFileURL.path).inserted }
+            if self.isStarted { self.restartOnQueue() }
+        }
+    }
+
+    private func restartOnQueue() {
+        stopOnQueue()
+        let paths = ApplicationIndexWatchPolicy.existingWatchURLs(for: urls, fileManager: fileManager).map(\.path)
+        actualWatchPaths = paths
         guard !paths.isEmpty else { return }
 
+        let callbackContext = ApplicationIndexCallbackContext(owner: self)
         var context = FSEventStreamContext(
             version: 0,
-            info: Unmanaged.passUnretained(self).toOpaque(),
-            retain: nil,
-            release: nil,
+            info: Unmanaged.passUnretained(callbackContext).toOpaque(),
+            retain: { info in
+                guard let info else { return nil }
+                _ = Unmanaged<ApplicationIndexCallbackContext>.fromOpaque(info).retain()
+                return info
+            },
+            release: { info in
+                guard let info else { return }
+                Unmanaged<ApplicationIndexCallbackContext>.fromOpaque(info).release()
+            },
             copyDescription: nil
         )
 
-        guard let stream = FSEventStreamCreate(
+        guard let stream = withExtendedLifetime(callbackContext, {
+            FSEventStreamCreate(
             kCFAllocatorDefault,
             applicationIndexSourceStreamCallback,
             &context,
@@ -107,16 +165,25 @@ final class ApplicationIndexSourceStream {
             FSEventStreamEventId(kFSEventStreamEventIdSinceNow),
             debounceInterval,
             UInt32(kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagUseCFTypes)
-        ) else {
+            )
+        }) else {
             return
         }
 
         self.stream = stream
         FSEventStreamSetDispatchQueue(stream, queue)
-        FSEventStreamStart(stream)
+        if !FSEventStreamStart(stream) { stopOnQueue() }
     }
 
     func stop() {
+        onQueue {
+            isStarted = false
+            stopOnQueue()
+        }
+    }
+
+    private func stopOnQueue() {
+        changeGeneration += 1
         pendingChange?.cancel()
         pendingChange = nil
 
@@ -127,8 +194,12 @@ final class ApplicationIndexSourceStream {
         self.stream = nil
     }
 
-    fileprivate func handleEvent(paths: [String]) {
-        guard paths.isEmpty || paths.contains(where: {
+    fileprivate func handleEvent(paths: [String], mustRescan: Bool = false) {
+        guard isStarted else { return }
+        let nextPaths = ApplicationIndexWatchPolicy.existingWatchURLs(for: urls, fileManager: fileManager).map(\.path)
+        let coverageChanged = nextPaths != actualWatchPaths
+        if coverageChanged { restartOnQueue() }
+        guard mustRescan || coverageChanged || paths.isEmpty || paths.contains(where: {
             ApplicationIndexWatchPolicy.shouldTriggerChange(eventPath: $0, watchURLs: urls)
         }) else {
             return
@@ -139,10 +210,14 @@ final class ApplicationIndexSourceStream {
 
     private func scheduleChange() {
         pendingChange?.cancel()
+        changeGeneration += 1
+        let generation = changeGeneration
 
         let workItem = DispatchWorkItem { [weak self] in
             guard let self else { return }
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
+                guard let self,
+                      self.onQueue({ self.isStarted && self.changeGeneration == generation }) else { return }
                 self.onChange()
             }
         }
@@ -150,21 +225,25 @@ final class ApplicationIndexSourceStream {
         queue.asyncAfter(deadline: .now() + debounceInterval, execute: workItem)
     }
 
-    private func existingWatchPaths() -> [String] {
-        urls.compactMap { url in
-            if url == BuckyPaths.appSupportDirectory {
-                try? fileManager.createDirectory(at: url, withIntermediateDirectories: true)
-            }
-            return fileManager.fileExists(atPath: url.path) ? url.path : nil
-        }
+    private func onQueue<Value>(_ operation: () -> Value) -> Value {
+        if DispatchQueue.getSpecific(key: queueKey) == true { return operation() }
+        return queue.sync(execute: operation)
     }
 }
 
-private let applicationIndexSourceStreamCallback: FSEventStreamCallback = { _, info, numberOfEvents, eventPaths, _, _ in
+private final class ApplicationIndexCallbackContext {
+    weak var owner: ApplicationIndexSourceStream?
+    init(owner: ApplicationIndexSourceStream) { self.owner = owner }
+}
+
+private let applicationIndexSourceStreamCallback: FSEventStreamCallback = { _, info, numberOfEvents, eventPaths, flags, _ in
     guard let info else { return }
-    let stream = Unmanaged<ApplicationIndexSourceStream>.fromOpaque(info).takeUnretainedValue()
+    guard let stream = Unmanaged<ApplicationIndexCallbackContext>.fromOpaque(info).takeUnretainedValue().owner else { return }
 
     let paths = unsafeBitCast(eventPaths, to: NSArray.self)
         .compactMap { $0 as? String }
-    stream.handleEvent(paths: Array(paths.prefix(numberOfEvents)))
+    let rescanFlags = UInt32(kFSEventStreamEventFlagMustScanSubDirs | kFSEventStreamEventFlagUserDropped
+                            | kFSEventStreamEventFlagKernelDropped | kFSEventStreamEventFlagRootChanged)
+    let mustRescan = (0..<numberOfEvents).contains { flags[$0] & rescanFlags != 0 }
+    stream.handleEvent(paths: Array(paths.prefix(numberOfEvents)), mustRescan: mustRescan)
 }
