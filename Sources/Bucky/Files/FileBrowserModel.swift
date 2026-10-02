@@ -24,12 +24,14 @@ final class FileBrowserModel: ObservableObject {
     @Published private(set) var renameState: FileBrowserRenameState?
     @Published private(set) var statusMessage: String?
     @Published private(set) var isLoadingEntries = false
+    @Published private(set) var isPerformingOperation = false
 
     private let fileSystem: FileSystemClientProtocol
     private let store: FileBrowserPersisting
     private let directoryStream: FileBrowserDirectoryStreaming
     private let directoryObserver: FileBrowserDirectoryObserving?
     private let fileServices: FileBrowserNativeServicing
+    private let operationWorker: FileBrowserWorking
     private var selectionAnchor: Int?
     private var recentTraversalChain: [URL]
     private var nextWobbleID = 0
@@ -37,6 +39,7 @@ final class FileBrowserModel: ObservableObject {
     private var nextSelectionScrollID = 0
     private var directoryLoadGeneration = 0
     private var rememberedSelectionByDirectory: [URL: URL] = [:]
+    private var rememberedDirectoryOrder: [URL] = []
     private var directoryBackStack: [URL] = []
     private var directoryForwardStack: [URL] = []
     private var pendingSpaceInteractionURL: URL?
@@ -44,6 +47,8 @@ final class FileBrowserModel: ObservableObject {
     private var pendingSnapshotRequests: Set<DirectorySnapshotCacheKey> = []
     private var directoryObservation: FileBrowserDirectoryObservation?
     private var observedDirectory: URL?
+    private var isActive = true
+    private var observationRefreshTask: Task<Void, Never>?
 
     var selectedEntry: FileBrowserEntry? {
         guard selectedIndex >= 0, selectedIndex < entries.count else { return nil }
@@ -97,6 +102,7 @@ final class FileBrowserModel: ObservableObject {
         directoryStream: FileBrowserDirectoryStreaming? = nil,
         directoryObserver: FileBrowserDirectoryObserving? = FileBrowserDirectoryWatcher(),
         fileServices: FileBrowserNativeServicing = MacFileServices(),
+        operationWorker: FileBrowserWorking? = nil,
         startDirectory: URL? = nil
     ) {
         self.fileSystem = fileSystem
@@ -104,23 +110,68 @@ final class FileBrowserModel: ObservableObject {
         self.directoryStream = directoryStream ?? FileBrowserDirectoryStream(fileSystem: fileSystem, accessStore: store)
         self.directoryObserver = directoryObserver
         self.fileServices = fileServices
+        self.operationWorker = operationWorker ?? FileBrowserWorker()
         self.sort = store.state.sort
         self.foldersFirst = store.state.foldersFirst
         self.pinnedDirectories = store.state.pinnedDirectories
-        self.recentTraversalChain = store.state.traversalChain
-        self.rememberedSelectionByDirectory = store.state.rememberedSelections.reduce(into: [:]) { selections, item in
+        self.recentTraversalChain = Array(store.state.traversalChain.prefix(FileBrowserRetentionPolicy.historyLimit))
+        self.rememberedDirectoryOrder = store.state.rememberedSelections.suffix(FileBrowserRetentionPolicy.selectionLimit).map { $0.directory.standardizedFileURL }
+        self.rememberedSelectionByDirectory = store.state.rememberedSelections.suffix(FileBrowserRetentionPolicy.selectionLimit).reduce(into: [:]) { selections, item in
             selections[item.directory.standardizedFileURL] = item.selection.standardizedFileURL
         }
         self.currentDirectory = store.state.lastDirectory ?? startDirectory ?? fileSystem.homeDirectory()
+        store.onPersistenceError = { [weak self] message in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.pinnedDirectories = self.store.state.pinnedDirectories
+                self.clampFocusedPinnedIndex()
+                self.statusMessage = message
+            }
+        }
         observeCurrentDirectory()
         reloadEntries(fallbackToHomeOnFailure: true)
     }
 
     deinit {
         directoryObservation?.cancel()
+        observationRefreshTask?.cancel()
+    }
+
+    func flushPersistence(completion: @escaping () -> Void) {
+        guard isPerformingOperation else {
+            store.flush(completion: completion)
+            return
+        }
+        // Retain the model until an approved operation completes, without blocking the UI actor.
+        Task { @MainActor in
+            while isPerformingOperation {
+                try? await Task.sleep(nanoseconds: 20_000_000)
+            }
+            store.flush(completion: completion)
+        }
+    }
+
+    /// Main integrates this with launcher visibility, mode, settings, and help presentation.
+    func setActive(_ active: Bool) {
+        guard isActive != active else { return }
+        isActive = active
+        if active {
+            observeCurrentDirectory()
+            reloadEntries(selecting: rememberedSelection(in: currentDirectory))
+        } else {
+            directoryObservation?.cancel()
+            directoryObservation = nil
+            observedDirectory = nil
+            observationRefreshTask?.cancel()
+            observationRefreshTask = nil
+            directoryStream.cancelPendingLoads()
+            directoryLoadGeneration += 1
+            isLoadingEntries = false
+        }
     }
 
     func handle(_ command: LauncherCommand) {
+        guard !isPerformingOperation else { return }
         switch command {
         case .up:
             if focusState == .pinnedItems {
@@ -221,6 +272,7 @@ final class FileBrowserModel: ObservableObject {
     }
 
     func startTransfer(_ kind: FileBrowserTransferKind) {
+        guard !isPerformingOperation else { return }
         let urls = activeSelectionURLs
         guard !urls.isEmpty else { return }
         pendingActionIntent = nil
@@ -233,6 +285,7 @@ final class FileBrowserModel: ObservableObject {
     }
 
     func requestTrashConfirmation() {
+        guard !isPerformingOperation else { return }
         let urls = activeSelectionURLs
         guard !urls.isEmpty else { return }
         pendingActionIntent = nil
@@ -245,9 +298,14 @@ final class FileBrowserModel: ObservableObject {
     }
 
     func togglePin(_ url: URL) {
+        guard !isPerformingOperation else { return }
         if pinnedDirectories.contains(url) {
             pinnedDirectories.removeAll { $0 == url }
         } else {
+            guard pinnedDirectories.count < FileBrowserRetentionPolicy.pinLimit else {
+                statusMessage = "Files supports up to \(FileBrowserRetentionPolicy.pinLimit) pins."
+                return
+            }
             pinnedDirectories.append(url)
         }
         clampFocusedPinnedIndex()
@@ -255,6 +313,7 @@ final class FileBrowserModel: ObservableObject {
     }
 
     func setSort(_ nextSort: FileBrowserSort) {
+        guard !isPerformingOperation else { return }
         guard sort != nextSort else { return }
         let preferredSelection = selectedEntry?.url ?? rememberedSelection(in: currentDirectory)
         sort = nextSort
@@ -262,6 +321,7 @@ final class FileBrowserModel: ObservableObject {
     }
 
     func setFoldersFirst(_ isEnabled: Bool) {
+        guard !isPerformingOperation else { return }
         guard foldersFirst != isEnabled else { return }
         let preferredSelection = selectedEntry?.url ?? rememberedSelection(in: currentDirectory)
         foldersFirst = isEnabled
@@ -275,6 +335,7 @@ final class FileBrowserModel: ObservableObject {
     }
 
     func openPinnedDirectory(_ url: URL) {
+        guard !isPerformingOperation else { return }
         openPinnedURL(url)
     }
 
@@ -286,12 +347,13 @@ final class FileBrowserModel: ObservableObject {
             .first { $0.url.standardizedFileURL == standardizedURL }
     }
 
+    @discardableResult
     func loadPreviewThumbnail(
         for url: URL,
         size: CGSize,
         scale: CGFloat,
         completion: @escaping (NSImage?) -> Void
-    ) {
+    ) -> FileBrowserCancellation {
         fileServices.loadPreviewThumbnail(for: url, size: size, scale: scale, completion: completion)
     }
 
@@ -300,6 +362,7 @@ final class FileBrowserModel: ObservableObject {
     }
 
     func performFocusedAction() {
+        guard !isPerformingOperation else { return }
         guard focusState == .previewActions else { return }
         let actions = focusableActions
         guard !actions.isEmpty else { return }
@@ -372,17 +435,19 @@ final class FileBrowserModel: ObservableObject {
 
     private func confirmRename() {
         guard let renameState else { return }
-        performServiceAction(recoveringTo: .renaming) {
+        let services = fileServices
+        performBlockingAction(recoveringTo: .renaming, operation: {
             switch renameState.mode {
             case .single:
-                _ = try fileServices.rename(renameState.urls[0], to: renameState.proposedName)
+                _ = try services.rename(renameState.urls[0], to: renameState.proposedName)
             case .batch:
-                _ = try fileServices.batchRename(renameState.urls, baseName: renameState.proposedName)
+                _ = try services.batchRename(renameState.urls, baseName: renameState.proposedName)
             }
-            self.renameState = nil
-            selectedURLs = []
-            focusState = .browse
-            reloadEntries()
+        }) { model in
+            model.renameState = nil
+            model.selectedURLs = []
+            model.focusState = .browse
+            model.reloadEntries()
         }
     }
 
@@ -401,19 +466,23 @@ final class FileBrowserModel: ObservableObject {
             if step < 2 {
                 focusState = .confirming(.trash(urls, step: 2))
             } else {
-                performServiceAction(recoveringTo: .confirming(confirmation)) {
-                    try fileServices.trash(urls)
-                    selectedURLs = []
-                    focusState = .browse
-                    reloadEntries()
+                let services = fileServices
+                performBlockingAction(recoveringTo: .confirming(confirmation), operation: {
+                    try services.trash(urls)
+                }) { model in
+                    model.selectedURLs = []
+                    model.focusState = .browse
+                    model.reloadEntries()
                 }
             }
         case let .unmount(url):
-            performServiceAction(recoveringTo: .confirming(confirmation)) {
-                try fileServices.unmount(url)
-                selectedURLs = []
-                focusState = .browse
-                reloadEntries()
+            let services = fileServices
+            performBlockingAction(recoveringTo: .confirming(confirmation), operation: {
+                try services.unmount(url)
+            }) { model in
+                model.selectedURLs = []
+                model.focusState = .browse
+                model.reloadEntries()
             }
         }
     }
@@ -425,25 +494,37 @@ final class FileBrowserModel: ObservableObject {
         checkingConflicts: Bool
     ) {
         let urls = urls(in: transfer)
+        let services = fileServices
         if checkingConflicts {
-            let conflicts = fileServices.conflictingDestinations(for: urls, in: destination)
-            if !conflicts.isEmpty {
-                focusedConflictResolution = .keepBoth
-                focusState = .confirming(.conflict(transfer, destination: destination, conflicts: conflicts))
-                return
+            guard !isPerformingOperation else { return }
+            isPerformingOperation = true
+            operationWorker.run({ services.conflictingDestinations(for: urls, in: destination) }) { [weak self] result in
+                guard let self else { return }
+                self.isPerformingOperation = false
+                switch result {
+                case let .success(conflicts) where !conflicts.isEmpty:
+                    self.focusedConflictResolution = .keepBoth
+                    self.focusState = .confirming(.conflict(transfer, destination: destination, conflicts: conflicts))
+                case .success:
+                    self.confirmTransfer(transfer, destination: destination, conflict: conflict, checkingConflicts: false)
+                case let .failure(error):
+                    self.statusMessage = error.localizedDescription
+                }
             }
+            return
         }
 
-        performServiceAction(recoveringTo: .confirming(.transfer(transfer, destination: destination))) {
+        performBlockingAction(recoveringTo: .confirming(.transfer(transfer, destination: destination)), operation: {
             switch transfer {
             case let .copy(urls):
-                try fileServices.copy(urls, to: destination, conflict: conflict)
+                try services.copy(urls, to: destination, conflict: conflict)
             case let .move(urls):
-                try fileServices.move(urls, to: destination, conflict: conflict)
+                try services.move(urls, to: destination, conflict: conflict)
             }
-            selectedURLs = []
-            focusState = .browse
-            reloadEntries()
+        }) { model in
+            model.selectedURLs = []
+            model.focusState = .browse
+            model.reloadEntries()
         }
     }
 
@@ -473,11 +554,31 @@ final class FileBrowserModel: ObservableObject {
         }
     }
 
+    private func performBlockingAction(
+        recoveringTo recovery: FileBrowserFocusState,
+        operation: @escaping () throws -> Void,
+        completion: @escaping (FileBrowserModel) -> Void
+    ) {
+        guard !isPerformingOperation else { return }
+        isPerformingOperation = true
+        operationWorker.run(operation) { [weak self] result in
+            guard let self else { return }
+            self.isPerformingOperation = false
+            switch result {
+            case .success: completion(self)
+            case let .failure(error):
+                self.statusMessage = error.localizedDescription
+                self.focusState = recovery
+            }
+        }
+    }
+
     private func reloadEntries(
         selecting preferredSelection: URL? = nil,
         fallbackToHomeOnFailure: Bool = false,
         statusAfterLoad: String? = nil
     ) {
+        guard isActive else { return }
         snapshotEntryCache.removeAll()
         pendingSnapshotRequests.removeAll()
         directoryLoadGeneration += 1
@@ -524,11 +625,10 @@ final class FileBrowserModel: ObservableObject {
     ) {
         isLoadingEntries = false
         entries = loadedEntries
-        store.rememberDirectoryAccess(currentDirectory)
         snapshotEntryCache[cacheKey(for: currentDirectory)] = entries
         selectEntry(matching: preferredSelection)
         rememberCurrentDirectorySelection()
-        statusMessage = status
+        statusMessage = status ?? store.persistenceError
         pruneStaleSelections()
         rebuildDirectorySnapshots(force: true)
         publishSelectionScrollEvent(anchor: .top)
@@ -602,6 +702,7 @@ final class FileBrowserModel: ObservableObject {
         let child = currentDirectory
         rememberCurrentDirectorySelection()
         recentTraversalChain.insert(currentDirectory, at: 0)
+        recentTraversalChain = Array(recentTraversalChain.prefix(FileBrowserRetentionPolicy.historyLimit))
         navigateToDirectory(
             URL(fileURLWithPath: parent.path),
             selecting: child,
@@ -804,6 +905,7 @@ final class FileBrowserModel: ObservableObject {
 
         if recordHistory {
             directoryBackStack.append(standardizedCurrent)
+            directoryBackStack = Array(directoryBackStack.suffix(FileBrowserRetentionPolicy.historyLimit))
             directoryForwardStack.removeAll()
         }
 
@@ -821,6 +923,7 @@ final class FileBrowserModel: ObservableObject {
         guard let previous = directoryBackStack.popLast() else { return }
         rememberCurrentDirectorySelection()
         directoryForwardStack.append(currentDirectory.standardizedFileURL)
+        directoryForwardStack = Array(directoryForwardStack.suffix(FileBrowserRetentionPolicy.historyLimit))
         currentDirectory = previous.standardizedFileURL
         selectedIndex = 0
         selectionAnchor = nil
@@ -833,6 +936,7 @@ final class FileBrowserModel: ObservableObject {
         guard let next = directoryForwardStack.popLast() else { return }
         rememberCurrentDirectorySelection()
         directoryBackStack.append(currentDirectory.standardizedFileURL)
+        directoryBackStack = Array(directoryBackStack.suffix(FileBrowserRetentionPolicy.historyLimit))
         currentDirectory = next.standardizedFileURL
         selectedIndex = 0
         selectionAnchor = nil
@@ -842,17 +946,30 @@ final class FileBrowserModel: ObservableObject {
     }
 
     private func observeCurrentDirectory() {
+        guard isActive else { return }
         let standardizedDirectory = currentDirectory.standardizedFileURL
         guard observedDirectory?.path != standardizedDirectory.path else { return }
 
         directoryObservation?.cancel()
         observedDirectory = standardizedDirectory
         directoryObservation = directoryObserver?.observe(directory: standardizedDirectory) { [weak self] in
-            self?.reloadObservedDirectory()
+            self?.scheduleObservedDirectoryRefresh()
+        }
+    }
+
+    private func scheduleObservedDirectoryRefresh() {
+        guard isActive else { return }
+        observationRefreshTask?.cancel()
+        observationRefreshTask = Task { [weak self] in
+            do { try await Task.sleep(nanoseconds: 150_000_000) }
+            catch { return }
+            guard let self, self.isActive else { return }
+            self.reloadObservedDirectory()
         }
     }
 
     private func reloadObservedDirectory() {
+        guard isActive, !isPerformingOperation else { return }
         guard observedDirectory?.path == currentDirectory.standardizedFileURL.path else { return }
         let preferredSelection = selectedEntry?.url ?? rememberedSelection(in: currentDirectory)
         reloadEntries(selecting: preferredSelection)
@@ -870,6 +987,12 @@ final class FileBrowserModel: ObservableObject {
     private func rememberCurrentDirectorySelection() {
         guard let url = selectedEntry?.url else { return }
         rememberedSelectionByDirectory[currentDirectory.standardizedFileURL] = url.standardizedFileURL
+        rememberedDirectoryOrder.removeAll { $0 == currentDirectory.standardizedFileURL }
+        rememberedDirectoryOrder.append(currentDirectory.standardizedFileURL)
+        if rememberedDirectoryOrder.count > FileBrowserRetentionPolicy.selectionLimit {
+            let removed = rememberedDirectoryOrder.removeFirst()
+            rememberedSelectionByDirectory.removeValue(forKey: removed)
+        }
     }
 
     private func rememberedSelection(in directory: URL) -> URL? {
@@ -956,13 +1079,14 @@ final class FileBrowserModel: ObservableObject {
             sort: sort,
             foldersFirst: foldersFirst,
             traversalChain: recentTraversalChain,
-            rememberedSelections: rememberedSelectionByDirectory
-                .map { FileBrowserRememberedSelection(directory: $0.key, selection: $0.value) }
-                .sorted { lhs, rhs in
-                    lhs.directory.path.localizedStandardCompare(rhs.directory.path) == .orderedAscending
+            rememberedSelections: rememberedDirectoryOrder
+                .compactMap { directory in
+                    rememberedSelectionByDirectory[directory].map {
+                        FileBrowserRememberedSelection(directory: directory, selection: $0)
+                    }
                 },
             directoryBookmarks: store.state.directoryBookmarks
-        ))
+        ), remembering: currentDirectory)
     }
 }
 

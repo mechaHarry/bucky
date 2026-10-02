@@ -25,6 +25,8 @@ final class NativeFileDragSourceNSView: NSView, NSDraggingSource {
     var urlsProvider: (() -> [URL])?
     private var mouseDownEvent: NSEvent?
     private var didBeginDrag = false
+    private static let genericDragIcon = NSImage(systemSymbolName: "doc", accessibilityDescription: "File")
+        ?? NSImage(size: NSSize(width: 32, height: 32))
 
     override var mouseDownCanMoveWindow: Bool {
         FileBrowserDragPolicy.mouseDownCanMoveWindow
@@ -58,7 +60,7 @@ final class NativeFileDragSourceNSView: NSView, NSDraggingSource {
         )
         let pointerLocation = convert(event.locationInWindow, from: nil)
         let draggingItems = urls.enumerated().map { index, draggedURL in
-            let icon = NSWorkspace.shared.icon(forFile: draggedURL.path)
+            let icon = Self.genericDragIcon
             let draggingItem = NSDraggingItem(
                 pasteboardWriter: FileBrowserDragPolicy.draggedURL(for: draggedURL) as NSURL
             )

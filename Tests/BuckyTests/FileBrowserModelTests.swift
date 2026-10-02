@@ -1334,7 +1334,7 @@ final class FileBrowserModelTests: XCTestCase {
         XCTAssertEqual(model.selectedEntry?.url, beta)
     }
 
-    func testCurrentDirectoryObservationReloadsOpenDirectoryAndKeepsSelection() {
+    func testCurrentDirectoryObservationReloadsOpenDirectoryAndKeepsSelection() async throws {
         let home = URL(fileURLWithPath: "/Users/test")
         let observer = ManualDirectoryObserver()
         let stream = ManualDirectoryStream()
@@ -1354,6 +1354,7 @@ final class FileBrowserModelTests: XCTestCase {
         XCTAssertEqual(observer.observedDirectories, [home.standardizedFileURL])
 
         observer.triggerLatestChange()
+        try await Task.sleep(nanoseconds: 250_000_000)
         XCTAssertEqual(stream.requests.count, 2)
         stream.completeRequest(at: 1, with: .success([fileEntry(alpha), fileEntry(beta), fileEntry(gamma)]))
 
@@ -1460,7 +1461,8 @@ final class FileBrowserModelTests: XCTestCase {
             fileSystem: client,
             store: store,
             directoryStream: ImmediateDirectoryStream(fileSystem: client),
-            fileServices: fileServices
+            fileServices: fileServices,
+            operationWorker: ImmediateFileBrowserWorker()
         )
     }
 
@@ -1476,7 +1478,8 @@ final class FileBrowserModelTests: XCTestCase {
             fileSystem: client,
             store: store,
             directoryStream: ImmediateDirectoryStream(fileSystem: client),
-            fileServices: fileServices
+            fileServices: fileServices,
+            operationWorker: ImmediateFileBrowserWorker()
         )
     }
 

@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import SwiftUI
 import XCTest
 @testable import Bucky
@@ -94,7 +95,20 @@ final class FileBrowserPreviewPolicyTests: XCTestCase {
             directoryStream: ImmediateDirectoryStream(fileSystem: fileSystem),
             fileServices: RecordingFileBrowserServices()
         )
-        let host = NSHostingView(rootView: FileBrowserView(model: model))
+        var actionRowFrames: [Int: CGRect] = [:]
+        let host = NSHostingView(
+            rootView: FileBrowserView(model: model)
+                .overlayPreferenceValue(FileBrowserActionRowBoundsKey.self) { anchors in
+                    GeometryReader { proxy in
+                        Color.clear.preference(
+                            key: TestActionRowFramesKey.self,
+                            value: anchors.mapValues { proxy[$0] }
+                        )
+                    }
+                    .allowsHitTesting(false)
+                }
+                .onPreferenceChange(TestActionRowFramesKey.self) { actionRowFrames = $0 }
+        )
         host.frame = CGRect(x: 0, y: 0, width: 720, height: 200)
 
         let window = NSWindow(
@@ -113,6 +127,7 @@ final class FileBrowserPreviewPolicyTests: XCTestCase {
         guard let actionScrollView = findActionScrollView(in: host) else {
             return XCTFail("Expected preview actions scroll view")
         }
+        assertFocusedActionIsCentered(model: model, host: host, scrollView: actionScrollView, actionRowFrames: { actionRowFrames })
 
         XCTAssertLessThanOrEqual(
             actionScrollView.frame.height,
@@ -125,7 +140,8 @@ final class FileBrowserPreviewPolicyTests: XCTestCase {
         for _ in 0..<3 {
             model.handle(.down)
         }
-        pumpMainRunLoop()
+        XCTAssertEqual(model.focusedActionIndex, 3)
+        assertFocusedActionIsCentered(model: model, host: host, scrollView: actionScrollView, actionRowFrames: { actionRowFrames })
 
         let centeredScrollOriginY = actionScrollView.contentView.bounds.origin.y
         let maxOriginY = max(
@@ -140,17 +156,59 @@ final class FileBrowserPreviewPolicyTests: XCTestCase {
         while model.focusableActions.indices.contains(model.focusedActionIndex + 1) {
             model.handle(.down)
         }
-        pumpMainRunLoop()
+        assertFocusedActionIsCentered(model: model, host: host, scrollView: actionScrollView, actionRowFrames: { actionRowFrames })
 
         let finalOriginY = actionScrollView.contentView.bounds.origin.y
 
         XCTAssertGreaterThan(finalOriginY, centeredScrollOriginY + 1)
         XCTAssertLessThan(finalOriginY, maxOriginY - 1)
+
+        // Resizing must recenter the same action even though its focus index does not change.
+        window.setContentSize(CGSize(width: 720, height: 240))
+        assertFocusedActionIsCentered(model: model, host: host, scrollView: actionScrollView, actionRowFrames: { actionRowFrames })
+        window.setContentSize(CGSize(width: 720, height: 200))
+        assertFocusedActionIsCentered(model: model, host: host, scrollView: actionScrollView, actionRowFrames: { actionRowFrames })
+
+        // Each reverse keyboard step must also center its row, including the first action.
+        while model.focusedActionIndex > 0 {
+            let previousOriginY = actionScrollView.contentView.bounds.origin.y
+            model.handle(.up)
+            assertFocusedActionIsCentered(model: model, host: host, scrollView: actionScrollView, actionRowFrames: { actionRowFrames })
+            XCTAssertLessThan(actionScrollView.contentView.bounds.origin.y, previousOriginY - 1)
+        }
+        XCTAssertEqual(actionScrollView.contentView.bounds.origin.y, initialOriginY, accuracy: 1)
     }
 
     func testCodePreviewThemeUsesDarkBackgroundAndLightText() {
         XCTAssertLessThan(FileBrowserCodePreviewTheme.background.perceivedBrightness, 0.2)
         XCTAssertGreaterThan(FileBrowserCodePreviewTheme.foreground.perceivedBrightness, 0.75)
+    }
+
+    func testTextPreviewRejectsFIFOWithoutWaitingForAWriter() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("BuckyPreviewPipe-\(UUID().uuidString).txt")
+        XCTAssertEqual(mkfifo(url.path, 0o600), 0)
+        defer { try? FileManager.default.removeItem(at: url) }
+        XCTAssertThrowsError(try FileBrowserTextPreviewLoader.loadSnippet(from: url))
+    }
+
+    func testTextPreviewRejectsDirectoryAndCancelledJob() throws {
+        XCTAssertThrowsError(try FileBrowserTextPreviewLoader.loadSnippet(from: FileManager.default.temporaryDirectory))
+        let cancellation = FileBrowserCancellation()
+        cancellation.cancel()
+        XCTAssertThrowsError(try FileBrowserTextPreviewLoader.loadSnippet(from: URL(fileURLWithPath: "/tmp/unused.txt"), cancellation: cancellation)) {
+            XCTAssertTrue($0 is CancellationError)
+        }
+    }
+
+    func testAsyncTextPreviewCancellationCompletes() async {
+        let task = Task { try await FileBrowserTextPreviewLoader.loadSnippetAsync(from: URL(fileURLWithPath: "/tmp/unused.txt")) }
+        task.cancel()
+        do {
+            _ = try await task.value
+            XCTFail("Expected cancellation")
+        } catch {
+            XCTAssertTrue(error is CancellationError)
+        }
     }
 
     func testCodeTextPreviewLoaderBoundsBytesAndWrapsLongLines() {
@@ -324,4 +382,44 @@ private func findActionScrollView(in root: NSView) -> NSScrollView? {
 
 private func pumpMainRunLoop() {
     RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+}
+
+@MainActor
+@available(macOS 26.0, *)
+private func assertFocusedActionIsCentered(
+    model: FileBrowserModel,
+    host: NSView,
+    scrollView: NSScrollView,
+    actionRowFrames: () -> [Int: CGRect],
+    file: StaticString = #filePath,
+    line: UInt = #line
+) {
+    // Allow layout and the 140 ms scroll animation to finish, but require actual row geometry.
+    let deadline = Date().addingTimeInterval(2)
+    var rowFrame: CGRect?
+    var paneFrame = CGRect.zero
+    repeat {
+        pumpMainRunLoop()
+        host.layoutSubtreeIfNeeded()
+        rowFrame = actionRowFrames()[model.focusedActionIndex]
+        paneFrame = scrollView.contentView.convert(scrollView.contentView.bounds, to: host)
+        if let rowFrame, rowFrame.height > 0, abs(rowFrame.midY - paneFrame.midY) <= 1 {
+            break
+        }
+    } while Date() < deadline
+
+    guard let rowFrame, rowFrame.height > 0 else {
+        return XCTFail("Expected focused action layout frame", file: file, line: line)
+    }
+    XCTAssertEqual(rowFrame.midY, paneFrame.midY, accuracy: 1, "Focused action must be centered", file: file, line: line)
+    XCTAssertGreaterThanOrEqual(rowFrame.minY, paneFrame.minY, file: file, line: line)
+    XCTAssertLessThanOrEqual(rowFrame.maxY, paneFrame.maxY, file: file, line: line)
+}
+
+private struct TestActionRowFramesKey: PreferenceKey {
+    static let defaultValue: [Int: CGRect] = [:]
+
+    static func reduce(value: inout [Int: CGRect], nextValue: () -> [Int: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
+    }
 }

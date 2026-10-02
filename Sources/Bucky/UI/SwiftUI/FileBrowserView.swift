@@ -1,5 +1,6 @@
 import AppKit
 import AVKit
+import Darwin
 import SwiftUI
 
 @available(macOS 26.0, *)
@@ -13,6 +14,7 @@ struct FileBrowserView: View {
     @State private var browseScrollTargetID: URL?
     @State private var browseScrollTargetAnchor: UnitPoint?
     @State private var pinnedScrollTargetID: URL?
+    @State private var actionScrollPosition = ScrollPosition(idType: Int.self)
     @State private var handledSelectionScrollEventID = 0
     @State private var fileIconPreloadTask: Task<Void, Never>?
 
@@ -45,6 +47,11 @@ struct FileBrowserView: View {
             }
 
             focusedOverlay
+
+            if model.isPerformingOperation {
+                SkeletonLoadingView(label: "Working on files", surface: .fileResults)
+                    .allowsHitTesting(false)
+            }
 
             if let statusMessage = model.statusMessage {
                 statusOverlay(statusMessage)
@@ -189,61 +196,67 @@ struct FileBrowserView: View {
     }
 
     private func actionOverlayPane(maxHeight: CGFloat) -> some View {
-        ScrollViewReader { actionScrollProxy in
-            ScrollView(.vertical) {
-                VStack(alignment: .leading, spacing: 12) {
-                    FileBrowserActionSelectionSummary(
-                        urls: model.activeSelectionURLs,
-                        model: model
-                    )
+        ScrollView(.vertical) {
+            VStack(alignment: .leading, spacing: 12) {
+                FileBrowserActionSelectionSummary(
+                    urls: model.activeSelectionURLs,
+                    model: model
+                )
 
-                    Divider()
-                        .opacity(0.42)
+                Divider()
+                    .opacity(0.42)
 
-                    VStack(alignment: .leading, spacing: 5) {
-                        ForEach(Array(model.focusableActions.enumerated()), id: \.element) { index, action in
-                            ActionRow(
-                                action: action,
-                                isFocused: index == model.focusedActionIndex
-                            )
-                            .id(index)
-                        }
+                VStack(alignment: .leading, spacing: 5) {
+                    ForEach(Array(model.focusableActions.enumerated()), id: \.element) { index, action in
+                        ActionRow(
+                            action: action,
+                            isFocused: index == model.focusedActionIndex
+                        )
+                        .anchorPreference(key: FileBrowserActionRowBoundsKey.self, value: .bounds) { [index: $0] }
+                        .id(index)
                     }
                 }
-                .padding(FileBrowserActionPaneLayoutPolicy.padding)
-                .frame(width: FileBrowserActionPaneLayoutPolicy.width)
+                .scrollTargetLayout()
             }
-            .scrollIndicators(.hidden)
+            .padding(FileBrowserActionPaneLayoutPolicy.padding)
+            // Leave room to center the last action rather than pinning it to the bottom edge.
+            .padding(.bottom, maxHeight / 2)
             .frame(width: FileBrowserActionPaneLayoutPolicy.width)
-            .frame(maxHeight: maxHeight)
-            .clipped()
-            .glassEffect(.regular.interactive(false), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(Color(nsColor: .separatorColor).opacity(0.28), lineWidth: 1)
-            }
-            .shadow(color: .black.opacity(0.24), radius: 24, x: 0, y: 14)
-            .onAppear {
-                scrollFocusedAction(in: actionScrollProxy, animated: false)
-            }
-            .onChange(of: model.focusedActionIndex) { _, _ in
-                scrollFocusedAction(in: actionScrollProxy, animated: true)
-            }
-            .onChange(of: model.focusState) { _, _ in
-                scrollFocusedAction(in: actionScrollProxy, animated: false)
-            }
+        }
+        .scrollPosition($actionScrollPosition)
+        .scrollIndicators(.hidden)
+        .frame(width: FileBrowserActionPaneLayoutPolicy.width)
+        .frame(maxHeight: maxHeight)
+        .clipped()
+        .glassEffect(.regular.interactive(false), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.28), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.24), radius: 24, x: 0, y: 14)
+        .onAppear {
+            scrollFocusedAction(animated: false)
+        }
+        .onChange(of: model.focusedActionIndex) { _, _ in
+            scrollFocusedAction(animated: true)
+        }
+        .onChange(of: model.focusState) { _, _ in
+            scrollFocusedAction(animated: false)
+        }
+        .onChange(of: maxHeight) { _, _ in
+            scrollFocusedAction(animated: false)
         }
     }
 
-    private func scrollFocusedAction(in actionScrollProxy: ScrollViewProxy, animated: Bool) {
+    private func scrollFocusedAction(animated: Bool) {
         guard model.focusState == .previewActions else { return }
 
         if animated {
             withAnimation(.easeInOut(duration: 0.14)) {
-                actionScrollProxy.scrollTo(model.focusedActionIndex, anchor: .center)
+                actionScrollPosition.scrollTo(id: model.focusedActionIndex, anchor: .center)
             }
         } else {
-            actionScrollProxy.scrollTo(model.focusedActionIndex, anchor: .center)
+            actionScrollPosition.scrollTo(id: model.focusedActionIndex, anchor: .center)
         }
     }
 
@@ -429,6 +442,14 @@ struct FileBrowserView: View {
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, minHeight: 72)
             .background(.quaternary.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+}
+
+struct FileBrowserActionRowBoundsKey: PreferenceKey {
+    static let defaultValue: [Int: Anchor<CGRect>] = [:]
+
+    static func reduce(value: inout [Int: Anchor<CGRect>], nextValue: () -> [Int: Anchor<CGRect>]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
     }
 }
 
@@ -1270,9 +1291,7 @@ private struct CodeTextFilePreview: View {
             text = ""
             errorMessage = nil
             do {
-                let loadedText = try await Task.detached(priority: .utility) {
-                    try FileBrowserTextPreviewLoader.loadSnippet(from: url)
-                }.value
+                let loadedText = try await FileBrowserTextPreviewLoader.loadSnippetAsync(from: url)
                 guard !Task.isCancelled else { return }
                 text = loadedText
                 errorMessage = nil
@@ -1291,13 +1310,59 @@ enum FileBrowserTextPreviewLoader {
     static let maxPreviewBytes = 64 * 1024
     static let maxRenderedLineLength = 240
 
-    static func loadSnippet(from url: URL) throws -> String {
-        let handle = try FileHandle(forReadingFrom: url)
-        defer {
-            try? handle.close()
+    private static let queue: OperationQueue = {
+        let queue = OperationQueue()
+        queue.name = "local.bucky.files.text-preview"
+        queue.maxConcurrentOperationCount = 2
+        queue.qualityOfService = .utility
+        return queue
+    }()
+
+    static func loadSnippetAsync(from url: URL) async throws -> String {
+        let result = FileBrowserPreviewResult()
+        let operation = BlockOperation()
+        let cancellation = FileBrowserCancellation {
+            operation.cancel()
+            result.finish(.failure(CancellationError()))
+        }
+        operation.addExecutionBlock { [weak cancellation] in
+            guard let cancellation, !cancellation.isCancelled else { return }
+            result.finish(Result { try loadSnippet(from: url, cancellation: cancellation) })
+        }
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                result.attach(continuation)
+                queue.addOperation(operation)
+            }
+        } onCancel: {
+            cancellation.cancel()
+        }
+    }
+
+    static func loadSnippet(from url: URL, cancellation: FileBrowserCancellation? = nil) throws -> String {
+        guard cancellation?.isCancelled != true else { throw CancellationError() }
+        // Open nonblocking first, then validate the actual descriptor: a path can race into a FIFO.
+        let descriptor = Darwin.open(url.path, O_RDONLY | O_NONBLOCK | O_CLOEXEC)
+        guard descriptor >= 0 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno)) }
+        defer { Darwin.close(descriptor) }
+        var metadata = stat()
+        guard fstat(descriptor, &metadata) == 0,
+              metadata.st_mode & S_IFMT == S_IFREG else {
+            throw NSError(domain: NSCocoaErrorDomain, code: NSFileReadUnsupportedSchemeError)
+        }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 8192)
+        while data.count <= maxPreviewBytes {
+            guard cancellation?.isCancelled != true else { throw CancellationError() }
+            let count = Darwin.read(descriptor, &buffer, min(buffer.count, maxPreviewBytes + 1 - data.count))
+            if count == 0 { break }
+            if count < 0 {
+                if errno == EINTR { continue }
+                throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+            }
+            data.append(contentsOf: buffer.prefix(count))
         }
 
-        let data = try handle.read(upToCount: maxPreviewBytes + 1) ?? Data()
         let isTruncated = data.count > maxPreviewBytes
         let previewData = data.prefix(maxPreviewBytes)
         let text = wrapLongLines(String(decoding: previewData, as: UTF8.self))
@@ -1334,6 +1399,33 @@ enum FileBrowserTextPreviewLoader {
     }
 }
 
+private final class FileBrowserPreviewResult: @unchecked Sendable {
+    private let lock = NSLock()
+    private var result: Result<String, Error>?
+    private var continuation: CheckedContinuation<String, Error>?
+
+    func attach(_ continuation: CheckedContinuation<String, Error>) {
+        lock.lock()
+        if let result {
+            lock.unlock()
+            continuation.resume(with: result)
+        } else {
+            self.continuation = continuation
+            lock.unlock()
+        }
+    }
+
+    func finish(_ result: Result<String, Error>) {
+        lock.lock()
+        guard self.result == nil else { lock.unlock(); return }
+        self.result = result
+        let continuation = self.continuation
+        self.continuation = nil
+        lock.unlock()
+        continuation?.resume(with: result)
+    }
+}
+
 @available(macOS 26.0, *)
 private struct NativeQuickLookThumbnailView: NSViewRepresentable {
     let url: URL
@@ -1364,10 +1456,25 @@ private struct NativeQuickLookThumbnailView: NSViewRepresentable {
         Coordinator()
     }
 
+    static func dismantleNSView(_ imageView: NSImageView, coordinator: Coordinator) {
+        coordinator.cancel()
+        imageView.image = nil
+    }
+
     final class Coordinator {
         private var representedURL: URL?
         private var representedSize = CGSize.zero
         private var loadGeneration = 0
+        private var request: FileBrowserCancellation?
+
+        func cancel() {
+            loadGeneration &+= 1
+            request?.cancel()
+            request = nil
+            representedURL = nil
+        }
+
+        deinit { request?.cancel() }
 
         @MainActor
         func loadThumbnail(
@@ -1378,6 +1485,7 @@ private struct NativeQuickLookThumbnailView: NSViewRepresentable {
             readiness: Binding<FileBrowserPreviewReadiness>
         ) {
             guard representedURL != url || representedSize != thumbnailSize else { return }
+            request?.cancel()
             representedURL = url
             representedSize = thumbnailSize
             loadGeneration &+= 1
@@ -1386,8 +1494,8 @@ private struct NativeQuickLookThumbnailView: NSViewRepresentable {
             readiness.wrappedValue = .loading
 
             let scale = NSScreen.main?.backingScaleFactor ?? 2
-            model.loadPreviewThumbnail(for: url, size: thumbnailSize, scale: scale) { image in
-                guard self.representedURL == url,
+            request = model.loadPreviewThumbnail(for: url, size: thumbnailSize, scale: scale) { [weak self, weak imageView] image in
+                guard let self, let imageView, self.representedURL == url,
                       self.representedSize == thumbnailSize,
                       self.loadGeneration == currentGeneration else { return }
                 if let image {
