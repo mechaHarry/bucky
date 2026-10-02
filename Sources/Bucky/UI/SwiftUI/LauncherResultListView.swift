@@ -124,14 +124,14 @@ private struct LauncherResultRowBackground: View {
             if isMarked && !isSelected {
                 rowHighlight(
                     tint: markedTint,
-                    opacity: FileBrowserRowFocusIndicatorPolicy.markedSelectionOpacity
+                    opacity: LauncherResultListVisualStyle.markedSelectionOpacity
                 )
             }
 
             if isSelected {
                 rowHighlight(
                     tint: selectionTint,
-                    opacity: FileBrowserRowFocusIndicatorPolicy.activeSelectionOpacity
+                    opacity: LauncherResultListVisualStyle.activeSelectionOpacity
                 )
                 .overlay {
                     rowShape
@@ -197,6 +197,8 @@ private struct LauncherResultRowBackground: View {
 
 @available(macOS 26.0, *)
 enum LauncherResultListVisualStyle {
+    static let activeSelectionOpacity = 0.24
+    static let markedSelectionOpacity = 0.12
     static let rowFill = Color(nsColor: .windowBackgroundColor)
     static let selectionFill = Color(nsColor: .selectedContentBackgroundColor)
     static let markedFill = Color(nsColor: .controlAccentColor)

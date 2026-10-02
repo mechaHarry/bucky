@@ -92,6 +92,15 @@ struct LiquidGlassLauncherView: View {
         .onChange(of: inlineCreationFocus) { _, focus in
             model.isInlineCreationInputFocused = focus != nil
         }
+        .onChange(of: model.providerConfirmation) { _, confirmation in
+            if confirmation != nil {
+                isSearchFocused = false
+                inlineCreationFocus = nil
+            } else {
+                synchronizeSearchFocus()
+                focusInlineCreationTitleWhenMounted()
+            }
+        }
         .onChange(of: inlineCreationName) { _, _ in
             inlineCreationNameIsInvalid = false
         }
@@ -110,16 +119,21 @@ struct LiquidGlassLauncherView: View {
     @ViewBuilder
     private var activeSurface: some View {
         ZStack {
-            if model.isShowingSettings {
-                settingsSurface
-                    .transition(settingsModeTransition)
-            } else if model.isShowingHelp {
-                helpSurface
-                    .transition(settingsModeTransition)
-            } else {
-                launcherSurface
-                    .transition(settingsModeTransition)
+            Group {
+                if model.isShowingSettings {
+                    settingsSurface
+                        .transition(settingsModeTransition)
+                } else if model.isShowingHelp {
+                    helpSurface
+                        .transition(settingsModeTransition)
+                } else {
+                    launcherSurface
+                        .transition(settingsModeTransition)
+                }
             }
+            .disabled(model.providerConfirmation != nil)
+            .allowsHitTesting(model.providerConfirmation == nil)
+            .accessibilityHidden(model.providerConfirmation != nil)
 
             if let confirmation = model.providerConfirmation {
                 ConfirmationOverlay(title: confirmation.title, message: confirmation.message)
@@ -151,12 +165,14 @@ struct LiquidGlassLauncherView: View {
     }
 
     private func synchronizeSearchFocus() {
-        let shouldFocus = model.isPresented && !model.isShowingSettings && !model.isShowingHelp && model.mode.acceptsTextInput
+        let shouldFocus = model.isPresented && !model.isShowingSettings && !model.isShowingHelp
+            && model.providerConfirmation == nil && model.mode.acceptsTextInput
         isSearchFocused = false
         guard shouldFocus else { return }
 
         DispatchQueue.main.async {
-            guard model.isPresented, !model.isShowingSettings, !model.isShowingHelp, model.mode.acceptsTextInput else { return }
+            guard model.isPresented, !model.isShowingSettings, !model.isShowingHelp,
+                  model.providerConfirmation == nil, model.mode.acceptsTextInput else { return }
             isSearchFocused = true
         }
     }
@@ -176,6 +192,14 @@ struct LiquidGlassLauncherView: View {
 
             VStack(spacing: LauncherVisualStyle.paneContentSpacing) {
                 header
+
+                if let error = model.interactionError {
+                    Text(error)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.red)
+                        .padding(.horizontal, 20)
+                        .accessibilityLabel("Error: \(error)")
+                }
 
                 results
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -299,6 +323,7 @@ struct LiquidGlassLauncherView: View {
                                 .frame(height: 1.5)
                         }
                         .accessibilityLabel(configuration.namePlaceholder)
+                        .accessibilityHint(inlineCreationNameIsInvalid ? "A title is required before creating a countdown." : "")
 
                     HStack(spacing: 7) {
                         Text("Date")
@@ -313,7 +338,7 @@ struct LiquidGlassLauncherView: View {
                         .labelsHidden()
                         .datePickerStyle(.field)
                         .controlSize(.small)
-                        .frame(width: 96)
+                        .fixedSize()
                         .glassEffect(.regular.interactive(true), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                         .focused($inlineCreationFocus, equals: .date)
                         .accessibilityLabel("Target date")
@@ -330,7 +355,7 @@ struct LiquidGlassLauncherView: View {
                         .labelsHidden()
                         .datePickerStyle(.field)
                         .controlSize(.small)
-                        .frame(width: 88)
+                        .fixedSize()
                         .glassEffect(.regular.interactive(true), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                         .focused($inlineCreationFocus, equals: .time)
                         .accessibilityLabel("Target time")
@@ -354,13 +379,14 @@ struct LiquidGlassLauncherView: View {
                 .foregroundStyle(LauncherModeTintPolicy.activeColor(for: model.mode))
                 .help(configuration.submitHelp)
                 .launcherActionButtonRim()
-                .disabled(!isInlineCreationTargetDateValid)
+                .disabled(!isInlineCreationTargetDateValid || model.isSubmittingInlineCreation)
                 .opacity(isInlineCreationTargetDateValid ? 1 : 0.45)
             }
             .padding(.vertical, 2)
             .onSubmit {
                 submitInlineCreation(configuration)
             }
+            .disabled(model.isSubmittingInlineCreation)
         }
         .background {
             RoundedRectangle(cornerRadius: LauncherResultListLayoutPolicy.rowCornerRadius, style: .continuous)
@@ -386,17 +412,17 @@ struct LiquidGlassLauncherView: View {
             return
         }
 
-        guard model.submitInlineCreation(
-            name: inlineCreationName,
-            targetDate: inlineCreationTargetDate
-        ) else {
-            return
+        let name = inlineCreationName
+        let date = inlineCreationTargetDate
+        let stoneID = model.mode.stoneID
+        Task { @MainActor in
+            guard await model.submitInlineCreationAsync(name: name, targetDate: date),
+                  model.mode.stoneID == stoneID else { return }
+            inlineCreationName = ""
+            inlineCreationNameIsInvalid = false
+            inlineCreationTargetDate = configuration.defaultTargetDate
+            inlineCreationFocus = .name
         }
-
-        inlineCreationName = ""
-        inlineCreationNameIsInvalid = false
-        inlineCreationTargetDate = configuration.defaultTargetDate
-        inlineCreationFocus = .name
     }
 
     private func resetInlineCreationDraftIfNeeded() {
@@ -417,6 +443,7 @@ struct LiquidGlassLauncherView: View {
             guard model.isPresented,
                   !model.isShowingSettings,
                   !model.isShowingHelp,
+                  model.providerConfirmation == nil,
                   model.inlineCreationConfiguration != nil else {
                 return
             }
@@ -469,7 +496,13 @@ struct LiquidGlassLauncherView: View {
                         Text(row.display)
                             .font(rowTitleFont(for: row.kind))
                             .lineLimit(1)
-                        Text(row.subtitle)
+                        Group {
+                            if let target = row.countdownTarget {
+                                LiveRemainingTimeText(target: target)
+                            } else {
+                                Text(row.subtitle)
+                            }
+                        }
                             .font(rowSubtitleFont(for: row.kind))
                             .foregroundStyle(.secondary)
                             .lineLimit(row.kind == .application ? 1 : 2)
