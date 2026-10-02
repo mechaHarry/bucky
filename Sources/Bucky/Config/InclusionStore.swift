@@ -1,57 +1,29 @@
 import Foundation
 
 final class InclusionStore {
-    private let fileManager = FileManager.default
-    private(set) var includedPaths = Set<String>()
-    let fileURL: URL
+    private let storage: JSONValueStore<InclusionsFile>
+    var includedPaths: Set<String> { Set(storage.value.includedPaths) }
+    var lastError: String? { storage.lastError?.localizedDescription }
+    var fileURL: URL { storage.fileURL }
 
     init(fileURL: URL = BuckyPaths.appSupportDirectory.appendingPathComponent("inclusions.json")) {
-        self.fileURL = fileURL
-        load()
+        storage = JSONValueStore(fileURL: fileURL, defaultValue: InclusionsFile(includedPaths: []),
+                                createMissingFile: true)
     }
-
-    func load() {
-        do {
-            let file = try JSONFilePersistence.read(
-                InclusionsFile.self,
-                from: fileURL,
-                decoder: JSONFilePersistence.makeDecoder()
-            )
-            includedPaths = Set(file.includedPaths)
-        } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
-            includedPaths = []
-            save()
-        } catch {
-            NSLog("Bucky could not read inclusions at %@: %@", fileURL.path, error.localizedDescription)
-            includedPaths = []
-            save()
-        }
+    @discardableResult func load() -> Bool { storage.load() }
+    @MainActor @discardableResult func loadAsync() async -> Bool { await storage.loadAsync() }
+    @discardableResult func add(path: String) -> Bool { add(paths: [path]) }
+    @discardableResult func add(paths: [String]) -> Bool {
+        storage.mutate { $0.includedPaths = Set($0.includedPaths).union(paths).sorted() }
     }
-
-    func add(path: String) {
-        includedPaths.insert(path)
-        save()
+    @discardableResult func remove(path: String) -> Bool {
+        storage.mutate { $0.includedPaths.removeAll { $0 == path } }
     }
-
-    func remove(path: String) {
-        includedPaths.remove(path)
-        save()
+    @MainActor @discardableResult func addAsync(paths: [String]) async -> Bool {
+        await storage.mutateAsync { $0.includedPaths = Set($0.includedPaths).union(paths).sorted() }
     }
-
-    func sortedPaths() -> [String] {
-        includedPaths.sorted()
+    @MainActor @discardableResult func removeAsync(path: String) async -> Bool {
+        await storage.mutateAsync { $0.includedPaths.removeAll { $0 == path } }
     }
-
-    private func save() {
-        do {
-            try JSONFilePersistence.write(
-                InclusionsFile(includedPaths: includedPaths.sorted()),
-                to: fileURL,
-                fileManager: fileManager,
-                encoder: JSONFilePersistence.makeEncoder()
-            )
-        } catch {
-            NSLog("Bucky could not save inclusions at %@: %@", fileURL.path, error.localizedDescription)
-        }
-    }
+    func sortedPaths() -> [String] { includedPaths.sorted() }
 }

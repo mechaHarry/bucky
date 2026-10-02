@@ -1,59 +1,51 @@
 import Foundation
 
 final class ExclusionStore {
-    private let fileManager = FileManager.default
-    private(set) var excludedPaths = Set<String>()
-    let fileURL: URL
+    private let storage: JSONValueStore<ExclusionsFile>
+    var excludedPaths: Set<String> { Set(storage.value.excludedPaths) }
+    var lastError: String? { storage.lastError?.localizedDescription }
+    var fileURL: URL { storage.fileURL }
 
     init(fileURL: URL = BuckyPaths.appSupportDirectory.appendingPathComponent("exclusions.json")) {
-        self.fileURL = fileURL
-        load()
+        storage = JSONValueStore(fileURL: fileURL, defaultValue: ExclusionsFile(excludedPaths: []))
     }
-
-    func load() {
-        do {
-            let file = try JSONFilePersistence.read(
-                ExclusionsFile.self,
-                from: fileURL,
-                decoder: JSONFilePersistence.makeDecoder()
-            )
-            excludedPaths = Set(file.excludedPaths)
-        } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
-            excludedPaths = []
-        } catch {
-            NSLog("Bucky could not read exclusions at %@: %@", fileURL.path, error.localizedDescription)
-            excludedPaths = []
-        }
-    }
+    @discardableResult func load() -> Bool { storage.load() }
+    @MainActor @discardableResult func loadAsync() async -> Bool { await storage.loadAsync() }
 
     func isExcluded(_ item: LaunchItem) -> Bool {
-        excludedPaths.contains(item.url.path)
+        let file = storage.value
+        let identity = ExclusionIdentity(item: item)
+        if file.excludedIdentities.contains(identity) { return true }
+        // Legacy paths describe file-backed apps. Empty URL paths must never hide every action.
+        guard case let .application(url) = item.launchTarget, !url.path.isEmpty else { return false }
+        return file.excludedPaths.contains(url.path)
     }
-
-    func exclude(_ item: LaunchItem) {
-        excludedPaths.insert(item.url.path)
-        save()
+    @discardableResult func exclude(_ item: LaunchItem) -> Bool {
+        storage.mutate { Self.exclude(item, from: &$0) }
     }
-
-    func remove(path: String) {
-        excludedPaths.remove(path)
-        save()
+    @MainActor @discardableResult func excludeAsync(_ item: LaunchItem) async -> Bool {
+        await storage.mutateAsync { Self.exclude(item, from: &$0) }
     }
-
+    @discardableResult func remove(path: String) -> Bool {
+        storage.mutate { Self.remove(path: path, from: &$0) }
+    }
+    @MainActor @discardableResult func removeAsync(path: String) async -> Bool {
+        await storage.mutateAsync { Self.remove(path: path, from: &$0) }
+    }
     func sortedPaths() -> [String] {
-        excludedPaths.sorted()
+        let file = storage.value
+        return (file.excludedPaths + file.excludedIdentities.map(\.selectionKey)).sorted()
     }
-
-    private func save() {
-        do {
-            try JSONFilePersistence.write(
-                ExclusionsFile(excludedPaths: excludedPaths.sorted()),
-                to: fileURL,
-                fileManager: fileManager,
-                encoder: JSONFilePersistence.makeEncoder()
-            )
-        } catch {
-            NSLog("Bucky could not save exclusions at %@: %@", fileURL.path, error.localizedDescription)
+    private static func exclude(_ item: LaunchItem, from file: inout ExclusionsFile) {
+        if case let .application(url) = item.launchTarget {
+            file.excludedPaths = Set(file.excludedPaths).union([url.path]).sorted()
+        } else {
+            let identity = ExclusionIdentity(item: item)
+            if !file.excludedIdentities.contains(identity) { file.excludedIdentities.append(identity) }
         }
+    }
+    private static func remove(path: String, from file: inout ExclusionsFile) {
+        file.excludedPaths.removeAll { $0 == path }
+        file.excludedIdentities.removeAll { $0.selectionKey == path }
     }
 }

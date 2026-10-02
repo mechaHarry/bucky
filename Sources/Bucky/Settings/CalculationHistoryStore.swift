@@ -1,68 +1,36 @@
 import Foundation
 
 final class CalculationHistoryStore {
-    private let fileManager = FileManager.default
-    private(set) var calculations: [CalculationHistoryEntry] = []
-    let fileURL: URL
+    private let storage: JSONValueStore<CalculationHistoryFile>
+    var calculations: [CalculationHistoryEntry] { storage.value.calculations }
+    var lastError: String? { storage.lastError?.localizedDescription }
+    var fileURL: URL { storage.fileURL }
 
-    init() {
-        fileURL = BuckyPaths.appSupportDirectory
-            .appendingPathComponent("calculations.json")
-        load()
+    init(fileURL: URL = BuckyPaths.appSupportDirectory.appendingPathComponent("calculations.json")) {
+        storage = JSONValueStore(fileURL: fileURL, defaultValue: CalculationHistoryFile(calculations: []))
     }
-
-    func load() {
-        guard let data = try? Data(contentsOf: fileURL) else {
-            calculations = []
-            return
-        }
-
-        do {
-            let file = try JSONDecoder().decode(CalculationHistoryFile.self, from: data)
-            calculations = file.calculations
-        } catch {
-            NSLog("Bucky could not read calculation history at %@: %@", fileURL.path, error.localizedDescription)
-            calculations = []
-        }
+    @discardableResult func load() -> Bool { storage.load() }
+    @MainActor @discardableResult func loadAsync() async -> Bool { await storage.loadAsync() }
+    @discardableResult func add(expression: String, result: String) -> Bool {
+        guard !expression.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        return storage.mutate { Self.add(expression: expression, result: result, to: &$0) }
     }
-
-    func add(expression: String, result: String) {
-        let trimmedExpression = expression.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedExpression.isEmpty else { return }
-
-        calculations.removeAll { entry in
-            entry.expression == trimmedExpression && entry.result == result
-        }
-        calculations.insert(
-            CalculationHistoryEntry(expression: trimmedExpression, result: result, date: Date()),
-            at: 0
-        )
-
-        if calculations.count > 100 {
-            calculations = Array(calculations.prefix(100))
-        }
-
-        save()
+    @discardableResult func clear() -> Bool {
+        storage.mutate { $0.calculations = [] }
     }
-
-    func clear() {
-        calculations = []
-        save()
+    @MainActor @discardableResult
+    func addAsync(expression: String, result: String) async -> Bool {
+        guard !expression.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        return await storage.mutateAsync { Self.add(expression: expression, result: result, to: &$0) }
     }
-
-    private func save() {
-        do {
-            try fileManager.createDirectory(
-                at: BuckyPaths.appSupportDirectory,
-                withIntermediateDirectories: true
-            )
-            let file = CalculationHistoryFile(calculations: calculations)
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(file)
-            try data.write(to: fileURL, options: .atomic)
-        } catch {
-            NSLog("Bucky could not save calculation history at %@: %@", fileURL.path, error.localizedDescription)
-        }
+    @MainActor @discardableResult
+    func clearAsync() async -> Bool {
+        await storage.mutateAsync { $0.calculations = [] }
+    }
+    private static func add(expression: String, result: String, to file: inout CalculationHistoryFile) {
+        let trimmed = expression.trimmingCharacters(in: .whitespacesAndNewlines)
+        file.calculations.removeAll { $0.expression == trimmed && $0.result == result }
+        file.calculations.insert(CalculationHistoryEntry(expression: trimmed, result: result, date: Date()), at: 0)
+        file.calculations = Array(file.calculations.prefix(100))
     }
 }

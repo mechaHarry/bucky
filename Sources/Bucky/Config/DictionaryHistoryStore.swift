@@ -1,73 +1,40 @@
 import Foundation
 
 final class DictionaryHistoryStore {
-    private let fileManager = FileManager.default
-    private(set) var words: [DictionaryHistoryEntry] = []
-    let fileURL: URL
+    private let storage: JSONValueStore<DictionaryHistoryFile>
+    var words: [DictionaryHistoryEntry] { storage.value.words }
+    var lastError: String? { storage.lastError?.localizedDescription }
+    var fileURL: URL { storage.fileURL }
 
     init(fileURL: URL? = nil) {
-        self.fileURL = fileURL ?? BuckyPaths.appSupportDirectory
-            .appendingPathComponent("dictionary-history.json")
-        load()
+        storage = JSONValueStore(
+            fileURL: fileURL ?? BuckyPaths.appSupportDirectory.appendingPathComponent("dictionary-history.json"),
+            defaultValue: DictionaryHistoryFile(words: []))
     }
-
-    func load() {
-        do {
-            let file = try JSONFilePersistence.read(
-                DictionaryHistoryFile.self,
-                from: fileURL,
-                decoder: JSONFilePersistence.makeDecoder()
-            )
-            words = file.words
-        } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
-            words = []
-        } catch {
-            NSLog("Bucky could not read dictionary history at %@: %@", fileURL.path, error.localizedDescription)
-            words = []
-        }
+    @discardableResult func load() -> Bool { storage.load() }
+    @MainActor @discardableResult func loadAsync() async -> Bool { await storage.loadAsync() }
+    @discardableResult func add(term: String) -> Bool {
+        guard !normalized(term.trimmingCharacters(in: .whitespacesAndNewlines)).isEmpty else { return false }
+        return storage.mutate { Self.add(term: term, to: &$0) }
     }
-
-    func add(term: String) {
-        let trimmedTerm = term.trimmingCharacters(in: .whitespacesAndNewlines)
-        let normalizedTerm = normalized(trimmedTerm)
-        guard !normalizedTerm.isEmpty else { return }
-
-        words.removeAll { entry in
-            normalized(entry.term) == normalizedTerm
-        }
-        words.insert(
-            DictionaryHistoryEntry(term: trimmedTerm, date: Date()),
-            at: 0
-        )
-
-        if words.count > 100 {
-            words = Array(words.prefix(100))
-        }
-
-        save()
+    @discardableResult func remove(term: String) -> Bool {
+        let key = normalized(term.trimmingCharacters(in: .whitespacesAndNewlines))
+        guard !key.isEmpty else { return false }
+        return storage.mutate { $0.words.removeAll { normalized($0.term) == key } }
     }
-
-    func remove(term: String) {
-        let trimmedTerm = term.trimmingCharacters(in: .whitespacesAndNewlines)
-        let normalizedTerm = normalized(trimmedTerm)
-        guard !normalizedTerm.isEmpty else { return }
-
-        words.removeAll { entry in
-            normalized(entry.term) == normalizedTerm
-        }
-        save()
+    @MainActor @discardableResult func addAsync(term: String) async -> Bool {
+        guard !normalized(term.trimmingCharacters(in: .whitespacesAndNewlines)).isEmpty else { return false }
+        return await storage.mutateAsync { Self.add(term: term, to: &$0) }
     }
-
-    private func save() {
-        do {
-            try JSONFilePersistence.write(
-                DictionaryHistoryFile(words: words),
-                to: fileURL,
-                fileManager: fileManager,
-                encoder: JSONFilePersistence.makeEncoder()
-            )
-        } catch {
-            NSLog("Bucky could not save dictionary history at %@: %@", fileURL.path, error.localizedDescription)
-        }
+    @MainActor @discardableResult func removeAsync(term: String) async -> Bool {
+        let key = normalized(term.trimmingCharacters(in: .whitespacesAndNewlines))
+        guard !key.isEmpty else { return false }
+        return await storage.mutateAsync { $0.words.removeAll { normalized($0.term) == key } }
+    }
+    private static func add(term: String, to file: inout DictionaryHistoryFile) {
+        let trimmed = term.trimmingCharacters(in: .whitespacesAndNewlines)
+        file.words.removeAll { normalized($0.term) == normalized(trimmed) }
+        file.words.insert(DictionaryHistoryEntry(term: trimmed, date: Date()), at: 0)
+        file.words = Array(file.words.prefix(100))
     }
 }

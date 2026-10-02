@@ -1,67 +1,49 @@
 import Foundation
 
 final class SettingsStore {
-    private let fileManager = FileManager.default
-    private(set) var settings: BuckySettings
-    let fileURL: URL
+    private let storage: JSONValueStore<BuckySettings>
+    var settings: BuckySettings { storage.value }
+    var lastError: String? { storage.lastError?.localizedDescription }
+    var fileURL: URL { storage.fileURL }
 
     init(fileURL: URL = BuckyPaths.appSupportDirectory.appendingPathComponent("settings.json")) {
-        self.fileURL = fileURL
-        settings = .defaultValue
-        load()
+        storage = JSONValueStore(fileURL: fileURL, defaultValue: .defaultValue)
     }
-
-    func load() {
-        guard let data = try? Data(contentsOf: fileURL) else {
-            settings = .defaultValue
-            return
-        }
-
-        do {
-            settings = try JSONDecoder().decode(BuckySettings.self, from: data)
-        } catch {
-            NSLog("Bucky could not read settings at %@: %@", fileURL.path, error.localizedDescription)
-            settings = .defaultValue
-        }
+    @discardableResult func load() -> Bool { storage.load() }
+    @MainActor @discardableResult func loadAsync() async -> Bool { await storage.loadAsync() }
+    @discardableResult func updateHotKey(_ hotKey: HotKeyConfiguration) -> Bool {
+        storage.mutate { $0.hotKey = hotKey }
     }
-
-    func updateHotKey(_ hotKey: HotKeyConfiguration) {
-        settings.hotKey = hotKey
-        save()
+    @discardableResult func updateLaunchAtStartup(_ enabled: Bool) -> Bool {
+        storage.mutate { $0.launchAtStartup = enabled }
     }
-
-    func updateLaunchAtStartup(_ enabled: Bool) {
-        settings.launchAtStartup = enabled
-        save()
+    @discardableResult func updateAnimationTiming(_ timing: LauncherAnimationTiming) -> Bool {
+        storage.mutate { $0.animationTiming = timing }
     }
-
-    func updateAnimationTiming(_ timing: LauncherAnimationTiming) {
-        settings.animationTiming = timing
-        save()
+    @discardableResult func updateFileBrowserStartDirectory(_ directory: URL?) -> Bool {
+        storage.mutate { $0.fileBrowserStartDirectory = directory }
     }
-
-    func updateFileBrowserStartDirectory(_ directory: URL?) {
-        settings.fileBrowserStartDirectory = directory
-        save()
+    @discardableResult func updateCustomActions(_ actions: [CustomAction]) -> Bool {
+        storage.mutate { $0.customActions = actions }
     }
-
-    func updateCustomActions(_ actions: [CustomAction]) {
-        settings.customActions = actions
-        save()
+    @MainActor @discardableResult
+    func updateHotKeyAsync(_ hotKey: HotKeyConfiguration) async -> Bool {
+        await storage.mutateAsync { $0.hotKey = hotKey }
     }
-
-    private func save() {
-        do {
-            try fileManager.createDirectory(
-                at: fileURL.deletingLastPathComponent(),
-                withIntermediateDirectories: true
-            )
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(settings)
-            try data.write(to: fileURL, options: .atomic)
-        } catch {
-            NSLog("Bucky could not save settings at %@: %@", fileURL.path, error.localizedDescription)
-        }
+    @MainActor @discardableResult
+    func updateLaunchAtStartupAsync(_ enabled: Bool) async -> Bool {
+        await storage.mutateAsync { $0.launchAtStartup = enabled }
+    }
+    @MainActor @discardableResult
+    func updateAnimationTimingAsync(_ timing: LauncherAnimationTiming) async -> Bool {
+        await storage.mutateAsync { $0.animationTiming = timing }
+    }
+    @MainActor @discardableResult
+    func updateFileBrowserStartDirectoryAsync(_ directory: URL?) async -> Bool {
+        await storage.mutateAsync { $0.fileBrowserStartDirectory = directory }
+    }
+    @MainActor @discardableResult
+    func updateCustomActionsAsync(_ actions: [CustomAction]) async -> Bool {
+        await storage.mutateAsync { $0.customActions = actions }
     }
 }

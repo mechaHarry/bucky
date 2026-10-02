@@ -2,6 +2,51 @@ import Carbon
 
 struct ExclusionsFile: Codable {
     var excludedPaths: [String]
+    var excludedIdentities: [ExclusionIdentity] = []
+
+    init(excludedPaths: [String], excludedIdentities: [ExclusionIdentity] = []) {
+        self.excludedPaths = excludedPaths
+        self.excludedIdentities = excludedIdentities
+    }
+    private enum CodingKeys: String, CodingKey { case excludedPaths, excludedIdentities }
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        excludedPaths = try container.decodeIfPresent([String].self, forKey: .excludedPaths) ?? []
+        excludedIdentities = try container.decodeIfPresent([ExclusionIdentity].self, forKey: .excludedIdentities) ?? []
+    }
+}
+
+struct ExclusionIdentity: Codable, Hashable {
+    enum Kind: String, Codable { case application, url, customAction }
+    let kind: Kind
+    let value: String
+
+    init(item: LaunchItem) {
+        switch item.launchTarget {
+        case let .application(url):
+            kind = .application
+            value = url.standardizedFileURL.path
+        case let .url(url):
+            kind = .url
+            value = url.absoluteString
+        case .shellCommand:
+            kind = .customAction
+            value = item.url.absoluteString
+        }
+    }
+    init?(selectionKey: String) {
+        let components = selectionKey.split(separator: ":", maxSplits: 2, omittingEmptySubsequences: false)
+        guard components.count == 3, components[0] == "identity",
+              let kind = Kind(rawValue: String(components[1])),
+              let data = Data(base64Encoded: String(components[2])),
+              let value = String(data: data, encoding: .utf8) else { return nil }
+        self.kind = kind
+        self.value = value
+    }
+    // Reversible selection keys let Settings remove typed exclusions without migrating legacy data.
+    var selectionKey: String {
+        "identity:\(kind.rawValue):\(Data(value.utf8).base64EncodedString())"
+    }
 }
 
 struct InclusionsFile: Codable {
