@@ -1,7 +1,11 @@
 import Foundation
 
 enum ArithmeticEvaluator {
+    static let maximumInputLength = 4096
+    static let maximumNestingDepth = 64
+
     static func normalizedExpression(_ input: String) -> String {
+        guard input.utf8.prefix(maximumInputLength + 1).count <= maximumInputLength else { return "" }
         var expression = input.trimmingCharacters(in: .whitespacesAndNewlines)
 
         while expression.hasSuffix("=") {
@@ -64,9 +68,8 @@ enum ArithmeticEvaluator {
     private static func format(_ value: Double) -> String {
         let rounded = value.rounded()
         if abs(value - rounded) < 0.0000000001,
-           rounded >= Double(Int64.min),
-           rounded <= Double(Int64.max) {
-            return String(Int64(rounded))
+           let integer = Int64(exactly: rounded) {
+            return String(integer)
         }
 
         return resultFormatter.string(from: NSNumber(value: value)) ?? String(format: "%.10g", value)
@@ -86,16 +89,21 @@ enum ArithmeticEvaluationError: Error {
     case unexpectedInput
     case unmatchedParenthesis
     case divisionByZero
+    case resourceLimit
 }
 struct ArithmeticParser {
     private let scalars: [UnicodeScalar]
     private var index = 0
+    private var depth = 0
 
     init(_ expression: String) {
-        scalars = Array(expression.unicodeScalars)
+        scalars = Array(expression.unicodeScalars.prefix(ArithmeticEvaluator.maximumInputLength + 1))
     }
 
     mutating func parse() throws -> Double {
+        guard scalars.count <= ArithmeticEvaluator.maximumInputLength else {
+            throw ArithmeticEvaluationError.resourceLimit
+        }
         let value = try parseExpression()
         skipWhitespace()
         guard index == scalars.count else {
@@ -139,6 +147,11 @@ struct ArithmeticParser {
     }
 
     private mutating func parseFactor() throws -> Double {
+        guard depth < ArithmeticEvaluator.maximumNestingDepth else {
+            throw ArithmeticEvaluationError.resourceLimit
+        }
+        depth += 1
+        defer { depth -= 1 }
         skipWhitespace()
 
         if match("+") {
