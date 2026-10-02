@@ -1,6 +1,31 @@
 import XCTest
 @testable import Bucky
 
+private final class RaceCopyFileManager: FileManager, @unchecked Sendable {
+    var racesRemaining = 0
+
+    override func copyItem(at srcURL: URL, to dstURL: URL) throws {
+        if racesRemaining > 0 {
+            racesRemaining -= 1
+            try "racer".write(to: dstURL, atomically: true, encoding: .utf8)
+        }
+        try super.copyItem(at: srcURL, to: dstURL)
+    }
+}
+
+private final class RaceExistenceFileManager: FileManager, @unchecked Sendable {
+    var raceURL: URL?
+
+    override func fileExists(atPath path: String) -> Bool {
+        if let url = raceURL, url.path == path {
+            raceURL = nil
+            try? "racer".write(to: url, atomically: true, encoding: .utf8)
+            return false
+        }
+        return super.fileExists(atPath: path)
+    }
+}
+
 final class MacFileServicesTests: XCTestCase {
     private var temporaryDirectory: URL!
 
@@ -12,6 +37,76 @@ final class MacFileServicesTests: XCTestCase {
 
     override func tearDownWithError() throws {
         try? FileManager.default.removeItem(at: temporaryDirectory)
+    }
+
+    func testKeepBothCopyRetriesRaceCreatedOriginalAndSuffixWithoutReplacingEither() throws {
+        let source = temporaryDirectory.appendingPathComponent("sample.txt")
+        let directory = temporaryDirectory.appendingPathComponent("Destination", isDirectory: true)
+        try "source".write(to: source, atomically: true, encoding: .utf8)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let manager = RaceCopyFileManager()
+        manager.racesRemaining = 2
+
+        try MacFileServices(fileManager: manager).copy([source], to: directory, conflict: .keepBoth)
+
+        XCTAssertEqual(try String(contentsOf: directory.appendingPathComponent("sample.txt")), "racer")
+        XCTAssertEqual(try String(contentsOf: directory.appendingPathComponent("sample 2.txt")), "racer")
+        XCTAssertEqual(try String(contentsOf: directory.appendingPathComponent("sample 3.txt")), "source")
+        XCTAssertEqual(try String(contentsOf: source), "source")
+    }
+
+    func testCopyWithoutReplacementApprovalPreservesRaceCreatedDestination() throws {
+        let source = temporaryDirectory.appendingPathComponent("sample.txt")
+        let directory = temporaryDirectory.appendingPathComponent("Destination", isDirectory: true)
+        try "source".write(to: source, atomically: true, encoding: .utf8)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let manager = RaceCopyFileManager()
+        manager.racesRemaining = 1
+
+        XCTAssertThrowsError(try MacFileServices(fileManager: manager).copy([source], to: directory, conflict: .cancel))
+        XCTAssertEqual(try String(contentsOf: directory.appendingPathComponent("sample.txt")), "racer")
+        XCTAssertEqual(try String(contentsOf: source), "source")
+    }
+
+    func testKeepBothMoveRetriesRaceCreatedSuffixExclusively() throws {
+        let source = temporaryDirectory.appendingPathComponent("sample.txt")
+        let directory = temporaryDirectory.appendingPathComponent("Destination", isDirectory: true)
+        try "source".write(to: source, atomically: true, encoding: .utf8)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try "existing".write(to: directory.appendingPathComponent("sample.txt"), atomically: true, encoding: .utf8)
+        let manager = RaceExistenceFileManager()
+        manager.raceURL = directory.appendingPathComponent("sample 2.txt")
+
+        try MacFileServices(fileManager: manager).move([source], to: directory, conflict: .keepBoth)
+
+        XCTAssertEqual(try String(contentsOf: directory.appendingPathComponent("sample.txt")), "existing")
+        XCTAssertEqual(try String(contentsOf: directory.appendingPathComponent("sample 2.txt")), "racer")
+        XCTAssertEqual(try String(contentsOf: directory.appendingPathComponent("sample 3.txt")), "source")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: source.path))
+    }
+
+    func testMoveWithoutReplacementApprovalPreservesRaceCreatedDestinationAndSource() throws {
+        let source = temporaryDirectory.appendingPathComponent("sample.txt")
+        let directory = temporaryDirectory.appendingPathComponent("Destination", isDirectory: true)
+        try "source".write(to: source, atomically: true, encoding: .utf8)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let manager = RaceExistenceFileManager()
+        manager.raceURL = directory.appendingPathComponent("sample.txt")
+
+        XCTAssertThrowsError(try MacFileServices(fileManager: manager).move([source], to: directory, conflict: .cancel))
+        XCTAssertEqual(try String(contentsOf: directory.appendingPathComponent("sample.txt")), "racer")
+        XCTAssertEqual(try String(contentsOf: source), "source")
+    }
+
+    func testRenamePreservesRaceCreatedTargetAndSource() throws {
+        let source = temporaryDirectory.appendingPathComponent("sample.txt")
+        let target = temporaryDirectory.appendingPathComponent("renamed.txt")
+        try "source".write(to: source, atomically: true, encoding: .utf8)
+        let manager = RaceExistenceFileManager()
+        manager.raceURL = target
+        XCTAssertThrowsError(try MacFileServices(fileManager: manager).rename(source, to: "renamed.txt"))
+        XCTAssertEqual(try String(contentsOf: target), "racer")
+        XCTAssertEqual(try String(contentsOf: source), "source")
     }
 
     func testKeepBothURLAddsNumericSuffixBeforeExtension() {

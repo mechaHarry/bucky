@@ -1,6 +1,14 @@
 import XCTest
 @testable import Bucky
 
+private final class DisappearingChildFileManager: FileManager, @unchecked Sendable {
+    var children: [URL] = []
+
+    override func contentsOfDirectory(at url: URL, includingPropertiesForKeys keys: [URLResourceKey]?, options mask: FileManager.DirectoryEnumerationOptions = []) throws -> [URL] {
+        children
+    }
+}
+
 final class FileSystemClientTests: XCTestCase {
     private var temporaryDirectory: URL!
 
@@ -22,6 +30,25 @@ final class FileSystemClientTests: XCTestCase {
 
         XCTAssertEqual(entries.map(\.name), [".env", "visible.txt"])
         XCTAssertEqual(entries.first?.kind, .file)
+    }
+
+    func testUnreadableOrDisappearedChildDoesNotDiscardReadableEntries() throws {
+        let readable = temporaryDirectory.appendingPathComponent("readable.txt")
+        try "value".write(to: readable, atomically: true, encoding: .utf8)
+        let manager = DisappearingChildFileManager()
+        manager.children = [temporaryDirectory.appendingPathComponent("disappeared.txt"), readable]
+
+        let entries = try FileSystemClient(fileManager: manager).entries(in: temporaryDirectory, sort: .name)
+
+        XCTAssertEqual(entries.map(\.url), [readable.standardizedFileURL])
+    }
+
+    func testCancelledDirectoryEnumerationStopsBeforeReadingChildren() {
+        let cancellation = FileBrowserCancellation()
+        cancellation.cancel()
+        XCTAssertThrowsError(try FileSystemClient().entries(in: temporaryDirectory, sort: .name, foldersFirst: false, cancellation: cancellation)) {
+            XCTAssertTrue($0 is CancellationError)
+        }
     }
 
     func testNameSortDoesNotForceDirectoriesBeforeFilesByDefault() throws {

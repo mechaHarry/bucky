@@ -339,8 +339,16 @@ final class RecordingFileBrowserServices: FileBrowserNativeServicing {
         size: CGSize,
         scale: CGFloat,
         completion: @escaping (NSImage?) -> Void
-    ) {
+    ) -> FileBrowserCancellation {
         thumbnailRequests.append(ThumbnailRequest(url: url, size: size, scale: scale))
         completion(thumbnailResult)
+        return FileBrowserCancellation()
+    }
+}
+
+@MainActor
+struct ImmediateFileBrowserWorker: FileBrowserWorking {
+    func run<Value>(_ operation: @escaping () throws -> Value, completion: @escaping (Result<Value, Error>) -> Void) {
+        completion(Result { try operation() })
     }
 }

@@ -53,6 +53,11 @@ struct FileSystemClient {
     }
 
     func entries(in directory: URL, sort: FileBrowserSort, foldersFirst: Bool = false) throws -> [FileBrowserEntry] {
+        try entries(in: directory, sort: sort, foldersFirst: foldersFirst, cancellation: FileBrowserCancellation())
+    }
+
+    func entries(in directory: URL, sort: FileBrowserSort, foldersFirst: Bool, cancellation: FileBrowserCancellation) throws -> [FileBrowserEntry] {
+        guard !cancellation.isCancelled else { throw CancellationError() }
         let resourceKeys: Set<URLResourceKey> = [
             .isDirectoryKey,
             .isPackageKey,
@@ -74,8 +79,10 @@ struct FileSystemClient {
         )
 
         let entries = try urls
-            .map { url in
-                let values = try url.resourceValues(forKeys: resourceKeys)
+            .compactMap { url -> FileBrowserEntry? in
+                guard !cancellation.isCancelled else { throw CancellationError() }
+                // Children may disappear or become unreadable during enumeration.
+                guard let values = try? url.resourceValues(forKeys: resourceKeys) else { return nil }
                 return FileBrowserEntry(
                     url: url.standardizedFileURL,
                     kind: kind(for: values),
@@ -87,6 +94,7 @@ struct FileSystemClient {
                     canUnmount: canUnmount(values: values)
                 )
             }
+        guard !cancellation.isCancelled else { throw CancellationError() }
         return Self.sorted(entries, by: sort, foldersFirst: foldersFirst)
     }
 

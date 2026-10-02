@@ -154,6 +154,14 @@ protocol FileSystemClientProtocol {
     func isDirectory(_ url: URL) -> Bool
     func resolvedDirectoryURL(for url: URL) -> URL?
     func entries(in directory: URL, sort: FileBrowserSort, foldersFirst: Bool) throws -> [FileBrowserEntry]
+    func entries(in directory: URL, sort: FileBrowserSort, foldersFirst: Bool, cancellation: FileBrowserCancellation) throws -> [FileBrowserEntry]
+}
+
+extension FileSystemClientProtocol {
+    func entries(in directory: URL, sort: FileBrowserSort, foldersFirst: Bool, cancellation: FileBrowserCancellation) throws -> [FileBrowserEntry] {
+        guard !cancellation.isCancelled else { throw CancellationError() }
+        return try entries(in: directory, sort: sort, foldersFirst: foldersFirst)
+    }
 }
 
 extension FileSystemClient: FileSystemClientProtocol {}
@@ -163,6 +171,20 @@ protocol FileBrowserPersisting: AnyObject {
     func update(_ nextState: FileBrowserPersistedState)
     func bookmarkData(for directory: URL) -> Data?
     func rememberDirectoryAccess(_ directory: URL)
+    func update(_ nextState: FileBrowserPersistedState, remembering directory: URL?)
+    func flush(completion: @escaping () -> Void)
+    var onPersistenceError: ((String) -> Void)? { get set }
+    var persistenceError: String? { get }
+}
+
+extension FileBrowserPersisting {
+    func flush(completion: @escaping () -> Void) { completion() }
+    var onPersistenceError: ((String) -> Void)? { get { nil } set {} }
+    var persistenceError: String? { nil }
+    func update(_ nextState: FileBrowserPersistedState, remembering directory: URL?) {
+        update(nextState)
+        if let directory { rememberDirectoryAccess(directory) }
+    }
 }
 
 extension FileBrowserStore: FileBrowserPersisting {}
@@ -185,7 +207,7 @@ protocol FileBrowserNativeServicing {
         size: CGSize,
         scale: CGFloat,
         completion: @escaping (NSImage?) -> Void
-    )
+    ) -> FileBrowserCancellation
 }
 
 enum FileBrowserFocusState: Equatable {
@@ -383,8 +405,8 @@ struct FileBrowserPreviewLayoutPolicy {
 struct FileBrowserRowFocusIndicatorPolicy {
     static let activeIndicatorWidth: CGFloat = 3
     static let activeIndicatorHeight: CGFloat = 24
-    static let activeSelectionOpacity = 0.24
-    static let markedSelectionOpacity = 0.12
+    static let activeSelectionOpacity = LauncherResultListVisualStyle.activeSelectionOpacity
+    static let markedSelectionOpacity = LauncherResultListVisualStyle.markedSelectionOpacity
 }
 
 struct FileBrowserActionPaneLayoutPolicy {

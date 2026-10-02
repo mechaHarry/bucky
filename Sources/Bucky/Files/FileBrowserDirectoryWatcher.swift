@@ -12,36 +12,36 @@ final class FileBrowserDirectoryWatcher: FileBrowserDirectoryObserving {
         directory: URL,
         onChange: @escaping @MainActor () -> Void
     ) -> FileBrowserDirectoryObservation? {
-        let descriptor = open(directory.path, O_EVTONLY)
-        guard descriptor >= 0 else { return nil }
-
-        let source = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: descriptor,
-            eventMask: [.write, .delete, .rename, .extend, .attrib, .link],
-            queue: queue
-        )
-        let observation = VnodeDirectoryObservation(source: source)
-
-        source.setEventHandler {
-            Task { @MainActor in
-                onChange()
+        let cancellation = FileBrowserCancellation()
+        let queue = queue
+        queue.async { [weak cancellation] in
+            guard let cancellation, !cancellation.isCancelled else { return }
+            let descriptor = open(directory.path, O_EVTONLY | O_CLOEXEC)
+            guard descriptor >= 0 else { return }
+            let source = DispatchSource.makeFileSystemObjectSource(
+                fileDescriptor: descriptor,
+                eventMask: [.write, .delete, .rename, .extend, .attrib, .link],
+                queue: queue
+            )
+            source.setEventHandler { [weak cancellation] in
+                Task { @MainActor [weak cancellation] in
+                    guard let cancellation, !cancellation.isCancelled else { return }
+                    onChange()
+                }
             }
+            source.setCancelHandler { close(descriptor) }
+            source.resume()
+            cancellation.setCancelAction { source.cancel() }
         }
-        source.setCancelHandler {
-            close(descriptor)
-        }
-        source.resume()
-
-        return observation
+        return VnodeDirectoryObservation(cancellation: cancellation)
     }
 }
 
 private final class VnodeDirectoryObservation: FileBrowserDirectoryObservation {
-    private let source: DispatchSourceFileSystemObject
-    private var isCancelled = false
+    private let cancellation: FileBrowserCancellation
 
-    init(source: DispatchSourceFileSystemObject) {
-        self.source = source
+    init(cancellation: FileBrowserCancellation) {
+        self.cancellation = cancellation
     }
 
     deinit {
@@ -49,8 +49,6 @@ private final class VnodeDirectoryObservation: FileBrowserDirectoryObservation {
     }
 
     func cancel() {
-        guard !isCancelled else { return }
-        isCancelled = true
-        source.cancel()
+        cancellation.cancel()
     }
 }

@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import Foundation
 import QuickLookThumbnailing
 import UniformTypeIdentifiers
@@ -28,6 +29,9 @@ enum MacFileServicesError: LocalizedError {
 
 struct MacFileServices: FileBrowserNativeServicing {
     private let fileManager: FileManager
+    private static let thumbnailWorker = FileBrowserLatestWorkQueue(
+        queue: DispatchQueue(label: "local.bucky.files.thumbnail", qos: .utility)
+    )
 
     init(fileManager: FileManager = .default) {
         self.fileManager = fileManager
@@ -55,13 +59,7 @@ struct MacFileServices: FileBrowserNativeServicing {
 
     func copy(_ urls: [URL], to destinationDirectory: URL, conflict: FileBrowserConflictResolution) throws {
         for source in urls {
-            let destination = resolvedDestination(for: source, in: destinationDirectory, conflict: conflict)
-            guard let destination else { return }
-            if fileManager.fileExists(atPath: destination.path) {
-                try copyReplacingItem(at: destination, with: source)
-            } else {
-                try fileManager.copyItem(at: source, to: destination)
-            }
+            guard try transfer(source, to: destinationDirectory, conflict: conflict, moving: false) else { return }
         }
     }
 
@@ -75,13 +73,48 @@ struct MacFileServices: FileBrowserNativeServicing {
                 continue
             }
 
-            let destination = resolvedDestination(for: source, in: destinationDirectory, conflict: conflict)
-            guard let destination else { return }
-            if fileManager.fileExists(atPath: destination.path) {
-                try moveReplacingItem(at: destination, with: source)
-            } else {
-                try fileManager.moveItem(at: source, to: destination)
+            guard try transfer(source, to: destinationDirectory, conflict: conflict, moving: true) else { return }
+        }
+    }
+
+    private func transfer(_ source: URL, to directory: URL, conflict: FileBrowserConflictResolution, moving: Bool) throws -> Bool {
+        let original = directory.appendingPathComponent(source.lastPathComponent)
+        if conflict == .replace, fileManager.fileExists(atPath: original.path) {
+            if moving { try moveReplacingItem(at: original, with: source) }
+            else { try copyReplacingItem(at: original, with: source) }
+            return true
+        }
+        var destination = original
+        // Every attempt is exclusive. A preflight existence check never grants replacement permission.
+        for _ in 0..<128 {
+            if conflict == .keepBoth, fileManager.fileExists(atPath: destination.path) {
+                destination = keepBothURL(for: original)
+            } else if conflict == .cancel, fileManager.fileExists(atPath: destination.path) {
+                return false
             }
+            do {
+                if moving { try moveExclusively(source, to: destination) }
+                else { try fileManager.copyItem(at: source, to: destination) }
+                return true
+            } catch {
+                let cocoaError = error as NSError
+                let collision = cocoaError.domain == NSCocoaErrorDomain && cocoaError.code == NSFileWriteFileExistsError
+                    || cocoaError.domain == NSPOSIXErrorDomain && cocoaError.code == Int(EEXIST)
+                guard collision, conflict == .keepBoth else { throw error }
+                destination = keepBothURL(for: original)
+            }
+        }
+        throw MacFileServicesError.targetAlreadyExists(destination)
+    }
+
+    private func moveExclusively(_ source: URL, to destination: URL) throws {
+        guard renamex_np(source.path, destination.path, UInt32(RENAME_EXCL)) != 0 else { return }
+        let code = errno
+        if code == EXDEV {
+            try fileManager.copyItem(at: source, to: destination)
+            try fileManager.removeItem(at: source)
+        } else {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(code))
         }
     }
 
@@ -102,7 +135,7 @@ struct MacFileServices: FileBrowserNativeServicing {
 
     func rename(_ url: URL, to proposedName: String) throws -> URL {
         let target = try renameTarget(for: url, proposedName: proposedName)
-        try fileManager.moveItem(at: url, to: target)
+        try moveExclusively(url, to: target)
         return target
     }
 
@@ -138,7 +171,7 @@ struct MacFileServices: FileBrowserNativeServicing {
         }
 
         for (source, target) in zip(urls, targets) where canonicalFileURL(source) != canonicalFileURL(target) {
-            try fileManager.moveItem(at: source, to: target)
+            try moveExclusively(source, to: target)
         }
 
         return targets
@@ -213,19 +246,23 @@ struct MacFileServices: FileBrowserNativeServicing {
         size: CGSize,
         scale: CGFloat,
         completion: @escaping (NSImage?) -> Void
-    ) {
-        let request = QLThumbnailGenerator.Request(
-            fileAt: previewContentURL(for: url),
-            size: size,
-            scale: scale,
-            representationTypes: .all
-        )
-
-        QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { thumbnail, _ in
-            DispatchQueue.main.async {
-                completion(thumbnail?.nsImage)
+    ) -> FileBrowserCancellation {
+        let cancellation = FileBrowserCancellation()
+        Self.thumbnailWorker.submit { [weak cancellation] in
+            guard let cancellation, !cancellation.isCancelled else { return }
+            let request = QLThumbnailGenerator.Request(
+                fileAt: self.previewContentURL(for: url), size: size, scale: scale, representationTypes: .all
+            )
+            cancellation.setCancelAction { QLThumbnailGenerator.shared.cancel(request) }
+            guard !cancellation.isCancelled else { return }
+            QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { [weak cancellation] thumbnail, _ in
+                DispatchQueue.main.async {
+                    guard let cancellation, !cancellation.isCancelled else { return }
+                    completion(thumbnail?.nsImage)
+                }
             }
         }
+        return cancellation
     }
 
     func keepBothURL(for destination: URL) -> URL {
@@ -234,7 +271,7 @@ struct MacFileServices: FileBrowserNativeServicing {
         let ext = destination.pathExtension
 
         var index = 2
-        while true {
+        while index < 10_000 {
             let name = ext.isEmpty ? "\(base) \(index)" : "\(base) \(index).\(ext)"
             let candidate = directory.appendingPathComponent(name)
             if !fileManager.fileExists(atPath: candidate.path) {
@@ -242,24 +279,7 @@ struct MacFileServices: FileBrowserNativeServicing {
             }
             index += 1
         }
-    }
-
-    private func resolvedDestination(
-        for source: URL,
-        in destinationDirectory: URL,
-        conflict: FileBrowserConflictResolution
-    ) -> URL? {
-        let destination = destinationDirectory.appendingPathComponent(source.lastPathComponent)
-        guard fileManager.fileExists(atPath: destination.path) else { return destination }
-
-        switch conflict {
-        case .keepBoth:
-            return keepBothURL(for: destination)
-        case .replace:
-            return destination
-        case .cancel:
-            return nil
-        }
+        return directory.appendingPathComponent("\(base) \(UUID().uuidString)\(ext.isEmpty ? "" : "." + ext)")
     }
 
     private func existingPreviewFileURL(for url: URL) -> URL? {
