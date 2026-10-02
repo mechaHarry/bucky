@@ -8,7 +8,7 @@ RESOURCES_DIR := $(CONTENTS_DIR)/Resources
 CODESIGN_IDENTITY ?= -
 CODESIGN_FLAGS ?= --force --deep
 
-.PHONY: build bundle run clean perf perf-baseline
+.PHONY: build bundle run clean perf perf-baseline test tooling-test
 
 build:
 	swift build -c $(CONFIGURATION)
@@ -33,3 +33,9 @@ perf:
 
 perf-baseline:
 	BUCKY_PERF_UPDATE_BASELINE=1 BUCKY_PERF_GIT_COMMIT="$$(git rev-parse --short HEAD 2>/dev/null || true)" swift test --filter LauncherFilterPerformanceTests
+
+test:
+	testDataDirectory="$${BUCKY_DATA_DIRECTORY:-$$(mktemp -d "$${TMPDIR:-/tmp}/bucky-tests.XXXXXX")}"; BUCKY_DATA_DIRECTORY="$$testDataDirectory" swift test
+
+tooling-test:
+	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/tooling -p 'test*.py'

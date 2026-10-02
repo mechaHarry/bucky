@@ -13,6 +13,8 @@
 !Makefile
 !package.sh
 !release.sh
+!scripts/
+!scripts/releaseTooling.py
 
 # App source.
 !Sources/
@@ -23,6 +25,10 @@
 !Tests/
 !Tests/**/
 !Tests/**/*.swift
+!tests/
+!tests/tooling/
+!tests/tooling/testReleaseTooling.py
+!tests/tooling/mockTool.py
 
 # App bundle metadata needed by the Makefile.
 !packaging/
