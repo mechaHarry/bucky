@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @MainActor
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        NSApp.mainMenu = ApplicationMenu.makeMainMenu()
 
         guard let launcherController = makeLauncherController() else {
             showUnsupportedOSAlert()
