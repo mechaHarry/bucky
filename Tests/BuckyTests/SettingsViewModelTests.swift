@@ -66,8 +66,8 @@ final class SettingsViewModelTests: XCTestCase {
     ) -> SettingsViewModel {
         SettingsViewModel(
             settingsStore: settingsStore,
-            inclusionStore: InclusionStore(),
-            exclusionStore: ExclusionStore(),
+            inclusionStore: InclusionStore(fileURL: temporaryDirectory.appendingPathComponent("inclusions.json")),
+            exclusionStore: ExclusionStore(fileURL: temporaryDirectory.appendingPathComponent("exclusions.json")),
             hotKeyChangeHandler: { _ in true },
             inclusionsChangedHandler: {},
             exclusionsChangedHandler: {},

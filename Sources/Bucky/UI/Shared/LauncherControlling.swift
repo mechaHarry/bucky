@@ -8,4 +8,9 @@ protocol LauncherControlling: AnyObject {
     func refreshAfterExclusionsChanged()
     func refreshAfterInclusionsChanged()
     func refreshAfterSettingsChanged()
+    func flushPersistence(completion: @escaping () -> Void)
+}
+
+extension LauncherControlling {
+    func flushPersistence(completion: @escaping () -> Void) { completion() }
 }

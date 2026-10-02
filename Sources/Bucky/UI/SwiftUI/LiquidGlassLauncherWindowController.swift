@@ -136,6 +136,9 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         model.openHelpAction = { [weak self] in self?.toggleHelp() }
         model.returnToLauncherAction = { [weak self] in self?.showLauncherFromPanel() }
         model.reindexAction = { [weak self] in self?.reindex() }
+        model.indexWatchPathsChanged = { [weak self] paths in
+            self?.applicationIndexSourceStream?.updateIncludedPaths(paths)
+        }
         model.restoreFocusAction = { [weak self] in
             self?.restoreFocusAfterModal()
         }
@@ -200,7 +203,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         closeQuickLookPreviewPanel()
         cancelSpaceHoldState(deliverEndHold: true)
         cancelOptionPinnedFocus()
-        settingsModel.refresh()
+        Task { [weak self] in await self?.settingsModel.refreshAsync() }
 
         let shouldMaterialize = !window.isVisible || !model.isPresented
         if shouldMaterialize {
@@ -239,7 +242,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         closeQuickLookPreviewPanel()
         cancelSpaceHoldState(deliverEndHold: true)
         cancelOptionPinnedFocus()
-        settingsModel.refresh()
+        Task { [weak self] in await self?.settingsModel.refreshAsync() }
 
         let shouldMaterialize = !window.isVisible || !model.isPresented
         if shouldMaterialize {
@@ -367,6 +370,10 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         model.reindex()
     }
 
+    func flushPersistence(completion: @escaping () -> Void) {
+        model.flushPersistence(completion: completion)
+    }
+
     func refreshAfterExclusionsChanged() {
         model.refreshAfterExclusionsChanged()
     }
@@ -395,8 +402,8 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
                 return nil
             }
 
-            self.settingsModel.commitHotKey(hotKey)
             self.stopRecordingSettingsHotKey(resetModel: false)
+            Task { [weak self] in await self?.settingsModel.commitHotKeyAsync(hotKey) }
             return nil
         }
     }
@@ -424,7 +431,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
 
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK else { return }
-            self?.settingsModel.addIncludedApps(panel.urls)
+            Task { @MainActor [weak self] in await self?.settingsModel.addIncludedAppsAsync(panel.urls) }
         }
     }
 
@@ -439,7 +446,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
 
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK, let url = panel.urls.first else { return }
-            self?.settingsModel.setFileBrowserStartDirectory(url)
+            Task { @MainActor [weak self] in await self?.settingsModel.setFileBrowserStartDirectoryAsync(url) }
         }
     }
 
@@ -499,10 +506,15 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
                 return nil
             }
 
-            if self.model.isInlineCreationInputFocused {
+            let nativeCreationFocus = self.model.inlineCreationConfiguration != nil
+                && (self.window.firstResponder is NSTextView || self.window.firstResponder is NSDatePicker)
+            if self.model.isInlineCreationInputFocused || nativeCreationFocus {
                 if event.type == .keyDown,
                    (event.keyCode == UInt16(kVK_Return) || event.keyCode == UInt16(kVK_ANSI_KeypadEnter)) {
-                    self.model.requestInlineCreationSubmit()
+                    // Commit a date/time field's editor before reading its bound value.
+                    if self.window.makeFirstResponder(nil) {
+                        self.model.requestInlineCreationSubmit()
+                    }
                     return nil
                 }
                 return event
@@ -567,39 +579,8 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
                 return event
             }
 
-            if let number = event.commandNumber,
-               let mode = self.model.mode(forCommandNumber: number) {
-                return self.handleLauncherCommand(.switchMode(mode)) ? nil : event
-            }
-            if event.isCommandR {
-                return self.handleLauncherCommand(.reindex) ? nil : event
-            }
-            if event.isCommandComma {
-                return self.handleLauncherCommand(.settings) ? nil : event
-            }
-            if event.isCommandSlash {
-                return self.handleLauncherCommand(.help) ? nil : event
-            }
-            if event.isCommandP {
-                return self.handleLauncherCommand(.togglePin) ? nil : event
-            }
-            if event.isCommandLeftBracket {
-                return self.handleLauncherCommand(.historyBack) ? nil : event
-            }
-            if event.isCommandRightBracket {
-                return self.handleLauncherCommand(.historyForward) ? nil : event
-            }
-            if event.isCommandUpArrow {
-                return self.handleLauncherCommand(.top) ? nil : event
-            }
-            if event.isCommandDownArrow {
-                return self.handleLauncherCommand(.bottom) ? nil : event
-            }
-            if event.isCommandLeftArrow {
-                return self.handleLauncherCommand(.previousMode) ? nil : event
-            }
-            if event.isCommandRightArrow {
-                return self.handleLauncherCommand(.nextMode) ? nil : event
+            if let command = LauncherShortcutPolicy.command(for: event, modeForNumber: self.model.mode(forCommandNumber:)) {
+                return self.handleLauncherCommand(command) ? nil : event
             }
 
             switch event.keyCode {
@@ -650,41 +631,9 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     }
 
     private func handleKeyEquivalent(_ event: NSEvent) -> Bool {
-        if let number = event.commandNumber,
-           let mode = model.mode(forCommandNumber: number) {
-            return handleLauncherCommand(.switchMode(mode))
-        }
-        if event.isCommandR {
-            return handleLauncherCommand(.reindex)
-        }
-        if event.isCommandComma {
-            return handleLauncherCommand(.settings)
-        }
-        if event.isCommandSlash {
-            return handleLauncherCommand(.help)
-        }
-        if event.isCommandP {
-            return handleLauncherCommand(.togglePin)
-        }
-        if event.isCommandLeftBracket {
-            return handleLauncherCommand(.historyBack)
-        }
-        if event.isCommandRightBracket {
-            return handleLauncherCommand(.historyForward)
-        }
-        if event.isCommandUpArrow {
-            return handleLauncherCommand(.top)
-        }
-        if event.isCommandDownArrow {
-            return handleLauncherCommand(.bottom)
-        }
-        if event.isCommandLeftArrow {
-            return handleLauncherCommand(.previousMode)
-        }
-        if event.isCommandRightArrow {
-            return handleLauncherCommand(.nextMode)
-        }
-        return false
+        guard NSApp.modalWindow == nil,
+              let command = LauncherShortcutPolicy.command(for: event, modeForNumber: model.mode(forCommandNumber:)) else { return false }
+        return handleLauncherCommand(command)
     }
 
     private func installApplicationActivationObserver() {

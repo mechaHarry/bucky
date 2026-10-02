@@ -17,6 +17,8 @@ final class SettingsViewModel: ObservableObject {
     @Published var selectedExclusionPath: String?
     @Published var isRecordingHotKey = false
     @Published var errorMessage: String?
+    @Published private(set) var isSaving = false
+    @Published private(set) var isLoading = false
 
     var startHotKeyRecordingAction: (() -> Void)?
     var presentIncludedAppPickerAction: (() -> Void)?
@@ -56,6 +58,23 @@ final class SettingsViewModel: ObservableObject {
         settingsStore.load()
         inclusionStore.load()
         exclusionStore.load()
+        errorMessage = settingsStore.lastError
+            ?? inclusionStore.lastError ?? exclusionStore.lastError
+        publishStoreSnapshot()
+    }
+
+    func refreshAsync() async {
+        guard !isSaving, !isLoading else { return }
+        isLoading = true
+        defer { isLoading = false }
+        _ = await settingsStore.loadAsync()
+        _ = await inclusionStore.loadAsync()
+        _ = await exclusionStore.loadAsync()
+        errorMessage = settingsStore.lastError ?? inclusionStore.lastError ?? exclusionStore.lastError
+        publishStoreSnapshot()
+    }
+
+    private func publishStoreSnapshot() {
         hotKeyTitle = settingsStore.settings.hotKey.displayName
         launchAtStartup = settingsStore.settings.launchAtStartup
         animationTiming = settingsStore.settings.animationTiming
@@ -78,10 +97,12 @@ final class SettingsViewModel: ObservableObject {
     }
 
     func commitHotKey(_ hotKey: HotKeyConfiguration) {
-        if hotKeyChangeHandler(hotKey) {
-            settingsStore.updateHotKey(hotKey)
+        let previous = settingsStore.settings.hotKey
+        if settingsStore.updateHotKey(hotKey), hotKeyChangeHandler(hotKey) {
             hotKeyTitle = hotKey.displayName
         } else {
+            if settingsStore.settings.hotKey != previous { _ = settingsStore.updateHotKey(previous) }
+            errorMessage = settingsStore.lastError ?? "Could not register the shortcut."
             hotKeyTitle = settingsStore.settings.hotKey.displayName
         }
 
@@ -89,18 +110,26 @@ final class SettingsViewModel: ObservableObject {
     }
 
     func setLaunchAtStartup(_ enabled: Bool) {
+        let previous = settingsStore.settings.launchAtStartup
+        guard settingsStore.updateLaunchAtStartup(enabled) else {
+            errorMessage = settingsStore.lastError
+            return
+        }
         do {
             try LaunchAtStartupController.setEnabled(enabled)
-            settingsStore.updateLaunchAtStartup(enabled)
             launchAtStartup = enabled
         } catch {
+            _ = settingsStore.updateLaunchAtStartup(previous)
             launchAtStartup = settingsStore.settings.launchAtStartup
-            errorMessage = "Could not update launch at startup: \(error.localizedDescription)"
+            errorMessage = "Could not update launch at startup."
         }
     }
 
     func setAnimationTiming(_ timing: LauncherAnimationTiming) {
-        settingsStore.updateAnimationTiming(timing)
+        guard settingsStore.updateAnimationTiming(timing) else {
+            errorMessage = settingsStore.lastError
+            return
+        }
         animationTiming = timing
         settingsChangedHandler()
     }
@@ -110,7 +139,10 @@ final class SettingsViewModel: ObservableObject {
     }
 
     func setFileBrowserStartDirectory(_ directory: URL?) {
-        settingsStore.updateFileBrowserStartDirectory(directory)
+        guard settingsStore.updateFileBrowserStartDirectory(directory) else {
+            errorMessage = settingsStore.lastError
+            return
+        }
         fileBrowserStartDirectoryText = directory?.path ?? "~/"
         settingsChangedHandler()
     }
@@ -136,15 +168,20 @@ final class SettingsViewModel: ObservableObject {
             return
         }
 
+        var candidate = settingsStore.settings.customActions
         if let selectedCustomActionID,
-           let index = customActions.firstIndex(where: { $0.id == selectedCustomActionID }) {
-            customActions[index].name = name
-            customActions[index].command = command
+           let index = candidate.firstIndex(where: { $0.id == selectedCustomActionID }) {
+            candidate[index].name = name
+            candidate[index].command = command
         } else {
-            customActions.append(CustomAction(name: name, command: command))
+            candidate.append(CustomAction(name: name, command: command))
         }
 
-        settingsStore.updateCustomActions(customActions)
+        guard settingsStore.updateCustomActions(candidate) else {
+            errorMessage = settingsStore.lastError
+            return
+        }
+        customActions = candidate
         selectedCustomActionID = nil
         customActionName = ""
         customActionCommand = ""
@@ -153,8 +190,12 @@ final class SettingsViewModel: ObservableObject {
 
     func removeSelectedCustomAction() {
         guard let selectedCustomActionID else { return }
-        customActions.removeAll { $0.id == selectedCustomActionID }
-        settingsStore.updateCustomActions(customActions)
+        let candidate = settingsStore.settings.customActions.filter { $0.id != selectedCustomActionID }
+        guard settingsStore.updateCustomActions(candidate) else {
+            errorMessage = settingsStore.lastError
+            return
+        }
+        customActions = candidate
         self.selectedCustomActionID = nil
         customActionName = ""
         customActionCommand = ""
@@ -166,8 +207,9 @@ final class SettingsViewModel: ObservableObject {
     }
 
     func addIncludedApps(_ urls: [URL]) {
-        for url in urls {
-            inclusionStore.add(path: url.path)
+        guard inclusionStore.add(paths: urls.map(\.path)) else {
+            errorMessage = inclusionStore.lastError
+            return
         }
 
         inclusionPaths = inclusionStore.sortedPaths()
@@ -176,7 +218,10 @@ final class SettingsViewModel: ObservableObject {
 
     func removeSelectedInclusion() {
         guard let selectedInclusionPath else { return }
-        inclusionStore.remove(path: selectedInclusionPath)
+        guard inclusionStore.remove(path: selectedInclusionPath) else {
+            errorMessage = inclusionStore.lastError
+            return
+        }
         self.selectedInclusionPath = nil
         inclusionPaths = inclusionStore.sortedPaths()
         inclusionsChangedHandler()
@@ -184,8 +229,108 @@ final class SettingsViewModel: ObservableObject {
 
     func removeSelectedExclusion() {
         guard let selectedExclusionPath else { return }
-        exclusionStore.remove(path: selectedExclusionPath)
+        guard exclusionStore.remove(path: selectedExclusionPath) else {
+            errorMessage = exclusionStore.lastError
+            return
+        }
         self.selectedExclusionPath = nil
+        exclusionPaths = exclusionStore.sortedPaths()
+        exclusionsChangedHandler()
+    }
+
+    private func performSave(_ operation: () async -> Bool) async -> Bool {
+        guard !isSaving else { errorMessage = PersistenceFailure.busy.rawValue; return false }
+        isSaving = true
+        defer { isSaving = false }
+        let succeeded = await operation()
+        if succeeded { errorMessage = nil }
+        else { errorMessage = PersistenceFailure.writeFailed.rawValue }
+        return succeeded
+    }
+
+    func commitHotKeyAsync(_ hotKey: HotKeyConfiguration) async {
+        defer { isRecordingHotKey = false }
+        let previous = settingsStore.settings.hotKey
+        guard await performSave({
+            guard await settingsStore.updateHotKeyAsync(hotKey) else { return false }
+            guard hotKeyChangeHandler(hotKey) else {
+                _ = await settingsStore.updateHotKeyAsync(previous)
+                return false
+            }
+            return true
+        }) else { return }
+        hotKeyTitle = hotKey.displayName
+    }
+
+    func setLaunchAtStartupAsync(_ enabled: Bool) async {
+        let previous = settingsStore.settings.launchAtStartup
+        guard await performSave({
+            guard await settingsStore.updateLaunchAtStartupAsync(enabled) else { return false }
+            do { try LaunchAtStartupController.setEnabled(enabled); return true }
+            catch { _ = await settingsStore.updateLaunchAtStartupAsync(previous); return false }
+        }) else { return }
+        launchAtStartup = enabled
+    }
+
+    func setAnimationTimingAsync(_ timing: LauncherAnimationTiming) async {
+        guard await performSave({ await settingsStore.updateAnimationTimingAsync(timing) }) else { return }
+        animationTiming = timing
+        settingsChangedHandler()
+    }
+
+    func setFileBrowserStartDirectoryAsync(_ directory: URL?) async {
+        guard await performSave({ await settingsStore.updateFileBrowserStartDirectoryAsync(directory) }) else { return }
+        fileBrowserStartDirectoryText = directory?.path ?? "~/"
+        settingsChangedHandler()
+    }
+
+    func saveCustomActionAsync() async {
+        let name = customActionName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let command = customActionCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, !command.isEmpty else {
+            errorMessage = "Custom actions need both a name and a command."
+            return
+        }
+        var candidate = settingsStore.settings.customActions
+        if let selectedCustomActionID, let index = candidate.firstIndex(where: { $0.id == selectedCustomActionID }) {
+            candidate[index].name = name
+            candidate[index].command = command
+        } else {
+            candidate.append(CustomAction(name: name, command: command))
+        }
+        guard await performSave({ await settingsStore.updateCustomActionsAsync(candidate) }) else { return }
+        customActions = candidate
+        selectCustomAction(nil)
+        settingsChangedHandler()
+    }
+
+    func removeSelectedCustomActionAsync() async {
+        guard let selectedCustomActionID else { return }
+        let candidate = settingsStore.settings.customActions.filter { $0.id != selectedCustomActionID }
+        guard await performSave({ await settingsStore.updateCustomActionsAsync(candidate) }) else { return }
+        customActions = candidate
+        selectCustomAction(nil)
+        settingsChangedHandler()
+    }
+
+    func addIncludedAppsAsync(_ urls: [URL]) async {
+        guard await performSave({ await inclusionStore.addAsync(paths: urls.map(\.path)) }) else { return }
+        inclusionPaths = inclusionStore.sortedPaths()
+        inclusionsChangedHandler()
+    }
+
+    func removeSelectedInclusionAsync() async {
+        guard let path = selectedInclusionPath else { return }
+        guard await performSave({ await inclusionStore.removeAsync(path: path) }) else { return }
+        selectedInclusionPath = nil
+        inclusionPaths = inclusionStore.sortedPaths()
+        inclusionsChangedHandler()
+    }
+
+    func removeSelectedExclusionAsync() async {
+        guard let path = selectedExclusionPath else { return }
+        guard await performSave({ await exclusionStore.removeAsync(path: path) }) else { return }
+        selectedExclusionPath = nil
         exclusionPaths = exclusionStore.sortedPaths()
         exclusionsChangedHandler()
     }
@@ -343,10 +488,14 @@ struct SettingsView: View {
 
     private var boundedSettingsPaneContent: some View {
         settingsPaneContent
+            .disabled(model.isSaving || model.isLoading)
+            .redacted(reason: model.isLoading ? .placeholder : [])
     }
 
     private var scrollingSettingsPaneContent: some View {
         settingsPaneContent
+            .disabled(model.isSaving || model.isLoading)
+            .redacted(reason: model.isLoading ? .placeholder : [])
     }
 
     private var settingsGlassBackdrop: some View {
@@ -604,7 +753,7 @@ private extension SettingsView {
                 "Launch on startup",
                 isOn: Binding(
                     get: { model.launchAtStartup },
-                    set: { model.setLaunchAtStartup($0) }
+                    set: { value in Task { await model.setLaunchAtStartupAsync(value) } }
                 )
             )
 
@@ -629,7 +778,7 @@ private extension SettingsView {
                 primaryActionTitle: "Add",
                 primaryActionSystemImage: "plus",
                 primaryAction: model.requestIncludedAppPicker,
-                removeAction: model.removeSelectedInclusion,
+                removeAction: { Task { await model.removeSelectedInclusionAsync() } },
                 removeDisabled: model.selectedInclusionPath == nil
             )
 
@@ -642,7 +791,7 @@ private extension SettingsView {
                 primaryActionTitle: nil,
                 primaryActionSystemImage: nil,
                 primaryAction: nil,
-                removeAction: model.removeSelectedExclusion,
+                removeAction: { Task { await model.removeSelectedExclusionAsync() } },
                 removeDisabled: model.selectedExclusionPath == nil
             )
         }
@@ -675,6 +824,11 @@ private extension SettingsView {
                         ForEach(paths, id: \.self) { path in
                             SettingsAppPathRow(
                                 path: path,
+                                actionName: ExclusionIdentity(selectionKey: path).flatMap { identity in
+                                    model.customActions.first {
+                                        "bucky-action://\($0.id.uuidString.lowercased())" == identity.value
+                                    }?.name
+                                },
                                 typeTitle: typeTitle,
                                 isSelected: selection.wrappedValue == path
                             )
@@ -731,7 +885,7 @@ private extension SettingsView {
                 "",
                 selection: Binding(
                     get: { model.animationTiming },
-                    set: { model.setAnimationTiming($0) }
+                    set: { value in Task { await model.setAnimationTimingAsync(value) } }
                 )
             ) {
                 ForEach(LauncherAnimationTiming.allCases) { timing in
@@ -773,7 +927,7 @@ private extension SettingsView {
                 .frame(maxWidth: 230, alignment: .trailing)
 
             Button {
-                model.setFileBrowserStartDirectory(nil)
+                Task { await model.setFileBrowserStartDirectoryAsync(nil) }
             } label: {
                 Label("Home", systemImage: "house")
             }
@@ -824,13 +978,13 @@ private extension SettingsView {
                     .textFieldStyle(.roundedBorder)
 
                 Button {
-                    model.saveCustomAction()
+                    Task { await model.saveCustomActionAsync() }
                 } label: {
                     Label("Save", systemImage: "checkmark")
                 }
 
                 Button(role: .destructive) {
-                    model.removeSelectedCustomAction()
+                    Task { await model.removeSelectedCustomActionAsync() }
                 } label: {
                     Label("Remove", systemImage: "minus")
                 }
@@ -930,10 +1084,14 @@ private struct HelpSidebarRow: View {
 @available(macOS 26.0, *)
 private struct SettingsAppPathRow: View {
     let path: String
+    var actionName: String? = nil
     let typeTitle: String
     let isSelected: Bool
 
     private var displayName: String {
+        if let identity = ExclusionIdentity(selectionKey: path) {
+            return actionName ?? (identity.kind == .customAction ? "Custom action" : "URL")
+        }
         let url = URL(fileURLWithPath: path)
         let bundle = Bundle(url: url)
         let displayName = bundle?.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
@@ -942,7 +1100,11 @@ private struct SettingsAppPathRow: View {
     }
 
     private var icon: NSImage {
-        NSWorkspace.shared.icon(forFile: path)
+        if let identity = ExclusionIdentity(selectionKey: path) {
+            return NSImage(systemSymbolName: identity.kind == .customAction ? "terminal" : "link", accessibilityDescription: nil)
+                ?? NSImage()
+        }
+        return NSWorkspace.shared.icon(forFile: path)
     }
 
     var body: some View {
@@ -959,7 +1121,7 @@ private struct SettingsAppPathRow: View {
                 )
 
                 FadeMarqueeText(
-                    text: path,
+                    text: ExclusionIdentity(selectionKey: path)?.value ?? path,
                     font: .system(size: 11)
                 )
                 .foregroundStyle(.secondary)

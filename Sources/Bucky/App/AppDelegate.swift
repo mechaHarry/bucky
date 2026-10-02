@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var launcherController: LauncherControlling?
     private var statusMenuController: StatusMenuController?
     private var hotKeyController: HotKeyController?
+    private var isTerminating = false
 
     @MainActor
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -31,6 +32,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         _ = registerHotKey(settingsStore.settings.hotKey)
+    }
+
+    @MainActor
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let launcherController else { return .terminateNow }
+        guard !isTerminating else { return .terminateLater }
+        isTerminating = true
+        launcherController.flushPersistence {
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
     }
 
     @MainActor
