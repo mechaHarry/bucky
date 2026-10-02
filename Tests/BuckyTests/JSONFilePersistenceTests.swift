@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 import XCTest
 @testable import Bucky
 
@@ -30,6 +31,32 @@ final class JSONFilePersistenceTests: XCTestCase {
         )
 
         XCTAssertEqual(decoded, value)
+    }
+
+    func testReadRejectsFIFOAndDirectoryWithoutWaitingForAWriter() throws {
+        let fileURL = temporaryDirectory.appendingPathComponent("pipe.json")
+        XCTAssertEqual(mkfifo(fileURL.path, 0o600), 0)
+        XCTAssertThrowsError(try JSONFilePersistence.read(PersistedFixture.self, from: fileURL, decoder: makeDecoder()))
+        XCTAssertThrowsError(try JSONFilePersistence.read(PersistedFixture.self, from: temporaryDirectory, decoder: makeDecoder()))
+    }
+
+    func testReadRejectsSymlinkWithoutChangingItsTarget() throws {
+        let target = temporaryDirectory.appendingPathComponent("target.json")
+        let fileURL = temporaryDirectory.appendingPathComponent("link.json")
+        let bytes = try makeEncoder().encode(PersistedFixture(values: ["original"]))
+        try bytes.write(to: target)
+        try FileManager.default.createSymbolicLink(at: fileURL, withDestinationURL: target)
+        XCTAssertThrowsError(try JSONFilePersistence.read(PersistedFixture.self, from: fileURL, decoder: makeDecoder()))
+        XCTAssertEqual(try Data(contentsOf: target), bytes)
+    }
+
+    func testOversizedWritePreservesExistingData() throws {
+        let fileURL = temporaryDirectory.appendingPathComponent("fixture.json")
+        let original = PersistedFixture(values: ["original"])
+        try JSONFilePersistence.write(original, to: fileURL)
+        XCTAssertThrowsError(try JSONFilePersistence.write(
+            PersistedFixture(values: [String(repeating: "x", count: JSONFilePersistence.maximumFileBytes + 1)]), to: fileURL))
+        XCTAssertEqual(try JSONFilePersistence.read(PersistedFixture.self, from: fileURL, decoder: makeDecoder()), original)
     }
 
     func testWriteCreatesParentDirectoriesAndPersistsValue() throws {
@@ -81,15 +108,17 @@ final class JSONFilePersistenceTests: XCTestCase {
         XCTAssertEqual(persisted.includedPaths, [])
     }
 
-    func testInclusionStoreMalformedFileDefaultsToEmptySetAndRewritesValidJSON() throws {
+    func testInclusionStoreMalformedFileDefaultsToEmptySetAndPreservesFile() throws {
         let fileURL = temporaryDirectory.appendingPathComponent("inclusions.json")
         try Data("not json".utf8).write(to: fileURL, options: .atomic)
 
         let store = InclusionStore(fileURL: fileURL)
 
         XCTAssertEqual(store.sortedPaths(), [])
-        let persisted = try JSONDecoder().decode(InclusionsFile.self, from: Data(contentsOf: fileURL))
-        XCTAssertEqual(persisted.includedPaths, [])
+        XCTAssertEqual(try Data(contentsOf: fileURL), Data("not json".utf8))
+        XCTAssertNotNil(store.lastError)
+        XCTAssertFalse(store.add(path: "/Applications/Example.app"))
+        XCTAssertEqual(try Data(contentsOf: fileURL), Data("not json".utf8))
     }
 
     func testInclusionStorePersistsUniqueSortedPaths() throws {
