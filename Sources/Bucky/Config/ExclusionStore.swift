@@ -12,13 +12,16 @@ final class ExclusionStore {
     @discardableResult func load() -> Bool { storage.load() }
     @MainActor @discardableResult func loadAsync() async -> Bool { await storage.loadAsync() }
 
-    func isExcluded(_ item: LaunchItem) -> Bool {
+    var visibilitySnapshot: ApplicationVisibilitySnapshot {
         let file = storage.value
-        let identity = ExclusionIdentity(item: item)
-        if file.excludedIdentities.contains(identity) { return true }
-        // Legacy paths describe file-backed apps. Empty URL paths must never hide every action.
-        guard case let .application(url) = item.launchTarget, !url.path.isEmpty else { return false }
-        return file.excludedPaths.contains(url.path)
+        return ApplicationVisibilitySnapshot(
+            excludedPaths: Set(file.excludedPaths),
+            excludedIdentities: Set(file.excludedIdentities)
+        )
+    }
+
+    func isExcluded(_ item: LaunchItem) -> Bool {
+        visibilitySnapshot.isExcluded(item)
     }
     @discardableResult func exclude(_ item: LaunchItem) -> Bool {
         storage.mutate { Self.exclude(item, from: &$0) }
@@ -47,5 +50,17 @@ final class ExclusionStore {
     private static func remove(path: String, from file: inout ExclusionsFile) {
         file.excludedPaths.removeAll { $0 == path }
         file.excludedIdentities.removeAll { $0.selectionKey == path }
+    }
+}
+
+// Value-only exclusions can be applied during background index preparation.
+struct ApplicationVisibilitySnapshot: Equatable {
+    let excludedPaths: Set<String>
+    let excludedIdentities: Set<ExclusionIdentity>
+
+    func isExcluded(_ item: LaunchItem) -> Bool {
+        if excludedIdentities.contains(ExclusionIdentity(item: item)) { return true }
+        guard case let .application(url) = item.launchTarget, !url.path.isEmpty else { return false }
+        return excludedPaths.contains(url.path)
     }
 }

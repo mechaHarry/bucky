@@ -69,10 +69,13 @@ struct FileBrowserView: View {
         .onChange(of: isTransferPending) { _, isPending in
             transferGlow = isPending
         }
-        .onChange(of: model.entries.map(\.url)) { _, _ in
+        .onChange(of: model.entriesRevision) { _, _ in
             preloadFileIcons()
         }
-        .onChange(of: model.sidebarDirectories) { _, _ in
+        .onChange(of: model.sidebarRevision) { _, _ in
+            preloadFileIcons()
+        }
+        .onChange(of: model.selectedIndex / FileIconPreloadPolicy.visibleBatchSize) { _, _ in
             preloadFileIcons()
         }
         .onChange(of: model.wobbleEvent?.id) { _, id in
@@ -148,7 +151,7 @@ struct FileBrowserView: View {
                     scrollTargetAnchor: browseScrollTargetAnchor,
                     reconstructionID: entriesReconstructionIdentity
                 ) {
-                    ForEach(Array(model.entries.enumerated()), id: \.element.url) { _, entry in
+                    ForEach(model.entries) { entry in
                         FileBrowserRow(
                             entry: entry,
                             isSelected: entry.url == model.selectedEntry?.url,
@@ -175,7 +178,7 @@ struct FileBrowserView: View {
             .onAppear {
                 scrollSelectedEntry(animated: false)
             }
-            .onChange(of: model.entries.map(\.url)) { _, _ in
+            .onChange(of: model.entriesRevision) { _, _ in
                 scrollSelectedEntry(animated: false)
             }
             .onChange(of: model.selectionScrollEvent?.id) { _, _ in
@@ -343,21 +346,24 @@ struct FileBrowserView: View {
     }
 
     private var entriesReconstructionIdentity: AnyHashable {
-        AnyHashable(model.entries.map(\.url.path).joined(separator: "\u{1F}"))
+        AnyHashable(model.entriesRevision)
     }
 
     private var pinnedReconstructionIdentity: AnyHashable {
-        AnyHashable(model.sidebarDirectories.map(\.path).joined(separator: "\u{1F}"))
+        AnyHashable(model.sidebarRevision)
     }
 
     private func preloadFileIcons() {
         let urls = FileIconPreloadPolicy.preloadURLs(
             entries: model.entries,
-            pinnedDirectories: model.sidebarDirectories
+            pinnedDirectories: model.sidebarDirectories,
+            selectedIndex: model.selectedIndex
         )
-        guard !urls.isEmpty else { return }
-
         fileIconPreloadTask?.cancel()
+        guard !urls.isEmpty else {
+            fileIconPreloadTask = nil
+            return
+        }
         fileIconPreloadTask = Task(priority: .utility) {
             try? await Task.sleep(nanoseconds: FileIconPreloadPolicy.initialDelayNanoseconds)
             guard !Task.isCancelled else { return }
@@ -483,7 +489,7 @@ private struct FileBrowserActionSelectionSummary: View {
 
     private func singleSelectionSummary(_ url: URL) -> some View {
         HStack(spacing: 8) {
-            FileIconView(url: url, model: model)
+            FileIconView(url: url)
                 .frame(width: 30, height: 30)
 
             VStack(alignment: .leading, spacing: 4) {
@@ -507,7 +513,7 @@ private struct FileBrowserActionSelectionSummary: View {
 
             ForEach(rows.visible, id: \.self) { url in
                 HStack(spacing: 6) {
-                    FileIconView(url: url, model: model)
+                    FileIconView(url: url)
                         .frame(width: 16, height: 16)
 
                     FadeMarqueeText(
@@ -593,7 +599,7 @@ private struct FileBrowserSelectionCardStack: View {
             .fill(Color(nsColor: .windowBackgroundColor).opacity(0.36))
             .frame(width: 52, height: 46)
             .overlay {
-                FileIconView(url: url, model: model)
+                FileIconView(url: url)
                     .frame(width: 34, height: 34)
             }
             .overlay {
@@ -668,7 +674,7 @@ private struct FileBrowserRow: View {
             minHeight: 42
         ) {
             HStack(spacing: 12) {
-                FileIconView(url: entry.url, model: model)
+                FileIconView(url: entry.url)
                     .frame(width: 30, height: 30)
 
                 FileBrowserRowNameText(
@@ -729,7 +735,7 @@ private struct FileBrowserPinnedRow: View {
             minHeight: 38
         ) {
             HStack(spacing: 8) {
-                FileIconView(url: url, model: model)
+                FileIconView(url: url)
                     .frame(width: 22, height: 22)
 
                 FileBrowserRowNameText(
@@ -1092,7 +1098,7 @@ struct QuickLookPreviewSurface: View {
 
     private func metadataPreview(size: CGSize) -> some View {
         VStack(spacing: 12) {
-            FileIconView(url: preview.url, model: model)
+            FileIconView(url: preview.url)
                 .frame(width: 72, height: 72)
 
             previewTitle(width: titleWidth(for: size))
@@ -1511,23 +1517,29 @@ private struct NativeQuickLookThumbnailView: NSViewRepresentable {
 
 @available(macOS 26.0, *)
 struct FileIconPreloadPolicy {
-    static let preloadLimit = 768
+    static let preloadLimit = 32
+    static let visibleBatchSize = 12
     static let initialDelayNanoseconds: UInt64 = 30_000_000
-    static let yieldStride = 24
+    static let yieldStride = 8
 
-    static func preloadURLs(entries: [FileBrowserEntry], pinnedDirectories: [URL]) -> [URL] {
+    static func preloadURLs(
+        entries: [FileBrowserEntry], pinnedDirectories: [URL], selectedIndex: Int = 0
+    ) -> [URL] {
         var seenPaths = Set<String>()
         var urls: [URL] = []
-
-        for url in pinnedDirectories + entries.map(\.url) {
-            guard FileBrowserIconPolicy.systemSymbolOverride(for: url) == nil else { continue }
-            let key = url.standardizedFileURL.path
-            guard seenPaths.insert(key).inserted else { continue }
-
+        urls.reserveCapacity(preloadLimit)
+        func append(_ url: URL) {
+            guard urls.count < preloadLimit,
+                  FileBrowserIconPolicy.systemSymbolOverride(for: url) == nil,
+                  seenPaths.insert(url.standardizedFileURL.path).inserted else { return }
             urls.append(url)
-            if urls.count == preloadLimit { break }
         }
-
+        // Bound preparation itself; never map a directory's entire entry list to warm icons.
+        for url in pinnedDirectories.prefix(8) { append(url) }
+        let selection = max(0, min(selectedIndex, max(0, entries.count - 1)))
+        let start = max(0, (selection / visibleBatchSize) * visibleBatchSize - visibleBatchSize / 2)
+        let end = min(entries.count, start + preloadLimit)
+        for entry in entries[start..<end] { append(entry.url) }
         return urls
     }
 
@@ -1539,47 +1551,15 @@ struct FileIconPreloadPolicy {
 @available(macOS 26.0, *)
 private struct FileIconView: View {
     let url: URL
-    @ObservedObject var model: FileBrowserModel
-    @State private var icon: NSImage?
 
     var body: some View {
-        ZStack {
-            if let symbol = FileBrowserIconPolicy.systemSymbolOverride(for: url) {
-                Image(systemName: symbol)
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(.secondary)
-            } else if let icon {
-                Image(nsImage: icon)
-                    .resizable()
-                    .scaledToFit()
-                    .transition(.opacity)
-            } else {
-                Image(systemName: "doc")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(.secondary)
-            }
+        if let symbol = FileBrowserIconPolicy.systemSymbolOverride(for: url) {
+            Image(systemName: symbol)
+                .font(.system(size: 18, weight: .medium))
+                .foregroundStyle(.secondary)
+        } else {
+            CachedIconView(url: url, cache: .files, fallbackSymbol: "doc")
         }
-        .task(id: url) {
-            await loadIcon()
-        }
-    }
-
-    @MainActor
-    private func loadIcon() async {
-        guard FileBrowserIconPolicy.systemSymbolOverride(for: url) == nil else {
-            icon = nil
-            return
-        }
-
-        if let cachedIcon = await IconCache.files.cachedIcon(for: url) {
-            icon = cachedIcon
-            return
-        }
-
-        icon = nil
-        let loadedIcon = await IconCache.files.icon(for: url)
-        guard !Task.isCancelled else { return }
-        icon = loadedIcon
     }
 }
 

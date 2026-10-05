@@ -5,6 +5,37 @@ import Combine
 
 @MainActor
 final class FileBrowserModelTests: XCTestCase {
+    func testEntriesRevisionChangesForContentRatherThanSelection() {
+        let model = makeModel()
+        let nextEntries = entries(["alpha.txt", "beta.txt"], in: TestFixtures.userHome)
+        model.replaceEntriesForTesting(nextEntries)
+        let revision = model.entriesRevision
+        model.handle(.down)
+        XCTAssertEqual(model.entriesRevision, revision)
+        model.replaceEntriesForTesting(nextEntries)
+        XCTAssertEqual(model.entriesRevision, revision)
+        model.replaceEntriesForTesting(Array(nextEntries.reversed()))
+        XCTAssertGreaterThan(model.entriesRevision, revision)
+    }
+
+    func testSidebarRevisionTracksNormalizedPinContent() {
+        let model = makeModel()
+        let initialRevision = model.sidebarRevision
+        let mounts = URL(fileURLWithPath: "/Volumes", isDirectory: true).standardizedFileURL
+        XCTAssertEqual(model.sidebarDirectories, [mounts])
+        model.togglePin(mounts)
+        // Adding an already-visible mount pin must not reconstruct the sidebar.
+        XCTAssertEqual(model.sidebarRevision, initialRevision)
+        XCTAssertEqual(model.sidebarDirectories, [mounts])
+        let directory = TestFixtures.userHome.appendingPathComponent("Documents")
+        model.togglePin(directory)
+        XCTAssertGreaterThan(model.sidebarRevision, initialRevision)
+        XCTAssertEqual(model.sidebarDirectories, [mounts, directory.standardizedFileURL])
+        let pinnedRevision = model.sidebarRevision
+        model.handle(.down)
+        XCTAssertEqual(model.sidebarRevision, pinnedRevision)
+    }
+
     func testStartsAtPersistedDirectoryWhenAvailable() {
         let directory = TestFixtures.userHome
         let model = makeModel(persisted: FileBrowserPersistedState(

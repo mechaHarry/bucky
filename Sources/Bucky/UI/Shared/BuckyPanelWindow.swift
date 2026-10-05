@@ -29,7 +29,10 @@ final class BuckyPanelHostingView<Content: View>: NSHostingView<Content> {
             return hitView
         }
 
-        return bounds.contains(point) ? self : nil
+        // AppKit supplies hit-test points in the superview's coordinates.
+        // Convert before checking our bounds, including flipped/offset hosts.
+        let localPoint = convert(point, from: superview)
+        return bounds.contains(localPoint) ? self : nil
     }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool {

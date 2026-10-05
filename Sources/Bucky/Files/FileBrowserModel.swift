@@ -5,7 +5,12 @@ import Foundation
 @MainActor
 final class FileBrowserModel: ObservableObject {
     @Published private(set) var currentDirectory: URL
-    @Published private(set) var entries: [FileBrowserEntry] = []
+    @Published private(set) var entries: [FileBrowserEntry] = [] {
+        didSet {
+            if entries != oldValue { entriesRevision &+= 1 }
+        }
+    }
+    private(set) var entriesRevision: UInt64 = 0
     @Published private(set) var selectedIndex = 0
     @Published private(set) var selectedURLs: [URL] = []
     @Published private(set) var focusState: FileBrowserFocusState = .browse
@@ -15,7 +20,11 @@ final class FileBrowserModel: ObservableObject {
     @Published private(set) var selectionScrollEvent: FileBrowserSelectionScrollEvent?
     @Published private(set) var sort: FileBrowserSort
     @Published private(set) var foldersFirst: Bool
-    @Published private(set) var pinnedDirectories: [URL] = []
+    @Published private(set) var pinnedDirectories: [URL] = [] {
+        didSet { rebuildSidebarDirectories() }
+    }
+    private(set) var sidebarDirectories: [URL] = []
+    private(set) var sidebarRevision: UInt64 = 0
     @Published private(set) var focusedPinnedIndex = 0
     @Published private(set) var focusedActionIndex = 0
     @Published private(set) var focusedConflictResolution: FileBrowserConflictResolution = .keepBoth
@@ -67,15 +76,16 @@ final class FileBrowserModel: ObservableObject {
         return sidebarDirectories[focusedPinnedIndex]
     }
 
-    var sidebarDirectories: [URL] {
+    private func rebuildSidebarDirectories() {
         let mountsDirectory = URL(fileURLWithPath: "/Volumes", isDirectory: true).standardizedFileURL
-        let directories = pinnedDirectories + [mountsDirectory]
-        return directories.reduce(into: []) { result, directory in
-            guard !result.contains(where: { $0.standardizedFileURL.path == directory.standardizedFileURL.path }) else {
-                return
-            }
-            result.append(directory.standardizedFileURL)
+        var seenPaths = Set<String>()
+        let nextDirectories = (pinnedDirectories + [mountsDirectory]).compactMap { directory -> URL? in
+            let standardized = directory.standardizedFileURL
+            return seenPaths.insert(standardized.path).inserted ? standardized : nil
         }
+        guard sidebarDirectories != nextDirectories else { return }
+        sidebarDirectories = nextDirectories
+        sidebarRevision &+= 1
     }
 
     var availableActions: [FileBrowserAction] {
@@ -128,6 +138,7 @@ final class FileBrowserModel: ObservableObject {
                 self.statusMessage = message
             }
         }
+        rebuildSidebarDirectories()
         observeCurrentDirectory()
         reloadEntries(fallbackToHomeOnFailure: true)
     }
@@ -1095,7 +1106,6 @@ private enum FileBrowserCycleDirection {
     case backward
 }
 
-#if DEBUG
 extension FileBrowserModel {
     func replaceEntriesForTesting(_ nextEntries: [FileBrowserEntry]) {
         entries = nextEntries
@@ -1106,7 +1116,6 @@ extension FileBrowserModel {
         selectedURLs.append(url)
     }
 }
-#endif
 
 private struct DirectorySnapshotCacheKey: Hashable {
     let directory: URL

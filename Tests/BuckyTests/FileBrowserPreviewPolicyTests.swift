@@ -331,7 +331,7 @@ final class FileBrowserPreviewPolicyTests: XCTestCase {
         XCTAssertNil(FileBrowserIconPolicy.systemSymbolOverride(for: URL(fileURLWithPath: "/Users/test/Documents")))
     }
 
-    func testFileIconPreloadPolicyWarmsTraversalBeyondVisibleRows() {
+    func testFileIconPreloadPolicyWarmsOnlyViewportAndSmallBuffer() {
         let entries = (0..<900).map { index in
             FileBrowserEntry(
                 url: URL(fileURLWithPath: "/Users/test/file-\(index).txt"),
@@ -353,6 +353,20 @@ final class FileBrowserPreviewPolicyTests: XCTestCase {
         XCTAssertEqual(urls.first?.path, "/Users/test/Documents")
         XCTAssertFalse(urls.contains(URL(fileURLWithPath: "/Users/test/.Trash")))
         XCTAssertTrue(FileIconPreloadPolicy.shouldYield(afterLoadingItemAt: FileIconPreloadPolicy.yieldStride - 1))
+    }
+
+    func testFileIconPreloadPolicyMovesWithSelectionAndHandlesEmptyEntries() {
+        let entries = (0..<900).map { index in
+            FileBrowserEntry(url: URL(fileURLWithPath: "/tmp/files-fixture/file-\(index).txt"),
+                             kind: .file, size: nil, createdAt: nil, modifiedAt: nil, isHidden: false)
+        }
+        let urls = FileIconPreloadPolicy.preloadURLs(entries: entries, pinnedDirectories: [], selectedIndex: 500)
+        XCTAssertEqual(urls.count, FileIconPreloadPolicy.preloadLimit)
+        XCTAssertTrue(urls.contains(entries[500].url))
+        XCTAssertFalse(urls.contains(entries[0].url))
+        XCTAssertTrue(FileIconPreloadPolicy.preloadURLs(entries: [], pinnedDirectories: []).isEmpty)
+        let endURLs = FileIconPreloadPolicy.preloadURLs(entries: entries, pinnedDirectories: [], selectedIndex: Int.max)
+        XCTAssertTrue(endURLs.contains(entries.last!.url))
     }
 
 }
