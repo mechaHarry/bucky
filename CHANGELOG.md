@@ -2,6 +2,61 @@
 
 All notable changes to Bucky are documented here.
 
+## [3.2.14] - 2026-10-05
+
+### Improved
+
+- Add a red Confirm Deletion button to Countdown confirmation prompts while keeping Return as the default confirmation key.
+
+## [3.2.13] - 2026-10-05
+
+### Fixed
+
+- Make the Countdown plus button submit reliably across its full 36-point hit area, with Return handling scoped to the title field.
+
+## [3.2.12] - 2026-10-05
+
+### Added
+
+- Schedule a native macOS notification when a saved countdown reaches its target, including when Bucky is closed. Ask for notification permission when the first countdown is created, and keep scheduled notifications in sync with countdown creation and deletion.
+
+## [3.2.11] - 2026-10-05
+
+### Fixed
+
+- Give the shared results scroll viewport a constant 1% input surface so row gaps and padding receive scrolling over another window. Keep the native window backing clear and the prepared glass backdrop unchanged.
+- Convert AppKit hit-test points from the superview before checking the hosting view's bounds, including offset and flipped hosts.
+- Check native window targeting against a synthetic window underneath, in addition to in-app scroll hit testing.
+
+### Verification
+
+- Reproduce gap wheel events reaching an underlying scroll window with a fully transparent viewport in a real application run loop. With the viewport fill, verify downward/upward gap scrolling, inset scrolling, and eight repeated stationary-cursor wheel inputs without any event reaching the underlying window.
+- Add three coordinate regressions that fail with the previous hosting-view fallback and pass with the correction.
+
+## [3.2.10] - 2026-10-03
+
+### Fixed
+
+- Keep the launcher glass backdrop prepared with the hidden Apps shell so opening has no delayed opaque-to-transparent flash. Reduce Transparency uses a stable opaque surface.
+- Define rectangular interaction shapes for results and row gaps. This addressed in-app hit testing but did not resolve scrolling through to an underlying window.
+
+## [3.2.9] - 2026-10-03
+
+### Improved
+
+- Reveal the prepared SwiftUI Apps shell immediately at full opacity, preserve its input/list across hides, and remove the extra hotkey actor hop and queued focus reset.
+- Let Liquid Glass settle in on an independent background after input idle; defer cold app-icon work so input and filtering get priority.
+- Cache app result rows and compact revisions, prepare row/title ranks away from the UI executor, start typing searches directly from the native SwiftUI binding without debounce, and cooperatively cancel obsolete search work.
+- Warm only missing deletion-prefix searches after input idle, with no hidden-window warming.
+- Rasterize icons at display size, reduce cache budgets to 8/16 MiB, purge on memory pressure, and limit preload batches to 32 entries.
+- Share SwiftUI icon loading, remove unused Files icon observers, and reuse content/sidebar revisions instead of rebuilding path identities.
+
+### Verification
+
+- Add native input/readiness and teardown coverage, cancellation/ranking/race tests, icon memory-bound tests, and a live-filter regression gate.
+- Add opt-in timing diagnostics containing fixed stage names and elapsed milliseconds only.
+- Allow the existing Files test helpers in optimized test builds.
+
 ## [3.2.8] - 2026-10-01
 
 ### Fixed

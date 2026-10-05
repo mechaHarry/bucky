@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let calculationHistoryStore = CalculationHistoryStore()
     private let dictionaryHistoryStore = DictionaryHistoryStore()
     private let countdownStore = CountdownStore()
+    @MainActor private lazy var countdownNotificationScheduler = CountdownNotificationScheduler()
     private var launcherController: LauncherControlling?
     private var statusMenuController: StatusMenuController?
     private var hotKeyController: HotKeyController?
@@ -16,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         NSApp.mainMenu = ApplicationMenu.makeMainMenu()
+        countdownNotificationScheduler.restoreScheduledNotifications(for: countdownStore.countdowns)
 
         guard let launcherController = makeLauncherController() else {
             showUnsupportedOSAlert()
@@ -57,7 +59,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 hotKeyChangeHandler: { [weak self] hotKey in
                     self?.registerHotKey(hotKey) ?? false
                 },
-                stoneProviders: [CountdownStone(store: countdownStore)]
+                stoneProviders: [CountdownStone(
+                    store: countdownStore,
+                    countdownsDidChange: { [countdownNotificationScheduler] countdowns in
+                        countdownNotificationScheduler.countdownsDidChange(countdowns)
+                    }
+                )]
             )
         }
 
@@ -72,9 +79,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         do {
             let controller = try HotKeyController(configuration: hotKey) { [weak self] in
-                Task { @MainActor in
-                    self?.launcherController?.toggle()
-                }
+                LauncherPerformanceTrace.shared.begin()
+                self?.launcherController?.toggle()
             }
             hotKeyController = controller
             return true
