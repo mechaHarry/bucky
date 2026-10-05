@@ -140,7 +140,20 @@ struct StoneInlineCreationConfiguration: Equatable, Hashable {
 struct StoneProviderConfirmation: Equatable, Hashable {
     let title: String
     let message: String
+    let confirmationButtonTitle: String
     let confirmationActivation: StoneActivation
+
+    init(
+        title: String,
+        message: String,
+        confirmationButtonTitle: String = "Confirm",
+        confirmationActivation: StoneActivation
+    ) {
+        self.title = title
+        self.message = message
+        self.confirmationButtonTitle = confirmationButtonTitle
+        self.confirmationActivation = confirmationActivation
+    }
 }
 
 @MainActor
@@ -257,7 +270,7 @@ enum StoneCatalog {
                 systemImage: "square.grid.2x2"
             ),
             surface: .textInput,
-            updatePolicy: .deferred(delayNanoseconds: 40_000_000),
+            updatePolicy: .deferred(delayNanoseconds: 0),
             tint: StoneTint(
                 activeHex: 0x266EF6,
                 panelHex: 0x08578A,

@@ -2,6 +2,11 @@ import XCTest
 @testable import Bucky
 
 final class ToolResultsSnapshotPolicyTests: XCTestCase {
+    func testApplicationsTypingStartsWithoutDebounce() {
+        XCTAssertEqual(ToolResultsSnapshotPolicy.update(for: .applications, query: "example"),
+                       .deferred(delayNanoseconds: 0))
+    }
+
     func testBlankCalculatorQueryUpdatesImmediately() {
         XCTAssertEqual(
             ToolResultsSnapshotPolicy.update(for: .calculator, query: "   "),

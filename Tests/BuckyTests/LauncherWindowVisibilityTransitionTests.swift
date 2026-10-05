@@ -200,99 +200,33 @@ final class LauncherWindowVisibilityTransitionTests: XCTestCase {
         XCTAssertEqual(timingReadCount, 1)
     }
 
-    func testShowTransitionDecisionReplacesShowingAndHidingPhases() {
-        XCTAssertEqual(
-            LauncherWindowShowTransitionPolicy.decision(
-                priorPhase: .showing,
-                isMaterialized: true
-            ),
-            .replaceAnimation
-        )
-        XCTAssertEqual(
-            LauncherWindowShowTransitionPolicy.decision(
-                priorPhase: .hiding,
-                isMaterialized: true
-            ),
-            .replaceAnimation
-        )
-        XCTAssertEqual(
-            LauncherWindowShowTransitionPolicy.decision(
-                priorPhase: .hidden,
-                isMaterialized: false
-            ),
-            .materialize
-        )
-        XCTAssertEqual(
-            LauncherWindowShowTransitionPolicy.decision(
-                priorPhase: .shown,
-                isMaterialized: true
-            ),
-            .synchronous
-        )
-    }
+    func testImmediateShowNeedsNoAnimationAndCancelsStaleHideCompletion() {
+        let driver = FakeAlphaAnimationDriver(alphaValue: 1)
+        var showCount = 0
+        var hideCount = 0
+        let coordinator = makeCoordinator(driver: driver, timing: .smooth,
+            didShow: { showCount += 1 }, didHide: { hideCount += 1 })
+        coordinator.request(.hide)
+        XCTAssertTrue(coordinator.startAnimation())
 
-    func testSecondShowBeforeColdOpenSchedulerTurnReplacesShowingTransition() {
-        let driver = FakeAlphaAnimationDriver()
-        var didShowCount = 0
-        var queuedWork: [@MainActor () -> Void] = []
-        let scheduler = LauncherWindowOpenAnimationScheduler { work in
-            queuedWork.append(work)
-        }
-        let coordinator = makeCoordinator(driver: driver, didShow: { didShowCount += 1 })
-
-        let firstGeneration = coordinator.request(.show)
-        let firstDecision = LauncherWindowShowTransitionPolicy.decision(
-            priorPhase: .hidden,
-            isMaterialized: false
-        )
-        XCTAssertEqual(firstDecision, .materialize)
-        scheduler.schedule(
-            expectedTransitionID: firstGeneration,
-            stateProvider: { (coordinator.generation, coordinator.phase == .showing) },
-            startAnimation: { completion in
-                XCTAssertTrue(coordinator.startAnimation(completion: completion))
-            },
-            completionAction: {
-                coordinator.complete(
-                    generation: firstGeneration,
-                    intent: .show,
-                    phase: .showing
-                )
-            }
-        )
-
-        let secondGeneration = coordinator.request(.show)
-        let secondDecision = LauncherWindowShowTransitionPolicy.decision(
-            priorPhase: .showing,
-            isMaterialized: true
-        )
-        XCTAssertEqual(secondDecision, .replaceAnimation)
-        scheduler.schedule(
-            expectedTransitionID: secondGeneration,
-            stateProvider: { (coordinator.generation, coordinator.phase == .showing) },
-            startAnimation: { completion in
-                XCTAssertTrue(coordinator.startAnimation(completion: completion))
-            },
-            completionAction: {
-                coordinator.complete(
-                    generation: secondGeneration,
-                    intent: .show,
-                    phase: .showing
-                )
-            }
-        )
-
-        XCTAssertEqual(queuedWork.count, 2)
-        queuedWork.removeFirst()()
-        XCTAssertTrue(driver.animations.isEmpty)
-        queuedWork.removeFirst()()
-        XCTAssertEqual(driver.animations.count, 1)
-        driver.finishAnimation(at: 0)
-
+        coordinator.showImmediately()
         XCTAssertEqual(driver.alphaValue, 1)
         XCTAssertEqual(coordinator.phase, .shown)
-        XCTAssertEqual(didShowCount, 1)
-        XCTAssertEqual(driver.cancelCount, 2)
+        XCTAssertEqual(driver.animations.count, 1, "Reopening must not schedule an opacity animation")
+        driver.finishAnimation(at: 0)
+        XCTAssertEqual(coordinator.phase, .shown)
+        XCTAssertEqual(driver.alphaValue, 1)
+        XCTAssertEqual(showCount, 1)
+        XCTAssertEqual(hideCount, 0)
+    }
+
+    func testImmediateShowFromHiddenPublishesFullOpacitySynchronously() {
+        let driver = FakeAlphaAnimationDriver()
+        let coordinator = makeCoordinator(driver: driver)
+        coordinator.showImmediately()
+        XCTAssertEqual(coordinator.phase, .shown)
+        XCTAssertEqual(driver.alphaValue, 1)
+        XCTAssertTrue(driver.animations.isEmpty)
     }
 
     func testStaleDuplicateAndOutOfOrderCompletionsAreIgnored() {

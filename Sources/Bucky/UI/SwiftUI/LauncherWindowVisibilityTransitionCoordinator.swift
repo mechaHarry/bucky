@@ -15,30 +15,6 @@ enum WindowVisibilityIntent: Equatable {
 }
 
 @available(macOS 26.0, *)
-enum LauncherWindowShowTransitionDecision: Equatable {
-    case materialize
-    case replaceAnimation
-    case synchronous
-}
-
-@available(macOS 26.0, *)
-enum LauncherWindowShowTransitionPolicy {
-    static func decision(
-        priorPhase: WindowVisibilityState,
-        isMaterialized: Bool
-    ) -> LauncherWindowShowTransitionDecision {
-        switch priorPhase {
-        case .showing, .hiding:
-            return .replaceAnimation
-        case .hidden:
-            return isMaterialized ? .synchronous : .materialize
-        case .shown:
-            return .synchronous
-        }
-    }
-}
-
-@available(macOS 26.0, *)
 @MainActor
 final class LauncherWindowVisibilityTransitionCoordinator {
     typealias AnimationCompletion = @MainActor () -> Void
@@ -75,6 +51,14 @@ final class LauncherWindowVisibilityTransitionCoordinator {
 
     var targetAlpha: CGFloat {
         intent == .show ? 1 : 0
+    }
+
+    // Input readiness never waits for a decorative window animation. A show also
+    // invalidates any pending hide completion before restoring full opacity.
+    func showImmediately() {
+        let generation = request(.show)
+        alphaDriver.alphaValue = 1
+        complete(generation: generation, intent: .show, phase: .showing)
     }
 
     @discardableResult

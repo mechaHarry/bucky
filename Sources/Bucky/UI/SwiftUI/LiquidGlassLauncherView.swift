@@ -44,9 +44,12 @@ struct LiquidGlassLauncherView: View {
 
     var body: some View {
         ZStack {
-            if model.isPresented {
+            // Apps stays mounted, including its SwiftUI field editor and lazy list.
+            // Heavy Stones retain their normal disappearance/cancellation lifecycle.
+            if model.mode == .applications || model.isPresented {
                 activeSurface
-                    .modifier(LauncherWindowFocusVisualModifier(isKeyWindow: model.isWindowKey))
+                    .allowsHitTesting(model.isPresented)
+                    .accessibilityHidden(!model.isPresented)
             }
         }
         .onAppear {
@@ -61,15 +64,11 @@ struct LiquidGlassLauncherView: View {
         }
         .onChange(of: model.isShowingSettings) {
             synchronizeSearchFocus()
-            if !model.isShowingSettings {
-                preloadApplicationIcons()
-            }
+            preloadApplicationIcons()
         }
         .onChange(of: model.isShowingHelp) {
             synchronizeSearchFocus()
-            if !model.isShowingHelp {
-                preloadApplicationIcons()
-            }
+            preloadApplicationIcons()
         }
         .onChange(of: model.isPresented) { _, isPresented in
             if isPresented {
@@ -77,7 +76,7 @@ struct LiquidGlassLauncherView: View {
                 preloadApplicationIcons()
                 resetInlineCreationDraftIfNeeded()
             } else {
-                isSearchFocused = false
+                if model.mode != .applications { isSearchFocused = false }
                 inlineCreationFocus = nil
                 model.isInlineCreationInputFocused = false
                 iconPreloadTask?.cancel()
@@ -108,6 +107,9 @@ struct LiquidGlassLauncherView: View {
             guard let configuration = model.inlineCreationConfiguration else { return }
             submitInlineCreation(configuration)
         }
+        .onChange(of: model.query) {
+            preloadApplicationIcons()
+        }
         .onChange(of: model.filteredItemIDs) {
             preloadApplicationIcons()
         }
@@ -136,7 +138,12 @@ struct LiquidGlassLauncherView: View {
             .accessibilityHidden(model.providerConfirmation != nil)
 
             if let confirmation = model.providerConfirmation {
-                ConfirmationOverlay(title: confirmation.title, message: confirmation.message)
+                ConfirmationOverlay(
+                    title: confirmation.title,
+                    message: confirmation.message,
+                    confirmationButtonTitle: confirmation.confirmationButtonTitle,
+                    confirm: { model.confirmProviderConfirmation() }
+                )
                     .transition(.scale(scale: 0.97).combined(with: .opacity))
             }
         }
@@ -165,15 +172,15 @@ struct LiquidGlassLauncherView: View {
     }
 
     private func synchronizeSearchFocus() {
-        let shouldFocus = model.isPresented && !model.isShowingSettings && !model.isShowingHelp
+        // FocusState is idempotent: do not clear/requeue an already mounted input.
+        // The first focus request waits for presentation; requesting it against
+        // a never-shown host can be rejected by SwiftUI's focus system.
+        let shouldFocus = model.isPresented
+            && !model.isShowingSettings && !model.isShowingHelp
             && model.providerConfirmation == nil && model.mode.acceptsTextInput
-        isSearchFocused = false
-        guard shouldFocus else { return }
-
-        DispatchQueue.main.async {
-            guard model.isPresented, !model.isShowingSettings, !model.isShowingHelp,
-                  model.providerConfirmation == nil, model.mode.acceptsTextInput else { return }
-            isSearchFocused = true
+        if isSearchFocused != shouldFocus { isSearchFocused = shouldFocus }
+        if model.isPresented && shouldFocus {
+            LauncherPerformanceTrace.shared.record(.focusRequested)
         }
     }
 
@@ -211,21 +218,16 @@ struct LiquidGlassLauncherView: View {
     }
 
     private var resultsPaneBackdrop: some View {
-        resultsPaneShape
-            .fill(Color.clear)
-            .glassEffect(
-                .regular
-                    .tint(LauncherModeTintPolicy.panelColor(for: model.mode).opacity(LauncherVisualStyle.resultsPaneModeTintOpacity))
-                    .interactive(false),
-                in: resultsPaneShape
-            )
-            .overlay {
-                resultsPaneShape
-                    .strokeBorder(
-                        LauncherPinnedBorderPolicy.color(isPinned: model.isPinned),
-                        lineWidth: LauncherPinnedBorderPolicy.lineWidth(isPinned: model.isPinned)
-                    )
-            }
+        LauncherBackdrop(
+            tint: LauncherModeTintPolicy.panelColor(for: model.mode)
+        )
+        .overlay {
+            resultsPaneShape
+                .strokeBorder(
+                    LauncherPinnedBorderPolicy.color(isPinned: model.isPinned),
+                    lineWidth: LauncherPinnedBorderPolicy.lineWidth(isPinned: model.isPinned)
+                )
+        }
     }
 
     private var resultsPaneShape: RoundedRectangle {
@@ -281,19 +283,19 @@ struct LiquidGlassLauncherView: View {
     }
 
     private func resultContent(_ snapshot: StoneResultSnapshot) -> some View {
-        resultScrollView(reconstructionID: snapshot.identity) {
+        resultScrollView(reconstructionID: model.resultSnapshotIdentity) {
             if let configuration = model.inlineCreationConfiguration {
                 inlineCreationRow(configuration)
             }
 
-            ForEach(Array(snapshot.rows.enumerated()), id: \.element.id) { index, row in
-                stoneRow(row, index: index)
+            ForEach(snapshot.rows) { row in
+                stoneRow(row)
                     .transition(rowTransition(for: row))
             }
         }
         .animation(
             model.mode.stoneDefinition.animatesResultUpdates ? toolSnapshotAnimation(for: snapshot) : nil,
-            value: snapshot.identity
+            value: model.resultSnapshotIdentity
         )
     }
 
@@ -324,6 +326,9 @@ struct LiquidGlassLauncherView: View {
                         }
                         .accessibilityLabel(configuration.namePlaceholder)
                         .accessibilityHint(inlineCreationNameIsInvalid ? "A title is required before creating a countdown." : "")
+                        .onSubmit {
+                            submitInlineCreation(configuration)
+                        }
 
                     HStack(spacing: 7) {
                         Text("Date")
@@ -368,9 +373,11 @@ struct LiquidGlassLauncherView: View {
                 } label: {
                     Image(systemName: "plus")
                         .font(.system(size: 15, weight: .bold))
-                        .frame(width: 18, height: 18)
-                        .padding(7)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .contentShape(Rectangle())
                 }
+                .frame(width: 36, height: 36)
+                .contentShape(Rectangle())
                 .buttonStyle(.plain)
                 .background {
                     Circle()
@@ -383,9 +390,6 @@ struct LiquidGlassLauncherView: View {
                 .opacity(isInlineCreationTargetDateValid ? 1 : 0.45)
             }
             .padding(.vertical, 2)
-            .onSubmit {
-                submitInlineCreation(configuration)
-            }
             .disabled(model.isSubmittingInlineCreation)
         }
         .background {
@@ -478,8 +482,13 @@ struct LiquidGlassLauncherView: View {
         }
     }
 
-    private func stoneRow(_ row: StoneResultRow, index: Int) -> some View {
-        let isSelected = index == model.selectedIndex
+    private func selectResult(_ row: StoneResultRow) {
+        guard let index = model.resultSnapshot.rows.firstIndex(where: { $0.id == row.id }) else { return }
+        model.selectedIndex = index
+    }
+
+    private func stoneRow(_ row: StoneResultRow) -> some View {
+        let isSelected = model.resultRow(at: model.selectedIndex)?.id == row.id
         let actionConfiguration = row.accessoryPresentation
 
         return LauncherResultRow(
@@ -523,7 +532,7 @@ struct LiquidGlassLauncherView: View {
                     if model.inlineCreationConfiguration != nil {
                         inlineCreationFocus = nil
                     }
-                    model.selectedIndex = index
+                    selectResult(row)
                     model.activate(row)
                 }
 
@@ -545,7 +554,7 @@ struct LiquidGlassLauncherView: View {
                     .launcherActionButtonRim()
                 } else if let actionConfiguration {
                     Button {
-                        model.selectedIndex = index
+                        selectResult(row)
                         model.performAccessoryActivation(for: row)
                     } label: {
                         Image(systemName: actionConfiguration.systemImage)
@@ -623,7 +632,9 @@ struct LiquidGlassLauncherView: View {
     @ViewBuilder
     private func rowIcon(for row: StoneResultRow) -> some View {
         if row.kind == .application, let iconURL = row.iconURL {
-            ApplicationIconView(url: iconURL)
+            CachedIconView(url: iconURL, cache: .applications, fallbackSymbol: "app.dashed",
+                           isActive: model.isPresented, loadDelayNanoseconds: AppIconPreloadPolicy.initialDelayNanoseconds)
+                .frame(width: 38, height: 38)
         } else {
             Image(systemName: row.iconSystemImage ?? toolSymbol(for: row.kind))
                 .font(.system(size: 20, weight: .semibold))
@@ -678,11 +689,13 @@ struct LiquidGlassLauncherView: View {
     }
 
     private func preloadApplicationIcons() {
-        guard model.mode == .applications, model.isPresented else { return }
+        iconPreloadTask?.cancel()
+        iconPreloadTask = nil
+        guard model.mode == .applications, model.isPresented,
+              !model.isShowingSettings, !model.isShowingHelp else { return }
         let urls = AppIconPreloadPolicy.preloadURLs(for: model.filteredIconURLs)
         guard !urls.isEmpty else { return }
 
-        iconPreloadTask?.cancel()
         iconPreloadTask = Task(priority: .utility) {
             try? await Task.sleep(nanoseconds: AppIconPreloadPolicy.initialDelayNanoseconds)
             guard !Task.isCancelled else { return }
@@ -702,25 +715,8 @@ struct LiquidGlassLauncherView: View {
 }
 
 @available(macOS 26.0, *)
-private struct LauncherWindowFocusVisualModifier: ViewModifier {
-    let isKeyWindow: Bool
-
-    func body(content: Content) -> some View {
-        content
-            .environment(\.controlActiveState, .key)
-            .opacity(LauncherWindowFocusVisualPolicy.contentOpacity(isKeyWindow: isKeyWindow))
-            .blur(radius: LauncherWindowFocusVisualPolicy.blurRadius(isKeyWindow: isKeyWindow))
-            .overlay {
-                RoundedRectangle(cornerRadius: 30, style: .continuous)
-                    .fill(Color.black.opacity(LauncherWindowFocusVisualPolicy.dimOverlayOpacity(isKeyWindow: isKeyWindow)))
-                    .allowsHitTesting(false)
-            }
-            .animation(.smooth(duration: 0.18), value: isKeyWindow)
-    }
-}
-
-@available(macOS 26.0, *)
 enum LauncherVisualStyle {
+    static let inputSurfaceOpacity = 0.01
     static let windowCornerRadius: CGFloat = 30
     static let aetherContentSpacing: CGFloat = 14
     static let paneContentSpacing: CGFloat = 12
@@ -774,49 +770,10 @@ private extension View {
 }
 
 @available(macOS 26.0, *)
-private struct ApplicationIconView: View {
-    let url: URL
-
-    @State private var icon: NSImage?
-
-    var body: some View {
-        ZStack {
-            if let icon {
-                Image(nsImage: icon)
-                    .resizable()
-                    .transition(.opacity)
-            } else {
-                Image(systemName: "app.dashed")
-                    .font(.system(size: 24, weight: .medium))
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .frame(width: 38, height: 38)
-        .task(id: url) {
-            await loadIcon()
-        }
-    }
-
-    @MainActor
-    private func loadIcon() async {
-        if let cachedIcon = await IconCache.applications.cachedIcon(for: url) {
-            icon = cachedIcon
-            return
-        }
-
-        icon = nil
-        let loadedIcon = await IconCache.applications.icon(for: url)
-
-        guard !Task.isCancelled else { return }
-        icon = loadedIcon
-    }
-}
-
-@available(macOS 26.0, *)
 struct AppIconPreloadPolicy {
-    static let initialVisibleLimit = 24
-    static let preloadLimit = 256
-    static let initialDelayNanoseconds: UInt64 = 0
+    static let initialVisibleLimit = 16
+    static let preloadLimit = 32
+    static let initialDelayNanoseconds: UInt64 = 150_000_000
     static let tailDelayNanoseconds: UInt64 = 250_000_000
     static let yieldStride = 8
 

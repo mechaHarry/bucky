@@ -7,6 +7,7 @@ MACOS_DIR := $(CONTENTS_DIR)/MacOS
 RESOURCES_DIR := $(CONTENTS_DIR)/Resources
 CODESIGN_IDENTITY ?= -
 CODESIGN_FLAGS ?= --force --deep
+TEST_ARGUMENTS ?=
 
 .PHONY: build bundle run clean perf perf-baseline test tooling-test
 
@@ -29,13 +30,13 @@ clean:
 	rm -rf build
 
 perf:
-	swift test --filter LauncherFilterPerformanceTests
+	$(MAKE) test TEST_ARGUMENTS='-c release --filter "LauncherFilterPerformanceTests|LauncherInputReadinessTests"'
 
 perf-baseline:
 	BUCKY_PERF_UPDATE_BASELINE=1 BUCKY_PERF_GIT_COMMIT="$$(git rev-parse --short HEAD 2>/dev/null || true)" swift test --filter LauncherFilterPerformanceTests
 
 test:
-	testDataDirectory="$${BUCKY_DATA_DIRECTORY:-$$(mktemp -d "$${TMPDIR:-/tmp}/bucky-tests.XXXXXX")}"; BUCKY_DATA_DIRECTORY="$$testDataDirectory" swift test
+	testDataDirectory="$${BUCKY_DATA_DIRECTORY:-$$(mktemp -d "$${TMPDIR:-/tmp}/bucky-tests.XXXXXX")}"; BUCKY_DATA_DIRECTORY="$$testDataDirectory" swift test $(TEST_ARGUMENTS)
 
 tooling-test:
 	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/tooling -p 'test*.py'

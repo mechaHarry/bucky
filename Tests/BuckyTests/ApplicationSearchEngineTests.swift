@@ -136,6 +136,52 @@ final class ApplicationSearchEngineTests: XCTestCase {
         XCTAssertEqual(rowStore.items(for: rankedIDs), rankedItems)
     }
 
+    func testCancellationStopsMatchingWithoutReturningPartialResults() {
+        var store = ApplicationRowStore()
+        store.replaceAll((0..<512).map { launchItem(title: "Example \($0)") })
+        var checks = 0
+        XCTAssertThrowsError(try ApplicationSearchEngine.filterIDsCancellable(
+            store.allIDs, rowStore: store, normalizedQuery: "example",
+            cancellationCheck: {
+                checks += 1
+                if checks == 3 { throw CancellationError() }
+            }
+        )) { XCTAssertTrue($0 is CancellationError) }
+        XCTAssertEqual(checks, 3)
+    }
+
+    func testCancellationStopsSortingBroadMatches() {
+        var store = ApplicationRowStore()
+        store.replaceAll((0..<512).reversed().map { launchItem(title: "Example \($0)") })
+        var checks = 0
+        XCTAssertThrowsError(try ApplicationSearchEngine.filterIDsCancellable(
+            store.allIDs, rowStore: store, normalizedQuery: "example",
+            cancellationCheck: {
+                checks += 1
+                // Initial check, eight scan chunks, postscan check, then sorting.
+                if checks == 12 { throw CancellationError() }
+            }
+        )) { XCTAssertTrue($0 is CancellationError) }
+        XCTAssertEqual(checks, 12)
+    }
+
+    func testCancelledWorkerRequestDoesNotPublishStaleResults() async throws {
+        var store = ApplicationRowStore()
+        store.replaceAll((0..<512).map { launchItem(title: "Example \($0)") })
+        let worker = ApplicationSearchWorker()
+        let cancelled = Task {
+            try Task.checkCancellation()
+            return try await worker.filter(store.visibleIDs, rowStore: store, query: "example")
+        }
+        cancelled.cancel()
+        do {
+            _ = try await cancelled.value
+            XCTFail("Cancelled scan returned results")
+        } catch { XCTAssertTrue(error is CancellationError) }
+        let latest = try await worker.filter(store.visibleIDs, rowStore: store, query: "example 511")
+        XCTAssertEqual(store.items(for: latest).map(\.title), ["Example 511"])
+    }
+
     private func launchItem(
         title: String,
         subtitle: String? = nil,

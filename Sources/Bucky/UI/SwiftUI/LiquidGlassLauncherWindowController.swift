@@ -5,52 +5,9 @@ import UniformTypeIdentifiers
 
 @available(macOS 26.0, *)
 @MainActor
-final class LauncherWindowOpenAnimationScheduler {
-    typealias State = (transitionID: Int, isShowing: Bool)
-    typealias AnimationCompletion = @MainActor () -> Void
-    typealias Work = @MainActor () -> Void
-
-    private let enqueue: (@escaping Work) -> Void
-
-    init(enqueue: @escaping (@escaping Work) -> Void = { work in
-        DispatchQueue.main.async {
-            work()
-        }
-    }) {
-        self.enqueue = enqueue
-    }
-
-    func schedule(
-        expectedTransitionID: Int,
-        stateProvider: @escaping @MainActor () -> State?,
-        startAnimation: @escaping @MainActor (@escaping AnimationCompletion) -> Void,
-        completionAction: @escaping @MainActor () -> Void
-    ) {
-        enqueue {
-            guard let state = stateProvider(),
-                  state.transitionID == expectedTransitionID,
-                  state.isShowing else {
-                return
-            }
-
-            startAnimation {
-                guard let state = stateProvider(),
-                      state.transitionID == expectedTransitionID,
-                      state.isShowing else {
-                    return
-                }
-                completionAction()
-            }
-        }
-    }
-}
-
-@available(macOS 26.0, *)
-@MainActor
 final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
-    private let window: BuckyPanelWindow
-    private let model: LiquidGlassLauncherModel
-    private let windowOpenAnimationScheduler = LauncherWindowOpenAnimationScheduler()
+    let window: BuckyPanelWindow
+    let model: LiquidGlassLauncherModel
     private var visibilityTransitionCoordinator: LauncherWindowVisibilityTransitionCoordinator!
     private var settingsModel: SettingsViewModel!
     private var localKeyMonitor: Any?
@@ -72,7 +29,9 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         dictionaryHistoryStore: DictionaryHistoryStore,
         hotKeyChangeHandler: @escaping @MainActor (HotKeyConfiguration) -> Bool,
         stoneProviders: [any StoneProvider] = [],
-        alphaDriverFactory: (@MainActor (NSWindow) -> any LauncherWindowAlphaAnimationDriver)? = nil
+        alphaDriverFactory: (@MainActor (NSWindow) -> any LauncherWindowAlphaAnimationDriver)? = nil,
+        startsBackgroundServices: Bool = true,
+        applicationIndexSnapshotCache: ApplicationIndexSnapshotCache = ApplicationIndexSnapshotCache()
     ) {
         model = LiquidGlassLauncherModel(
             settingsStore: settingsStore,
@@ -80,7 +39,8 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             exclusionStore: exclusionStore,
             calculationHistoryStore: calculationHistoryStore,
             dictionaryHistoryStore: dictionaryHistoryStore,
-            stoneProviders: stoneProviders
+            stoneProviders: stoneProviders,
+            applicationIndexSnapshotCache: applicationIndexSnapshotCache
         )
         window = BuckyPanelWindow(
             contentRect: NSRect(
@@ -154,9 +114,11 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         buildWindow()
         installLocalKeyMonitor()
         installApplicationActivationObserver()
-        startApplicationIndexSourceStream()
-        reindex()
-        model.startBackgroundWarmCaches()
+        if startsBackgroundServices {
+            startApplicationIndexSourceStream()
+            reindex()
+            model.startBackgroundWarmCaches()
+        }
     }
 
     deinit {
@@ -199,34 +161,11 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     }
 
     func showSettings() {
-        let generation = visibilityTransitionCoordinator.request(.show)
         closeQuickLookPreviewPanel()
         cancelSpaceHoldState(deliverEndHold: true)
         cancelOptionPinnedFocus()
         Task { [weak self] in await self?.settingsModel.refreshAsync() }
-
-        let shouldMaterialize = !window.isVisible || !model.isPresented
-        if shouldMaterialize {
-            model.isPresented = false
-        }
-        model.showSettings()
-        if shouldMaterialize {
-            positionWindow(animated: false)
-        }
-        window.alphaValue = 1
-        activateAndFocusWindow()
-        if shouldMaterialize {
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            withTransaction(transaction) {
-                model.isPresented = true
-            }
-        }
-        visibilityTransitionCoordinator.complete(
-            generation: generation,
-            intent: .show,
-            phase: .showing
-        )
+        presentImmediately { model.showSettings() }
     }
 
     private func toggleSettings() {
@@ -238,34 +177,11 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     }
 
     private func showHelp() {
-        let generation = visibilityTransitionCoordinator.request(.show)
         closeQuickLookPreviewPanel()
         cancelSpaceHoldState(deliverEndHold: true)
         cancelOptionPinnedFocus()
         Task { [weak self] in await self?.settingsModel.refreshAsync() }
-
-        let shouldMaterialize = !window.isVisible || !model.isPresented
-        if shouldMaterialize {
-            model.isPresented = false
-        }
-        model.showHelp()
-        if shouldMaterialize {
-            positionWindow(animated: false)
-        }
-        window.alphaValue = 1
-        activateAndFocusWindow()
-        if shouldMaterialize {
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            withTransaction(transaction) {
-                model.isPresented = true
-            }
-        }
-        visibilityTransitionCoordinator.complete(
-            generation: generation,
-            intent: .show,
-            phase: .showing
-        )
+        presentImmediately { model.showHelp() }
     }
 
     private func toggleHelp() {
@@ -277,77 +193,26 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     }
 
     private func showLauncherFromPanel() {
-        stopRecordingSettingsHotKey()
-        let priorPhase = visibilityTransitionCoordinator.phase
-        let isMaterialized = window.isVisible && model.isPresented
-        let showDecision = LauncherWindowShowTransitionPolicy.decision(
-            priorPhase: priorPhase,
-            isMaterialized: isMaterialized
-        )
-        let generation = visibilityTransitionCoordinator.request(.show)
-        model.showLauncherSurface()
-        if showDecision == .materialize {
-            positionWindow(animated: false)
-            window.alphaValue = 0
-        } else if showDecision == .synchronous {
-            window.alphaValue = 1
-        }
-        activateAndFocusWindow()
-        if showDecision == .materialize {
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            withTransaction(transaction) {
-                model.isPresented = true
-            }
-            animateWindowOpen(generation: generation)
-        } else if showDecision == .replaceAnimation {
-            animateWindowOpen(generation: generation)
-        } else {
-            visibilityTransitionCoordinator.complete(
-                generation: generation,
-                intent: .show,
-                phase: .showing
-            )
-        }
+        presentImmediately { model.showLauncherSurface() }
     }
 
     private func show(mode: LauncherMode) {
+        presentImmediately { model.show(mode: mode) }
+    }
+
+    private func presentImmediately(prepare: () -> Void) {
+        LauncherPerformanceTrace.shared.beginIfNeeded()
         stopRecordingSettingsHotKey()
-        let priorPhase = visibilityTransitionCoordinator.phase
-        let isMaterialized = window.isVisible && model.isPresented
-        let showDecision = LauncherWindowShowTransitionPolicy.decision(
-            priorPhase: priorPhase,
-            isMaterialized: isMaterialized
-        )
-        let generation = visibilityTransitionCoordinator.request(.show)
-        let shouldMaterialize = showDecision == .materialize
-        model.show(mode: mode)
-        if shouldMaterialize {
-            model.isPresented = false
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            prepare()
+            model.isPresented = true
         }
         positionWindow(animated: false)
-        if shouldMaterialize {
-            window.alphaValue = 0
-        } else if showDecision == .synchronous {
-            window.alphaValue = 1
-        }
+        visibilityTransitionCoordinator.showImmediately()
         activateAndFocusWindow()
-        if shouldMaterialize {
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            withTransaction(transaction) {
-                model.isPresented = true
-            }
-            animateWindowOpen(generation: generation)
-        } else if showDecision == .replaceAnimation {
-            animateWindowOpen(generation: generation)
-        } else {
-            visibilityTransitionCoordinator.complete(
-                generation: generation,
-                intent: .show,
-                phase: .showing
-            )
-        }
+        LauncherPerformanceTrace.shared.record(.visible)
     }
 
     func hide() {
@@ -355,6 +220,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             return
         }
 
+        LauncherPerformanceTrace.shared.cancel()
         cancelFocusClaim()
         visibilityTransitionCoordinator.request(.hide)
         closeQuickLookPreviewPanel()
@@ -480,6 +346,10 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         hostingView.layer?.cornerCurve = .continuous
         hostingView.layer?.masksToBounds = true
         window.contentView = hostingView
+        // The window host is the only native boundary. Materialize the SwiftUI
+        // Apps shell here, before registration admits the first global hotkey.
+        // SwiftUI still owns the TextField, focus, results, and all decoration.
+        hostingView.layoutSubtreeIfNeeded()
     }
 
     private func installLocalKeyMonitor() {
@@ -602,12 +472,6 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
             case UInt16(kVK_Escape):
                 return self.handleLauncherCommand(.close) ? nil : event
             default:
-                if self.visibilityTransitionCoordinator.phase == .showing,
-                   self.model.mode.acceptsTextInput,
-                   let character = event.launcherTextInputCharacter {
-                    self.model.insertTextInput(character)
-                    return nil
-                }
                 if self.model.mode == .files,
                    let routedCharacter = event.fileNavigationAlphaNumericCharacter,
                    LauncherKeyRoutingPolicy.shouldRouteAlphaNumeric(
@@ -988,29 +852,6 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         activateAndFocusWindow()
     }
 
-    private func animateWindowOpen(generation: Int) {
-        windowOpenAnimationScheduler.schedule(
-            expectedTransitionID: generation,
-            stateProvider: { [weak self] in
-                guard let self else { return nil }
-                return (
-                    transitionID: self.visibilityTransitionCoordinator.generation,
-                    isShowing: self.visibilityTransitionCoordinator.phase == .showing
-                )
-            },
-            startAnimation: { [weak self] completion in
-                self?.visibilityTransitionCoordinator.startAnimation(completion: completion)
-            },
-            completionAction: { [weak self] in
-                self?.visibilityTransitionCoordinator.complete(
-                    generation: generation,
-                    intent: .show,
-                    phase: .showing
-                )
-            }
-        )
-    }
-
     private func startVisibilityAnimation() {
         _ = visibilityTransitionCoordinator.startAnimation()
     }
@@ -1021,10 +862,12 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         withTransaction(transaction) {
             model.isPresented = false
         }
-        window.makeFirstResponder(nil)
+        // Preserve the SwiftUI Apps field editor across orderOut/orderFront. Heavy
+        // Stones unmount and the next blank Apps state is prepared while hidden.
         window.orderOut(nil)
         window.resignKey()
         model.resetPanelVisibilityAfterHide()
+        model.show(mode: .applications)
     }
 
 }

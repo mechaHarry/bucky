@@ -306,49 +306,6 @@ final class LauncherModeRoutingTests: XCTestCase {
         XCTAssertTrue(panel.canBecomeMain)
     }
 
-    @MainActor
-    @available(macOS 26.0, *)
-    func testTypedCharacterIsCapturedWhileLauncherShowTransitionIsStillShowing() throws {
-        let driver = HoldingAlphaAnimationDriver()
-        let controller = LiquidGlassLauncherWindowController(
-            settingsStore: SettingsStore(),
-            inclusionStore: InclusionStore(),
-            exclusionStore: ExclusionStore(),
-            calculationHistoryStore: CalculationHistoryStore(),
-            dictionaryHistoryStore: DictionaryHistoryStore(),
-            hotKeyChangeHandler: { _ in true },
-            alphaDriverFactory: { _ in driver }
-        )
-        defer { controller.hide() }
-
-        controller.show()
-        pumpMainRunLoop()
-
-        let model = try XCTUnwrap(launcherModel(for: controller))
-        let phase = try XCTUnwrap(visibilityPhase(for: controller))
-        XCTAssertEqual(phase, .showing)
-        XCTAssertEqual(model.query, "")
-
-        let event = try XCTUnwrap(NSEvent.keyEvent(
-            with: .keyDown,
-            location: .zero,
-            modifierFlags: [],
-            timestamp: ProcessInfo.processInfo.systemUptime,
-            windowNumber: 0,
-            context: nil,
-            characters: "a",
-            charactersIgnoringModifiers: "a",
-            isARepeat: false,
-            keyCode: UInt16(kVK_ANSI_A)
-        ))
-
-        NSApp.sendEvent(event)
-        pumpMainRunLoop()
-
-        XCTAssertEqual(model.query, "a")
-        XCTAssertEqual(visibilityPhase(for: controller), .showing)
-    }
-
     @available(macOS 26.0, *)
     func testQuickLookPreviewDoesNotResizeLauncherWindow() {
         let visibleFrame = CGRect(x: 0, y: 0, width: 1_440, height: 900)
@@ -493,25 +450,6 @@ final class LauncherModeRoutingTests: XCTestCase {
 
         XCTAssertEqual(settingsSize, launcherSize)
         XCTAssertEqual(settingsFrame.size, launcherSize)
-    }
-
-    @available(macOS 26.0, *)
-    func testInactiveWindowVisualPolicyDimsWholeSurfaceWithoutSuppressingIcons() {
-        XCTAssertEqual(LauncherWindowFocusVisualPolicy.contentOpacity(isKeyWindow: true), 1)
-        XCTAssertEqual(LauncherWindowFocusVisualPolicy.dimOverlayOpacity(isKeyWindow: true), 0)
-        XCTAssertEqual(LauncherWindowFocusVisualPolicy.blurRadius(isKeyWindow: true), 0)
-
-        XCTAssertLessThan(
-            LauncherWindowFocusVisualPolicy.contentOpacity(isKeyWindow: false),
-            LauncherWindowFocusVisualPolicy.contentOpacity(isKeyWindow: true)
-        )
-        XCTAssertGreaterThan(LauncherWindowFocusVisualPolicy.dimOverlayOpacity(isKeyWindow: false), 0)
-        XCTAssertGreaterThan(LauncherWindowFocusVisualPolicy.blurRadius(isKeyWindow: false), 0)
-        XCTAssertEqual(
-            LauncherWindowFocusVisualPolicy.iconOpacity(isKeyWindow: false),
-            LauncherWindowFocusVisualPolicy.textOpacity(isKeyWindow: false)
-        )
-        XCTAssertGreaterThan(LauncherWindowFocusVisualPolicy.iconOpacity(isKeyWindow: false), 0)
     }
 
     @MainActor
@@ -1026,42 +964,4 @@ final class LauncherModeRoutingTests: XCTestCase {
         )
     }
 
-    @available(macOS 26.0, *)
-    private final class HoldingAlphaAnimationDriver: LauncherWindowAlphaAnimationDriver {
-        var alphaValue: CGFloat = 0
-
-        func cancelAndNormalize() {}
-
-        @discardableResult
-        func animate(
-            to alpha: CGFloat,
-            duration: TimeInterval,
-            timingFunction: CAMediaTimingFunction,
-            completion: @escaping @MainActor () -> Void
-        ) -> Bool {
-            alphaValue = alpha
-            return true
-        }
-    }
-
-    @available(macOS 26.0, *)
-    private func launcherModel(for controller: LiquidGlassLauncherWindowController) -> LiquidGlassLauncherModel? {
-        mirroredChild(named: "model", in: controller) as? LiquidGlassLauncherModel
-    }
-
-    @available(macOS 26.0, *)
-    @MainActor
-    private func visibilityPhase(for controller: LiquidGlassLauncherWindowController) -> WindowVisibilityState? {
-        let coordinator = mirroredChild(named: "visibilityTransitionCoordinator", in: controller)
-            as? LauncherWindowVisibilityTransitionCoordinator
-        return coordinator?.phase
-    }
-
-    private func mirroredChild(named name: String, in value: Any) -> Any? {
-        Mirror(reflecting: value).children.first { $0.label == name }?.value
-    }
-
-    private func pumpMainRunLoop() {
-        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
-    }
 }

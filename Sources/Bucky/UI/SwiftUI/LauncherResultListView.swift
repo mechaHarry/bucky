@@ -43,7 +43,12 @@ struct LauncherResultList<RowID: Hashable, Content: View>: View {
     private var scrollView: some View {
         ScrollView(.vertical, showsIndicators: false) {
             scrollContent
+                .contentShape(Rectangle())
         }
+        // Paint the scrolling owner as well as defining its interaction shape:
+        // a clear content shape alone lets native glass gaps pass wheel input.
+        .background(Color(nsColor: .windowBackgroundColor).opacity(LauncherVisualStyle.inputSurfaceOpacity))
+        .contentShape(Rectangle())
         .contentMargins(.horizontal, LauncherResultListLayoutPolicy.contentMargin, for: .scrollContent)
         .contentMargins(.vertical, LauncherResultListLayoutPolicy.verticalShadowClearance, for: .scrollContent)
         .scrollPosition(id: $scrollTargetID, anchor: scrollTargetAnchor)

@@ -257,6 +257,70 @@ final class IconCacheTests: XCTestCase {
         XCTAssertEqual(cache.maxConcurrentLoads, 3)
     }
 
+    func testSystemCachesUseBoundedDisplayBudgets() {
+        XCTAssertEqual(IconCache.applications.totalCostLimit, 8 * 1024 * 1024)
+        XCTAssertEqual(IconCache.files.totalCostLimit, 16 * 1024 * 1024)
+        XCTAssertGreaterThan(IconCache.files.countLimit, FileIconPreloadPolicy.preloadLimit)
+    }
+
+    func testRasterizedIconRetainsOnlyDisplaySizedPixels() throws {
+        let sourceContext = try XCTUnwrap(CGContext(
+            data: nil, width: 1024, height: 512, bitsPerComponent: 8,
+            bytesPerRow: 1024 * 4, space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ))
+        sourceContext.setFillColor(NSColor.red.cgColor)
+        sourceContext.fill(CGRect(x: 0, y: 0, width: 1024, height: 512))
+        let source = NSImage(cgImage: try XCTUnwrap(sourceContext.makeImage()), size: NSSize(width: 1024, height: 512))
+        let rasterized = try XCTUnwrap(IconCache.rasterizedIcon(source, pixelSide: 80))
+        let representation = try XCTUnwrap(rasterized.representations.first)
+        XCTAssertEqual(rasterized.representations.count, 1)
+        XCTAssertEqual(representation.pixelsWide, 80)
+        XCTAssertEqual(representation.pixelsHigh, 80)
+        XCTAssertEqual(rasterized.size, NSSize(width: 40, height: 40))
+        XCTAssertNil(IconCache.rasterizedIcon(source, pixelSide: 0))
+        XCTAssertNil(IconCache.rasterizedIcon(source, pixelSide: 1024))
+    }
+
+    func testCachePurgeReleasesWarmEntriesAndAllowsDemandReload() async {
+        let recorder = IconLoadRecorder()
+        let cache = IconCache(
+            countLimit: 4, totalCostLimit: 1_000_000, maxConcurrentLoads: 1,
+            loader: { await recorder.load(key: $0) },
+            fallbackIcon: { _ in Self.icon(named: "fallback") }
+        )
+        let url = URL(fileURLWithPath: "/tmp/cache-purge-fixture.app")
+        weak var retainedIcon: NSImage?
+        do {
+            let icon = await cache.icon(for: url)
+            retainedIcon = icon
+        }
+        XCTAssertNotNil(retainedIcon)
+        await cache.removeAllCachedIcons()
+        XCTAssertNil(retainedIcon)
+        let cached = await cache.cachedIcon(for: url)
+        XCTAssertNil(cached)
+        _ = await cache.icon(for: url)
+        let loadCount = await recorder.loadCount(for: url.path)
+        XCTAssertEqual(loadCount, 2)
+    }
+
+    func testMemoryPressureObservationDoesNotRetainCache() async {
+        weak var retainedCache: IconCache?
+        do {
+            let cache = IconCache(
+                countLimit: 4, totalCostLimit: 1_000_000, maxConcurrentLoads: 1,
+                loader: { _ in Self.icon(named: "loaded") },
+                fallbackIcon: { _ in Self.icon(named: "fallback") }
+            )
+            retainedCache = cache
+            _ = await cache.icon(for: URL(fileURLWithPath: "/tmp/cache-lifetime-fixture.app"))
+        }
+        // A completed load schedules a brief cleanup yield; it must release the actor too.
+        for _ in 0..<100 where retainedCache != nil { await Task.yield() }
+        XCTAssertNil(retainedCache)
+    }
+
     fileprivate static func icon(named name: String) -> NSImage {
         NSImage(size: NSSize(width: 8, height: 8))
     }

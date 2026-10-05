@@ -87,7 +87,7 @@ final class StoneCatalogTests: XCTestCase {
     }
 
     func testCatalogPreservesCurrentUpdatePolicies() {
-        XCTAssertEqual(StoneCatalog.definition(for: .applications).updatePolicy, .deferred(delayNanoseconds: 40_000_000))
+        XCTAssertEqual(StoneCatalog.definition(for: .applications).updatePolicy, .deferred(delayNanoseconds: 0))
         XCTAssertEqual(StoneCatalog.definition(for: .calculator).updatePolicy, .immediate)
         XCTAssertEqual(StoneCatalog.definition(for: .dictionary).updatePolicy, .deferred(delayNanoseconds: 80_000_000))
         XCTAssertEqual(StoneCatalog.definition(for: .files).updatePolicy, .immediate)

@@ -6,12 +6,12 @@ final class HotKeyController {
     private var eventHandlerRef: EventHandlerRef?
     let configuration: HotKeyConfiguration
     private let hotKeyIdentifier: UInt32
-    private let onHotKey: () -> Void
+    private let onHotKey: @MainActor () -> Void
 
     init(
         configuration: HotKeyConfiguration,
         identifier: UInt32 = 1,
-        onHotKey: @escaping () -> Void
+        onHotKey: @escaping @MainActor () -> Void
     ) throws {
         self.configuration = configuration
         hotKeyIdentifier = identifier
@@ -95,7 +95,9 @@ final class HotKeyController {
             return
         }
 
-        onHotKey()
+        MainActor.assumeIsolated {
+            onHotKey()
+        }
     }
 }
 enum HotKeyError: LocalizedError {

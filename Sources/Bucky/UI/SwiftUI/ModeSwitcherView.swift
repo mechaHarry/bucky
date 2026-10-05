@@ -249,11 +249,20 @@ private struct TextInputModePill: View {
             placeholder: mode.placeholder,
             tint: LauncherModeTintPolicy.iconColor(for: mode, colorScheme: colorScheme),
             isShowingProgress: model.isIndexing && mode == .applications,
-            text: $model.query,
+            text: Binding(
+                get: { model.query },
+                set: { nextQuery in
+                    guard model.query != nextQuery else { return }
+                    model.query = nextQuery
+                    if model.isPresented && !nextQuery.isEmpty {
+                        LauncherPerformanceTrace.shared.record(.inputAccepted)
+                    }
+                    // Start filtering at the native text binding boundary, without
+                    // waiting for a later SwiftUI render/onChange transaction.
+                    model.queryDidChange()
+                }
+            ),
             isSearchFocused: $isSearchFocused,
-            onQueryChange: {
-                model.queryDidChange()
-            },
             onSubmit: {
                 _ = model.handle(command: .open)
             }
@@ -355,7 +364,6 @@ private struct TextInputPillForegroundLayer: View {
     let isShowingProgress: Bool
     @Binding var text: String
     @FocusState.Binding var isSearchFocused: Bool
-    let onQueryChange: () -> Void
     let onSubmit: () -> Void
 
     var body: some View {
@@ -370,7 +378,6 @@ private struct TextInputPillForegroundLayer: View {
                 tint: tint,
                 text: $text,
                 isFocused: $isSearchFocused,
-                onQueryChange: onQueryChange,
                 onSubmit: onSubmit
             )
             .padding(.leading, ModeSwitcherLayoutPolicy.activeTextPillInputLeadingInset)
@@ -401,7 +408,6 @@ private struct ActiveTextPillInput: View {
     let tint: Color
     @Binding var text: String
     @FocusState.Binding var isFocused: Bool
-    let onQueryChange: () -> Void
     let onSubmit: () -> Void
 
     var body: some View {
@@ -423,9 +429,7 @@ private struct ActiveTextPillInput: View {
                     alignment: .center
                 )
                 .focused($isFocused)
-                .onChange(of: text) {
-                    onQueryChange()
-                }
+                .accessibilityIdentifier("launcher-search-input")
                 .onSubmit {
                     onSubmit()
                 }

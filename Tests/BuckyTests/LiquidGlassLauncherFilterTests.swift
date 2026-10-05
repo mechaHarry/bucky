@@ -39,8 +39,8 @@ final class LiquidGlassLauncherFilterTests: XCTestCase {
 
         let urls = AppIconPreloadPolicy.preloadURLs(for: items)
 
-        XCTAssertEqual(urls.count, 80)
-        XCTAssertEqual(urls.last?.lastPathComponent, "App 79.app")
+        XCTAssertEqual(urls.count, AppIconPreloadPolicy.preloadLimit)
+        XCTAssertEqual(urls.last?.lastPathComponent, "App 31.app")
         XCTAssertGreaterThan(AppIconPreloadPolicy.preloadLimit, AppIconPreloadPolicy.initialVisibleLimit)
         XCTAssertLessThan(AppIconPreloadPolicy.initialVisibleLimit, 80)
         XCTAssertGreaterThan(AppIconPreloadPolicy.tailDelayNanoseconds, 0)
@@ -52,7 +52,7 @@ final class LiquidGlassLauncherFilterTests: XCTestCase {
         }
 
         XCTAssertEqual(AppIconPreloadPolicy.preloadURLs(for: items).count, AppIconPreloadPolicy.preloadLimit)
-        XCTAssertEqual(AppIconPreloadPolicy.initialDelayNanoseconds, 0)
+        XCTAssertGreaterThan(AppIconPreloadPolicy.initialDelayNanoseconds, 0)
         XCTAssertGreaterThan(AppIconPreloadPolicy.tailDelayNanoseconds, 0)
         XCTAssertTrue(AppIconPreloadPolicy.shouldYield(afterLoadingItemAt: 7))
         XCTAssertFalse(AppIconPreloadPolicy.shouldYield(afterLoadingItemAt: 6))

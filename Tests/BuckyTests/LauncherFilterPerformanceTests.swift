@@ -10,6 +10,8 @@ final class LauncherFilterPerformanceTests: XCTestCase {
         let result = try runner.run(updateBaseline: updateBaseline)
 
         XCTAssertNotEqual(result.comparison.band, .regression, result.report)
+        XCTAssertNotEqual(result.liveComparison.band, .regression,
+                          "Live row-ID filter regressed against the existing workload budget: \(result.report)")
     }
 }
 
@@ -17,6 +19,7 @@ final class LauncherFilterPerformanceTests: XCTestCase {
 struct LauncherFilterPerformanceResult {
     let samplesMilliseconds: [Double]
     let comparison: LauncherFilterPerformanceComparison
+    let liveComparison: LauncherFilterPerformanceComparison
     let report: String
 }
 
@@ -76,12 +79,19 @@ final class LauncherFilterPerformanceRunner {
             precondition(checksum >= 0)
             return Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000
         }
-        print(String(format: "Bucky performance live-ID-filter median %.3f ms (same workload; legacy baseline unchanged)", median(liveSamples)))
+        let liveComparison = LauncherFilterPerformanceComparison.classify(
+            baselineMilliseconds: baseline.baselineMedianMilliseconds,
+            currentMilliseconds: median(liveSamples),
+            comfortThresholdPercent: baseline.comfortThresholdPercent,
+            regressionThresholdPercent: baseline.regressionThresholdPercent
+        )
+        print(String(format: "Bucky performance live-ID-filter median %.3f ms (same workload; legacy baseline unchanged), band %@", median(liveSamples), liveComparison.band.rawValue))
         print("Bucky benchmark OS: \(ProcessInfo.processInfo.operatingSystemVersionString); processors: \(ProcessInfo.processInfo.processorCount)")
 
         return LauncherFilterPerformanceResult(
             samplesMilliseconds: samples,
             comparison: comparison,
+            liveComparison: liveComparison,
             report: report
         )
     }

@@ -4,6 +4,8 @@ import SwiftUI
 struct ConfirmationOverlay: View {
     let title: String
     let message: String
+    var confirmationButtonTitle: String? = nil
+    var confirm: (() -> Void)? = nil
 
     var body: some View {
         VStack(spacing: 12) {
@@ -18,6 +20,14 @@ struct ConfirmationOverlay: View {
             Text("Return confirms. Escape cancels.")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
+
+            if let confirm {
+                Button(confirmationButtonTitle ?? "Confirm", role: .destructive, action: confirm)
+                    .buttonStyle(.borderedProminent)
+                    .tint(.red)
+                    .keyboardShortcut(.defaultAction)
+                    .frame(maxWidth: .infinity)
+            }
         }
         .padding(20)
         .frame(width: 340)

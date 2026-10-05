@@ -35,27 +35,66 @@ enum ApplicationSearchEngine {
         rowStore: ApplicationRowStore,
         normalizedQuery: String
     ) -> [AppRowID] {
-        guard !normalizedQuery.isEmpty else {
-            return ids
-        }
+        // Synchronous compatibility path is useful for benchmarks and prebuilt snapshots.
+        (try? filterIDsCancellable(ids, rowStore: rowStore, normalizedQuery: normalizedQuery,
+                                   cancellationCheck: {})) ?? []
+    }
 
+    static func filterIDsCancellable(
+        _ ids: [AppRowID],
+        rowStore: ApplicationRowStore,
+        normalizedQuery: String,
+        cancellationCheck: () throws -> Void = { try Task.checkCancellation() }
+    ) throws -> [AppRowID] {
+        try cancellationCheck()
+        guard !normalizedQuery.isEmpty else { return ids }
         let queryTokens = tokens(for: normalizedQuery)
-
-        return ids.indices.compactMap { index -> RankedApplicationMatch? in
+        var matches: [RankedApplicationMatch] = []
+        matches.reserveCapacity(min(ids.count, 256))
+        for index in ids.indices {
+            if index & 63 == 0 { try cancellationCheck() }
             guard let item = rowStore.item(for: ids[index]),
-                  queryTokens.allSatisfy({ item.searchText.contains($0) }) else {
-                return nil
-            }
-
-            return RankedApplicationMatch(
-                sourceIndex: index,
-                title: item.title,
+                  queryTokens.allSatisfy({ item.searchText.contains($0) }) else { continue }
+            matches.append(RankedApplicationMatch(sourceIndex: index, title: item.title,
                 score: score(item: item, tokens: queryTokens),
-                titleOrder: rowStore.titleOrder(for: ids[index])
-            )
+                titleOrder: rowStore.titleOrder(for: ids[index])))
         }
-        .sorted(by: ranksBefore)
-        .map { ids[$0.sourceIndex] }
+        try cancellationCheck()
+        // Swift's standard sort cannot throw. Merge in bounded chunks so obsolete input
+        // yields promptly even when every indexed row matches a broad query.
+        var scratch = matches
+        var width = 1
+        while width < matches.count {
+            var start = 0
+            while start < matches.count {
+                try cancellationCheck()
+                let middle = min(start + width, matches.count)
+                let end = min(middle + width, matches.count)
+                var left = start
+                var right = middle
+                for output in start..<end {
+                    if output & 63 == 0 { try cancellationCheck() }
+                    if left < middle && (right == end || !ranksBefore(matches[right], matches[left])) {
+                        scratch[output] = matches[left]
+                        left += 1
+                    } else {
+                        scratch[output] = matches[right]
+                        right += 1
+                    }
+                }
+                start = end
+            }
+            swap(&matches, &scratch)
+            width *= 2
+        }
+        var results: [AppRowID] = []
+        results.reserveCapacity(matches.count)
+        for index in matches.indices {
+            if index & 63 == 0 { try cancellationCheck() }
+            results.append(ids[matches[index].sourceIndex])
+        }
+        try cancellationCheck()
+        return results
     }
 
     private static func ranksBefore(_ left: RankedApplicationMatch, _ right: RankedApplicationMatch) -> Bool {
@@ -103,4 +142,12 @@ private struct RankedApplicationMatch {
     let title: String
     let score: Int
     var titleOrder: Int? = nil
+}
+
+// A serial Swift executor bounds CPU work to one scan. Cancelled queued requests
+// fail their first cancellation check before touching the index.
+actor ApplicationSearchWorker {
+    func filter(_ ids: [AppRowID], rowStore: ApplicationRowStore, query: String) throws -> [AppRowID] {
+        try ApplicationSearchEngine.filterIDsCancellable(ids, rowStore: rowStore, normalizedQuery: query)
+    }
 }

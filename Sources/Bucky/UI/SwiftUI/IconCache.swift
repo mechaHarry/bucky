@@ -8,20 +8,20 @@ actor IconCache {
     typealias CacheKey = @Sendable (URL) -> String
 
     static let applications = IconCache(
-        countLimit: AppIconPreloadPolicy.preloadLimit,
-        totalCostLimit: 128 * 1024 * 1024,
+        countLimit: 256,
+        totalCostLimit: 8 * 1024 * 1024,
         maxConcurrentLoads: 4,
         cacheKey: { $0.path },
-        loader: { path in NSWorkspace.shared.icon(forFile: path) },
+        loader: { path in IconCache.displayIcon(for: path, pixelSide: 80) },
         fallbackIcon: { _ in IconCache.emptyFallbackIcon() }
     )
 
     static let files = IconCache(
-        countLimit: FileIconPreloadPolicy.preloadLimit,
-        totalCostLimit: 128 * 1024 * 1024,
+        countLimit: 192,
+        totalCostLimit: 16 * 1024 * 1024,
         maxConcurrentLoads: 2,
         cacheKey: { $0.standardizedFileURL.path },
-        loader: { path in NSWorkspace.shared.icon(forFile: path) },
+        loader: { path in IconCache.displayIcon(for: path, pixelSide: 144) },
         fallbackIcon: { _ in IconCache.emptyFallbackIcon() }
     )
 
@@ -38,6 +38,7 @@ actor IconCache {
     private var completedIconsByWaiterID: [UUID: NSImage] = [:]
     private var pendingIconWaiters: [UUID: CheckedContinuation<NSImage?, Never>] = [:]
     private var activeLoadCount = 0
+    private let memoryPressureSource: DispatchSourceMemoryPressure
 
     init(
         countLimit: Int,
@@ -55,6 +56,20 @@ actor IconCache {
         self.fallbackIcon = fallbackIcon
         cache.countLimit = countLimit
         cache.totalCostLimit = totalCostLimit
+        memoryPressureSource = DispatchSource.makeMemoryPressureSource(eventMask: [.warning, .critical], queue: .global(qos: .utility))
+        memoryPressureSource.setEventHandler { [weak self] in
+            Task { await self?.removeAllCachedIcons() }
+        }
+        memoryPressureSource.resume()
+    }
+
+    deinit {
+        memoryPressureSource.cancel()
+    }
+
+    /// NSCache handles routine eviction; release the warm cache on system memory pressure.
+    func removeAllCachedIcons() {
+        cache.removeAllObjects()
     }
 
     func cachedIcon(for url: URL) -> NSImage? {
@@ -229,11 +244,40 @@ actor IconCache {
     }
 
     private func estimatedCost(for icon: NSImage) -> Int {
-        let largestPixelArea = icon.representations
-            .map { max(1, $0.pixelsWide) * max(1, $0.pixelsHigh) }
-            .max() ?? Int(max(1, icon.size.width) * max(1, icon.size.height))
+        // Sum every retained representation, rather than accounting only for the largest.
+        icon.representations.reduce(0) { cost, representation in
+            cost + max(1, representation.pixelsWide) * max(1, representation.pixelsHigh) * 4
+        }
+    }
 
-        return largestPixelArea * 4
+    private static func displayIcon(for path: String, pixelSide: Int) -> NSImage? {
+        // The system supplies file/app artwork; retain only a display-sized bitmap.
+        autoreleasepool {
+            rasterizedIcon(NSWorkspace.shared.icon(forFile: path), pixelSide: pixelSide)
+        }
+    }
+
+    static func rasterizedIcon(_ source: NSImage, pixelSide: Int) -> NSImage? {
+        guard pixelSide > 0, pixelSide <= 256,
+              let context = CGContext(
+                data: nil, width: pixelSide, height: pixelSide, bitsPerComponent: 8,
+                bytesPerRow: pixelSide * 4, space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+              ) else { return nil }
+        var proposedRect = CGRect(x: 0, y: 0, width: pixelSide, height: pixelSide)
+        guard let image = source.cgImage(forProposedRect: &proposedRect, context: nil, hints: nil) else {
+            return nil
+        }
+        let scale = min(CGFloat(pixelSide) / CGFloat(image.width), CGFloat(pixelSide) / CGFloat(image.height))
+        let width = CGFloat(image.width) * scale
+        let height = CGFloat(image.height) * scale
+        context.interpolationQuality = .high
+        context.draw(image, in: CGRect(
+            x: (CGFloat(pixelSide) - width) / 2, y: (CGFloat(pixelSide) - height) / 2,
+            width: width, height: height
+        ))
+        guard let bitmap = context.makeImage() else { return nil }
+        return NSImage(cgImage: bitmap, size: NSSize(width: pixelSide / 2, height: pixelSide / 2))
     }
 
     private static func emptyFallbackIcon() -> NSImage {

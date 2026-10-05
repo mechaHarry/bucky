@@ -6,10 +6,16 @@ final class CountdownStone: InlineCreationStoneProvider {
 
     private let store: CountdownStore
     private let now: () -> Date
+    private let countdownsDidChange: @MainActor ([Countdown]) -> Void
 
-    init(store: CountdownStore, now: @escaping () -> Date = Date.init) {
+    init(
+        store: CountdownStore,
+        now: @escaping () -> Date = Date.init,
+        countdownsDidChange: @escaping @MainActor ([Countdown]) -> Void = { _ in }
+    ) {
         self.store = store
         self.now = now
+        self.countdownsDidChange = countdownsDidChange
     }
 
     var definition: StoneDefinition {
@@ -61,6 +67,7 @@ final class CountdownStone: InlineCreationStoneProvider {
         guard targetDate > now(), store.add(name: name, targetDate: targetDate) != nil else {
             return false
         }
+        countdownsDidChange(store.countdowns)
         return true
     }
 
@@ -68,7 +75,9 @@ final class CountdownStone: InlineCreationStoneProvider {
 
     func submitInlineCreationAsync(name: String, targetDate: Date) async -> Bool {
         guard targetDate > now() else { return false }
-        return await store.addAsync(name: name, targetDate: targetDate) != nil
+        guard await store.addAsync(name: name, targetDate: targetDate) != nil else { return false }
+        countdownsDidChange(store.countdowns)
+        return true
     }
 
     func performAsync(_ activation: StoneActivation, for row: StoneResultRow) async -> StoneProviderActivationResult {
@@ -77,6 +86,7 @@ final class CountdownStone: InlineCreationStoneProvider {
             guard await store.removeAsync(id: id) else {
                 return .failed(message: store.lastError ?? "Could not delete this countdown.")
             }
+            countdownsDidChange(store.countdowns)
             return .handled(shouldRefresh: true, resetSelection: true, shouldHide: false)
         }
         return perform(activation, for: row)
@@ -89,6 +99,7 @@ final class CountdownStone: InlineCreationStoneProvider {
             return .confirmation(StoneProviderConfirmation(
                 title: "Delete countdown?",
                 message: "Return deletes this countdown. Escape cancels.",
+                confirmationButtonTitle: "Confirm Deletion",
                 confirmationActivation: .providerAction("delete-confirm:\(id.uuidString)")
             ))
         }
@@ -97,6 +108,7 @@ final class CountdownStone: InlineCreationStoneProvider {
             guard store.remove(id: id) else {
                 return .failed(message: store.lastError ?? "Could not delete this countdown.")
             }
+            countdownsDidChange(store.countdowns)
             return .handled(shouldRefresh: true, resetSelection: true, shouldHide: false)
         }
 

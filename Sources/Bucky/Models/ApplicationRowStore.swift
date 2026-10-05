@@ -22,7 +22,7 @@ struct ApplicationRowStore {
     }
 
     mutating func replaceAllIfChanged(_ items: [LaunchItem]) -> Bool {
-        if self.items(for: allIDs) == items {
+        if allIDs.count == items.count && zip(allIDs, items).allSatisfy({ itemsByID[$0.0] == $0.1 }) {
             return false
         }
 
@@ -30,6 +30,9 @@ struct ApplicationRowStore {
         var nextItemsByID: [AppRowID: LaunchItem] = [:]
         var nextIDByKey: [String: AppRowID] = [:]
 
+        nextAllIDs.reserveCapacity(items.count)
+        nextItemsByID.reserveCapacity(items.count)
+        nextIDByKey.reserveCapacity(items.count)
         for item in items {
             let key = stableKey(for: item)
             let id = idByKey[key] ?? allocateID()
@@ -57,6 +60,12 @@ struct ApplicationRowStore {
         idByKey = nextIDByKey
         generation += 1
         return true
+    }
+
+    // Preparation may overlap a visibility edit. Publication must use a new generation
+    // so cached rows and scans cannot accidentally identify two stores as equivalent.
+    mutating func advanceGeneration(after latestGeneration: Int) {
+        generation = max(generation, latestGeneration + 1)
     }
 
     mutating func rebuildVisibleIDs(isVisible: (LaunchItem) -> Bool) {

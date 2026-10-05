@@ -84,6 +84,35 @@ final class ApplicationRowStoreTests: XCTestCase {
         XCTAssertEqual(store.generation, 1)
     }
 
+    func testMissingWarmPrefixesSkipCurrentQueryAndCachedEntries() {
+        var cache = ApplicationFilterCache()
+        cache.store([], for: "notes", generation: 3)
+        cache.store([], for: "note", generation: 3)
+        cache.store([], for: "", generation: 3)
+        XCTAssertEqual(cache.missingDeletionQueries(for: "notes", generation: 3), ["not", "no", "n"])
+        XCTAssertEqual(cache.cachedResults(for: "notes", generation: 3), [])
+        XCTAssertNil(cache.cachedResults(for: "notes", generation: 4))
+    }
+
+    func testWarmPrefixesBoundWorkForLongPastedQueries() {
+        var cache = ApplicationFilterCache()
+        let query = String(repeating: "example ", count: 500)
+        let queries = cache.missingDeletionQueries(for: query, generation: 1)
+        XCTAssertEqual(queries.count, 9)
+        XCTAssertFalse(queries.contains(query))
+        XCTAssertEqual(queries.last, "")
+        XCTAssertEqual(queries.first, String(query.dropLast()))
+    }
+
+    func testPreparedStoreUsesFreshGenerationAfterConcurrentVisibilityEdit() {
+        var store = ApplicationRowStore()
+        store.replaceAll([launchItem(title: "Example", path: "/Applications/Example.app")])
+        var prepared = store
+        store.rebuildVisibleIDs { _ in false }
+        prepared.advanceGeneration(after: store.generation)
+        XCTAssertGreaterThan(prepared.generation, store.generation)
+    }
+
     private func launchItem(title: String, path: String) -> LaunchItem {
         LaunchItem(
             title: title,
