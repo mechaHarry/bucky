@@ -2,6 +2,12 @@
 
 All notable changes to Bucky are documented here.
 
+## [3.2.17] - 2026-10-06
+
+### Improved
+
+- Reverse an in-progress launcher close into an opening animation when the global hotkey is pressed again.
+
 ## [3.2.16] - 2026-10-06
 
 ### Improved
