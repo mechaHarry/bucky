@@ -58,7 +58,7 @@ struct LiquidGlassLauncherView: View {
             resetInlineCreationDraftIfNeeded()
         }
         .onChange(of: model.mode) {
-            synchronizeSearchFocus()
+            synchronizeSearchFocus(afterModeChange: true)
             preloadApplicationIcons()
             resetInlineCreationDraftIfNeeded()
         }
@@ -171,14 +171,30 @@ struct LiquidGlassLauncherView: View {
             .contentShape(Rectangle())
     }
 
-    private func synchronizeSearchFocus() {
+    private func synchronizeSearchFocus(afterModeChange: Bool = false) {
         // FocusState is idempotent: do not clear/requeue an already mounted input.
         // The first focus request waits for presentation; requesting it against
         // a never-shown host can be rejected by SwiftUI's focus system.
         let shouldFocus = model.isPresented
             && !model.isShowingSettings && !model.isShowingHelp
             && model.providerConfirmation == nil && model.mode.acceptsTextInput
-        if isSearchFocused != shouldFocus { isSearchFocused = shouldFocus }
+        if afterModeChange, shouldFocus {
+            let requestedMode = model.mode
+            isSearchFocused = false
+            DispatchQueue.main.async {
+                guard model.isPresented,
+                      !model.isShowingSettings,
+                      !model.isShowingHelp,
+                      model.providerConfirmation == nil,
+                      model.mode == requestedMode,
+                      model.mode.acceptsTextInput else {
+                    return
+                }
+                isSearchFocused = true
+            }
+        } else if isSearchFocused != shouldFocus {
+            isSearchFocused = shouldFocus
+        }
         if model.isPresented && shouldFocus {
             LauncherPerformanceTrace.shared.record(.focusRequested)
         }
