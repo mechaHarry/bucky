@@ -150,8 +150,10 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         }
 
         switch visibilityTransitionCoordinator.phase {
-        case .hidden, .hiding:
+        case .hidden:
             show()
+        case .hiding:
+            presentByReversingHide { model.show(mode: .applications) }
         case .showing, .shown:
             hide()
         }
@@ -214,6 +216,26 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         positionWindow(animated: false)
         visibilityTransitionCoordinator.showImmediately()
         activateAndFocusWindow()
+        LauncherPerformanceTrace.shared.record(.panelOrderedFront)
+        LauncherPerformanceTrace.shared.record(.visible)
+    }
+
+    private func presentByReversingHide(prepare: () -> Void) {
+        LauncherPerformanceTrace.shared.beginIfNeeded()
+        LauncherPerformanceTrace.shared.record(.showStarted)
+        stopRecordingSettingsHotKey()
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            prepare()
+            model.isPresented = true
+        }
+        positionWindow(animated: false)
+        // request(.show) cancels the in-flight fade without resetting its alpha,
+        // and advances the generation so the old hide cannot order out the panel.
+        visibilityTransitionCoordinator.request(.show)
+        activateAndFocusWindow()
+        startVisibilityAnimation()
         LauncherPerformanceTrace.shared.record(.panelOrderedFront)
         LauncherPerformanceTrace.shared.record(.visible)
     }
