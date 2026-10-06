@@ -73,7 +73,7 @@ final class LiquidGlassLauncherModel: ObservableObject {
     private var filterCache = ApplicationFilterCache()
     private var applicationQuery = ""
     private var textStoneQueries: [StoneID: String] = [:]
-    private var textStoneResultSnapshots: [StoneID: StoneResultSnapshot] = [:]
+    @Published private var textStoneResultSnapshots: [StoneID: StoneResultSnapshot] = [:]
     private var needsReindexAfterCurrent = false
     private var pendingApplicationFilterTask: Task<Void, Never>?
     private var applicationFilterRequestGate = StoneResultRequestGate()

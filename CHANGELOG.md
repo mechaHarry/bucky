@@ -2,6 +2,13 @@
 
 All notable changes to Bucky are documented here.
 
+## [3.2.15] - 2026-10-06
+
+### Fixed
+
+- Restore focus to the active input after switching Stones.
+- Publish completed deferred Dictionary snapshots so lookup results replace the loading state.
+
 ## [3.2.14] - 2026-10-05
 
 ### Improved
