@@ -2,6 +2,12 @@
 
 All notable changes to Bucky are documented here.
 
+## [3.2.16] - 2026-10-06
+
+### Improved
+
+- Add opt-in visibility timing events to diagnose hotkey close and reopen latency.
+
 ## [3.2.15] - 2026-10-06
 
 ### Fixed
