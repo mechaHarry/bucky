@@ -138,6 +138,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     }
 
     func toggle() {
+        LauncherPerformanceTrace.shared.record(.toggleEntered)
         if model.isShowingSettings || model.isShowingHelp {
             showLauncherFromPanel()
             return
@@ -202,6 +203,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
 
     private func presentImmediately(prepare: () -> Void) {
         LauncherPerformanceTrace.shared.beginIfNeeded()
+        LauncherPerformanceTrace.shared.record(.showStarted)
         stopRecordingSettingsHotKey()
         var transaction = Transaction()
         transaction.disablesAnimations = true
@@ -212,6 +214,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         positionWindow(animated: false)
         visibilityTransitionCoordinator.showImmediately()
         activateAndFocusWindow()
+        LauncherPerformanceTrace.shared.record(.panelOrderedFront)
         LauncherPerformanceTrace.shared.record(.visible)
     }
 
@@ -223,6 +226,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         LauncherPerformanceTrace.shared.cancel()
         cancelFocusClaim()
         visibilityTransitionCoordinator.request(.hide)
+        LauncherPerformanceTrace.shared.record(.hideStarted)
         closeQuickLookPreviewPanel()
         cancelSpaceHoldState(deliverEndHold: true)
         cancelOptionPinnedFocus()
@@ -857,6 +861,7 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
     }
 
     private func completeHidePresentation() {
+        LauncherPerformanceTrace.shared.record(.hideAnimationCompleted)
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) {
@@ -865,9 +870,11 @@ final class LiquidGlassLauncherWindowController: NSObject, LauncherControlling {
         // Preserve the SwiftUI Apps field editor across orderOut/orderFront. Heavy
         // Stones unmount and the next blank Apps state is prepared while hidden.
         window.orderOut(nil)
+        LauncherPerformanceTrace.shared.record(.panelOrderedOut)
         window.resignKey()
         model.resetPanelVisibilityAfterHide()
         model.show(mode: .applications)
+        LauncherPerformanceTrace.shared.record(.hiddenCleanupCompleted)
     }
 
 }

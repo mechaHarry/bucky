@@ -80,6 +80,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             let controller = try HotKeyController(configuration: hotKey) { [weak self] in
                 LauncherPerformanceTrace.shared.begin()
+                LauncherPerformanceTrace.shared.record(.hotkeyReceived)
                 self?.launcherController?.toggle()
             }
             hotKeyController = controller

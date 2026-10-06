@@ -1,10 +1,21 @@
 import Foundation
 import os
 
-// Opt-in timings contain only fixed stage names and elapsed milliseconds, never
-// queries, app names, filesystem paths, or commands. Retain just the latest open.
+// Opt-in timings contain only fixed stage names and monotonic times, never
+// queries, app names, filesystem paths, or commands.
 @MainActor
 final class LauncherPerformanceTrace {
+    enum VisibilityEvent: String {
+        case hotkeyReceived
+        case toggleEntered
+        case showStarted
+        case panelOrderedFront
+        case hideStarted
+        case hideAnimationCompleted
+        case panelOrderedOut
+        case hiddenCleanupCompleted
+    }
+
     enum Stage: String, Hashable {
         case visible
         case focusRequested
@@ -49,6 +60,12 @@ final class LauncherPerformanceTrace {
             signposter.endInterval("Launcher input readiness", interval)
             self.interval = nil
         }
+    }
+
+    func record(_ event: VisibilityEvent) {
+        guard enabled else { return }
+        let uptimeMilliseconds = Double(DispatchTime.now().uptimeNanoseconds) / 1_000_000
+        logger.info("Launcher visibility \(event.rawValue, privacy: .public): \(uptimeMilliseconds, privacy: .public) ms uptime")
     }
 
     func cancel() {
